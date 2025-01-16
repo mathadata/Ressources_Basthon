@@ -1867,7 +1867,7 @@ validation_execution_affichage_classif = MathadataValidate(success="")
 validation_exercice_droite_carac = MathadataValidate(function_validation=validate_exercice_droite_carac)
 validation_question_ordre_caracteristique = MathadataValidateVariables(get_names_and_values=lambda: {
     'r_low_feature': {
-        'value': challenge.r_petite_caracteristique,
+        'value': challenge.r_low_feature,
         'errors': [
             {
                 'value': {
@@ -1878,7 +1878,7 @@ validation_question_ordre_caracteristique = MathadataValidateVariables(get_names
         ]
     },
     'r_high_feature': {
-        'value': challenge.r_grande_caracteristique,
+        'value': challenge.r_high_feature,
         'errors': [
             {
                 'value': {

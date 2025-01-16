@@ -685,7 +685,7 @@ window.mathadata.setup_zone_selection = (id, matrixes) => {
         const table = document.createElement('div')
         table.id = `${id}-image-${i}`
         container.appendChild(table)
-        window.mathadata.image_tables.push(window.mathadata.affichage(`${id}-image-${i}`, matrixes[i], {with_selection: true}))
+        window.mathadata.image_tables.push(window.mathadata.display(`${id}-image-${i}`, matrixes[i], {with_selection: true}))
     }
 }
 

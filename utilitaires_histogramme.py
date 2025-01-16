@@ -64,7 +64,7 @@ def animation_histogramme(id=None, carac=None):
         '''))
 
     if carac is None:
-        carac = common.challenge.caracteristique
+        carac = common.challenge.feature
 
     set = common.challenge.d_train
     c_train = compute_c_train(carac, set)
@@ -226,7 +226,7 @@ window.mathadata.animation_histogramme = function(id, params) {
     const length = max - min + 1
     
     function updateImage() {
-        window.mathadata.affichage(`${id}-data`, data[i])
+        window.mathadata.display(`${id}-data`, data[i])
         clearCarac()
         setTimeout(() => {
             updateCarac()
