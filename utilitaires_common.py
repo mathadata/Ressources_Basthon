@@ -31,16 +31,6 @@ try:
 except: 
     pass
 
-### --- IMPORT DE BASTHON ---
-# Ne marche que si on est sur basthon ou capytale, sinon ignorer : 
-try:
-    import basthon  # Ne marche que si on est sur Capytale ou Basthon
-    basthon = True
-
-except ModuleNotFoundError: 
-    basthon = False
-    pass
-
 ### --- Import du validation_kernel ---
 # Ne marche que si fourni et si va avec le notebook en version séquencé. Sinon, ignorer :
 sequence = False
@@ -50,8 +40,12 @@ try:
     from capytale.random import user_seed
 
     sequence = True
-except ModuleNotFoundError: 
-    sequence = False
+except ModuleNotFoundError:
+    try:
+        from basthon.autoeval import Validate, validationclass
+        sequence = True
+    except ModuleNotFoundError:
+        pass
 
 ## Pour valider l'exécution d'une cellule de code, dans le cas du notebook sequencé :
 if sequence:
@@ -70,10 +64,10 @@ class Challenge:
         self.r_train = []
         self.d = None
         self.classes = [0,1]
-        self.r_petite_caracteristique = 0
-        self.r_grande_caracteristique = 1
+        self.r_low_feature = 0
+        self.r_high_feature = 1
 
-    def affichage_banque(self, carac=None, mode=1, showPredictions=False, estimations=None):
+    def display_bank(self, carac=None, mode=1, showPredictions=False, estimations=None):
         id = uuid.uuid4().hex
         display(HTML(f'''
             <div style="display: flex; height: 500px; gap: 2rem;">
@@ -84,7 +78,7 @@ class Challenge:
 
         if carac is not None:
             if carac == 1:
-                carac = self.caracteristique
+                carac = self.feature
             elif carac == 2:
                 carac = self.caracteristique2
             c_train = compute_c_train(carac, self.d_train)
@@ -124,7 +118,7 @@ class Challenge:
         if d is None:
             d = self.d
             
-        run_js(f"setTimeout(() => window.mathadata.affichage('{id}', {json.dumps(d, cls=NpEncoder)}), 100)")
+        run_js(f"setTimeout(() => window.mathadata.display('{id}', {json.dumps(d, cls=NpEncoder)}), 100)")
 
 def init_challenge(challenge_instance):
     global challenge
@@ -150,11 +144,11 @@ def affichage_html(*args, **kwargs):
 def affichage_dix(*args, **kwargs):
     challenge.affichage_dix(*args, **kwargs)
 
-def affichage_banque(*args, **kwargs):
-    challenge.affichage_banque(*args, **kwargs)
+def display_bank(*args, **kwargs):
+    challenge.display_bank(*args, **kwargs)
 
-def caracteristique(d):
-    return challenge.caracteristique(d)
+def feature(d):
+    return challenge.feature(d)
 
 def get_data(*args, **kwargs):
     return challenge.get_data(*args, **kwargs)
@@ -314,7 +308,7 @@ def compute_c_train(fonction_caracteristique, d_train):
 
 def compute_c_train_by_class(fonction_caracteristique=None, d_train=None, r_train=None, classes=None, c_train=None):
     if fonction_caracteristique is None:
-        fonction_caracteristique = challenge.caracteristique
+        fonction_caracteristique = challenge.feature
     if d_train is None:
         d_train = challenge.d_train
     if r_train is None:
@@ -329,9 +323,9 @@ def compute_c_train_by_class(fonction_caracteristique=None, d_train=None, r_trai
 def affichage_dix_caracteristique(predictions=False):
     challenge.affichage_dix()
     df = pd.DataFrame()
-    df['$r$ (classe)'] = challenge.r_train[0:10]   
-    caracteristique = get_variable('caracteristique')
-    df['$k$ (caracteristique)'] = [caracteristique(d) for d in challenge.d_train[0:10]]
+    df['$r$ (class)'] = challenge.r_train[0:10]   
+    feature = get_variable('feature')
+    df['$k$ (feature)'] = [feature(d) for d in challenge.d_train[0:10]]
     if predictions:
         df['$\hat{r}$ (prediction)'] = '?'
     df.index+=1
@@ -340,8 +334,8 @@ def affichage_dix_caracteristique(predictions=False):
     return
 
 def get_algorithme_func(error=None):
-    if has_variable('algorithme'):
-        algorithme = get_variable('algorithme')
+    if has_variable('algorithm'):
+        algorithme = get_variable('algorithm')
     else:
         algorithme = None
         
@@ -349,7 +343,7 @@ def get_algorithme_func(error=None):
         if error:
             print_error(error)
         else:
-            print_error("Vous avez remplacé autre chose que les ... . Revenez en arrière avec le raccourci clavier Ctrl+Z pour annuler vos modifications.")
+            print_error("You have replaced something other than ... . Cancel your modifications with Ctrl+Z and try again.")
         return None
 
     return algorithme
@@ -363,15 +357,15 @@ def get_estimations(data, algorithme=None):
     r_prediction = np.array([r for r in map(algorithme, data)])
     return r_prediction
 
-def calcul_caracteristiques(d_train, caracteristique):
+def calcul_caracteristiques(d_train, feature):
     """Fonction qui calcule les caractéristiques de toutes les images de d_train"""
-    # vec_caracteristique = np.vectorize(caracteristique, signature="(m,n)->()")
-    return np.array([caracteristique(d) for d in d_train])
+    # vec_caracteristique = np.vectorize(feature, signature="(m,n)->()")
+    return np.array([feature(d) for d in d_train])
 
 # Calculer l'estimation et l'erreur : 
-def erreur_train(d_train, r_train, x, classification, caracteristique):
+def erreur_train(d_train, r_train, x, classification, feature):
     """Fonction qui calcule l'erreur d'entraînement pour un seuil t donné"""
-    return erreur_train_optim(calcul_caracteristiques(d_train, caracteristique),r_train,x,classification)
+    return erreur_train_optim(calcul_caracteristiques(d_train, feature),r_train,x,classification)
 
 # Calculer l'estimation et l'erreur a partir du tableau de caractéristique des images : 
 def erreur_train_optim(k_d_train, r_train, x, classification):
@@ -383,7 +377,7 @@ def erreur_train_optim(k_d_train, r_train, x, classification):
 
 def compute_erreur(func_carac=None):
     if func_carac is None:
-        func_carac = challenge.caracteristique
+        func_carac = challenge.feature
     
     func_classif = get_variable('classification')
 
@@ -411,28 +405,28 @@ def compute_erreur(func_carac=None):
 
     return (t_values, scores_array)
     
-def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=None, caracteristique=None):
+def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=None, feature=None):
     try:
-        print("Calcul du pourcentage d'erreur en cours...")
+        print("Error computation in progress...")
 
         r_prediction_train = get_estimations(challenge.d_train, algorithme=algorithme)
         score = np.mean(r_prediction_train != challenge.r_train)
         set_score(score)
 
-        print("Voici les prédictions r^ de ton algorithme pour chaque image")
-        affichage_banque(carac=caracteristique, showPredictions=True, estimations=r_prediction_train)
+        print("Here are the predictions r^ of your algorithm for each image")
+        display_bank(carac=feature, showPredictions=True, estimations=r_prediction_train)
         
         if cb is not None:
             cb(score)
 
     except Exception as e:
-        print_error("Il y a eu un problème lors du calcul de l'erreur. Vérifie ta réponse.")
+        print_error("There was an error during percentage error computation. Check your answer.")
         if debug:
             raise(e)
 
 # Fonctions trame notebook générique
 
-def calculer_score_etape_1():
+def compute_score_step_1():
     algorithme = get_algorithme_func()
     if algorithme is None:
         return
@@ -443,69 +437,69 @@ def calculer_score_etape_1():
 
     calculer_score(algorithme, method="fixed", cb=cb)  
 
-def calculer_score_carac():
+def compute_score_feature():
     t = get_variable('t')
-    caracteristique = get_variable('caracteristique')
+    feature = get_variable('feature')
     classification = get_variable('classification')
 
     def algorithme(d):
-        x = caracteristique(d)
+        x = feature(d)
         return classification(x, t)
     
     def cb(score):
         validation_score_carac()
         set_step(2)
 
-    calculer_score(algorithme, method="carac ref", parameters=f"t={t}", cb=cb, caracteristique=caracteristique) 
+    calculer_score(algorithme, method="carac ref", parameters=f"t={t}", cb=cb, feature=feature) 
 
-def calculer_score_custom():
-    if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable('r_grande_caracteristique'):
-        print_error('Remplacez tous les ... par vos paramètres.')
+def compute_custom_score():
+    if not has_variable('t') or not has_variable('r_low_feature') or not has_variable('r_high_feature'):
+        print_error('Replace all ... with your parameters.')
         return
     
     t = get_variable('t')
-    r_petite_caracteristique = get_variable('r_petite_caracteristique')
-    r_grande_caracteristique = get_variable('r_grande_caracteristique')
+    r_low_feature = get_variable('r_low_feature')
+    r_high_feature = get_variable('r_high_feature')
     
     def algorithme(d):
         x = challenge.caracteristique_custom(d)
         if x <= t:
-            return r_petite_caracteristique
+            return r_low_feature
         else:
-            return r_grande_caracteristique
+            return r_high_feature
         
     def cb(score):
         if score < 0.05:
             validation_custom()
         else:
-            print_error("Modifie ta zone pour faire moins de 5% d'erreur.")
+            print_error("Modify your area to make less than 5% error.")
     
-    calculer_score(algorithme, method="carac custom", parameters=f"t={t}", caracteristique=challenge.caracteristique_custom, cb=cb)
+    calculer_score(algorithme, method="carac custom", parameters=f"t={t}", feature=challenge.caracteristique_custom, cb=cb)
 
-def calculer_score_code_eleve():
-    if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable('r_grande_caracteristique'):
-        print_error('Remplacez tous les ... par vos paramètres.')
+def compute_score_code():
+    if not has_variable('t') or not has_variable('r_low_feature') or not has_variable('r_high_feature'):
+        print_error('Replace all ... with your parameters.')
         return
     
     t = get_variable('t')
-    r_petite_caracteristique = get_variable('r_petite_caracteristique')
-    r_grande_caracteristique = get_variable('r_grande_caracteristique')
+    r_low_feature = get_variable('r_low_feature')
+    r_high_feature = get_variable('r_high_feature')
     
     def algorithme(d):
-        x = get_variable('caracteristique')(d)
+        x = get_variable('feature')(d)
 
         if x <= t:
-            return r_petite_caracteristique
+            return r_low_feature
         else:
-            return r_grande_caracteristique
+            return r_high_feature
         
     def cb(score):
         if score < 0.04:
             validation_code_eleve()
         else:
-            print_error("Essaie de trouver une zone qui fait moins de 5% d'erreur.")
+            print_error("Try to find an area with less than 4% error.")
     
-    calculer_score(algorithme, method="code eleve", caracteristique=get_variable('caracteristique'))
+    calculer_score(algorithme, method="code eleve", feature=get_variable('feature'))
 
 def get_erreur_plot(func_carac=None):
     (t_values, scores_array) = compute_erreur(func_carac)
@@ -517,7 +511,7 @@ def get_erreur_plot(func_carac=None):
     return [t_values, scores_array]
     
 
-def tracer_erreur(id=None, func_carac=None):
+def plot_error(id=None, func_carac=None):
 
     [t_values, scores_array] = get_erreur_plot(func_carac)
 
@@ -527,16 +521,16 @@ def tracer_erreur(id=None, func_carac=None):
             <canvas id="{id}"/>
         '''))
 
-    run_js(f'setTimeout(() => window.mathadata.tracer_erreur("{id}", {t_values.tolist()}, {scores_array.tolist()}), 100)')
+    run_js(f'setTimeout(() => window.mathadata.plot_error("{id}", {t_values.tolist()}, {scores_array.tolist()}), 100)')
 
-def update_graph_erreur(id="graph_custom", func_carac=None):
+def update_error_graph(id="graph_custom", func_carac=None):
     if func_carac is None:
         func_carac = challenge.caracteristique_custom
         
     [t_values, scores_array] = get_erreur_plot(func_carac)
-    run_js(f'window.mathadata.tracer_erreur("{id}", {t_values.tolist()}, {scores_array.tolist()})')
+    run_js(f'window.mathadata.plot_error("{id}", {t_values.tolist()}, {scores_array.tolist()})')
 
-def exercice_droite_carac():
+def exercise_feature_line():
     id = uuid.uuid4().hex
     display(HTML(f'''
         <div>
@@ -547,24 +541,24 @@ def exercice_droite_carac():
 
     size = 10
     set = challenge.d_train[0:size]
-    c_train = compute_c_train(challenge.caracteristique, set)
+    c_train = compute_c_train(challenge.feature, set)
     params = {
         'c_train': c_train,
         'labels': [0 if r == challenge.classes[0] else 1 for r in challenge.r_train[0:size]],
     }
     
-    run_js(f"setTimeout(() => window.mathadata.exercice_droite_carac('{id}', '{json.dumps(params, cls=NpEncoder)}'), 100)")
+    run_js(f"setTimeout(() => window.mathadata.exercise_feature_line('{id}', '{json.dumps(params, cls=NpEncoder)}'), 100)")
 
-def calculer_score_seuil_optimise():
+def compute_score_optimized_thresold():
     if not validation_question_seuil_optimise():
         return
 
     t = get_variable('t')
-    caracteristique = get_variable('caracteristique')
+    feature = get_variable('feature')
     classification = get_variable('classification')
 
     def algorithme(d):
-        x = caracteristique(d)
+        x = feature(d)
         return classification(x, t)
 
     def cb(score):
@@ -579,6 +573,7 @@ capytale_id = None
 capytale_classroom = None
 
 def start_analytics_session(notebook_id):
+    return
     global capytale_id, capytale_classroom
     if sequence:
         seed = user_seed()
@@ -636,6 +631,7 @@ def score_str(score):
     return f"{percent:.1f}%"
 
 def get_highscore(challenge_id=116):
+    return
     def cb(data):
         if data is not None and isinstance(data, dict) and 'highscore' in data:
             global highscore
@@ -647,7 +643,7 @@ def get_highscore(challenge_id=116):
     http_request_cd(f'/participants/challenges/{challenge_id}/highscore?capytale_id={capytale_id}', 'GET', cb=cb)
 
 def set_score(score):
-    print('Nouveau pourcentage d\'erreur : ' + score_str(score))
+    print('New percentage error: ' + score_str(score))
     global session_score, highscore
     if session_score is None or score < session_score:
         session_score = score
@@ -667,7 +663,7 @@ def submit(csv_content, challenge_id=116, method=None, parameters=None, cb=None)
             if cb is not None:
                 cb(data['score'])
         else:
-            print('Il y a eu un problème lors du calcul de l\'erreur. Ce n\'est probablement pas de ta faute, réessaye dans quelques instants.')
+            print('There was a problem calculating the percentage error. It\'s probably not your fault, try again in a few moments.')
             if debug:
                 print_error("Received data" + str(data))
 
@@ -827,7 +823,7 @@ run_js("""
     }
     
     function chartjs_label(context) {
-        return `abscisse: ${context.label || context.parsed.x.toFixed(2)} , ordonnée: ${context.parsed.y.toFixed(2)}`;
+        return `x: ${context.label || context.parsed.x.toFixed(2)} , y: ${context.parsed.y.toFixed(2)}`;
     }
 
     let i_exercice_droite_carac = 0
@@ -1073,7 +1069,7 @@ run_js("""
             let caracColumnDefs
             let getCaracData
             if (multiple_caracs) {
-                caracColumnDefs = caracNames.map((name, i) => ({headerName: `Caractéristique ${name}`, field: name, hide: c_train[0].length <= i}))
+                caracColumnDefs = caracNames.map((name, i) => ({headerName: `Feature ${name}`, field: name, hide: c_train[0].length <= i}))
                 getCaracData = (index) => {
                     const res = {}
                     for (let i = 0; i < c_train[index].length; i++) {
@@ -1082,7 +1078,7 @@ run_js("""
                     return res
                 }
             } else {
-                caracColumnDefs = [{headerName: 'Caractéristique x', field: 'x', hide: !display_carac}]
+                caracColumnDefs = [{headerName: 'Feature x', field: 'x', hide: !display_carac}]
                 if (display_carac) {
                     getCaracData = (index) => ({x: Math.round(c_train[index] * 100) / 100})
                 } else {
@@ -1094,17 +1090,17 @@ run_js("""
 
             const select = (index) => {
                 window.mathadata.run_python(`get_data(index=${index})`, (data) => {
-                    window.mathadata.affichage(`${id}-selected`, data, {mode})
+                    window.mathadata.display(`${id}-selected`, data, {mode})
                 })
             }
 
             const config = {
                 columnDefs: [
                     {headerName: 'N°', field: 'index'},
-                    {headerName: 'Vraie Réponse', field: 'r'},
+                    {headerName: 'True answer', field: 'r'},
                     ...caracColumnDefs,
-                    {headerName: 'Estimation', field: 'r^', hide: !display_estims},
-                    {headerName: 'Statut', field: 'status', hide: !display_estims},
+                    {headerName: 'Prediction', field: 'r^', hide: !display_estims},
+                    {headerName: 'Status', field: 'status', hide: !display_estims},
                 ],
                 rowData: labels.map((label, index) => {
                     return {
@@ -1112,7 +1108,7 @@ run_js("""
                         r: label,
                         ...getCaracData(index),
                         'r^': display_estims ? estimations[index] : null,
-                        status: display_estims ? (label === estimations[index] ? 'Vrai' : 'Faux') : null,
+                        status: display_estims ? (label === estimations[index] ? 'True' : 'False') : null,
                     }
                 }),
                 defaultColDef: {
@@ -1161,13 +1157,13 @@ run_js("""
             setTimeout(() => select(0), 100)
         },
 
-        tracer_erreur(id, t_values, scores_array) {
+        plot_error(id, t_values, scores_array) {
             const config = {
                 type: 'scatter',
                 data: {
                     labels: t_values,  // Assuming t_values is already a JavaScript array
                     datasets: [{
-                        label: "Erreur d'entrainement",
+                        label: "Error train",
                         data: scores_array,  // Assuming scores_array is already a JavaScript array
                         backgroundColor: 'rgba(75, 192, 192, 0.2)',
                         borderColor: 'rgba(75, 192, 192, 1)',
@@ -1181,7 +1177,7 @@ run_js("""
                         x: {
                             title: {
                                 display: true,
-                                text: 'Seuil t'  // Label for x-axis
+                                text: 'Threshold t'  // Label for x-axis
                             },
                             min: Math.min(...t_values) - 2,
                             max: Math.max(...t_values) + 2,
@@ -1192,7 +1188,7 @@ run_js("""
                         y: {
                             title: {
                                 display: true,
-                                text: 'Erreur f(t)',
+                                text: 'Error f(t)',
                             },
                             min: 0,
                             max: 100,
@@ -1209,7 +1205,7 @@ run_js("""
             window.mathadata.create_chart(id, config)
         },
 
-        exercice_droite_carac(id, params) {
+        exercise_feature_line(id, params) {
             params = JSON.parse(params)
             const {c_train, labels} = params
 
@@ -1266,7 +1262,7 @@ run_js("""
                     datasets: [
                     {
                         type: 'line',
-                        label: 'Droite des réels',
+                        label: 'Real number line',
                         data: [{x: min, y: 0}, {x: max, y: 0}],  
                         backgroundColor: 'rgb(75, 192, 192)',
                         borderColor: 'rgb(75, 192, 192)',
@@ -1276,7 +1272,7 @@ run_js("""
                         pointHitRadius: 0,
                     },
                     {
-                        label: 'Caractéristique x',
+                        label: 'Feature x',
                         data: [],
                         pointRadius: 4,
                         pointHitRadius: 8,
@@ -1294,7 +1290,7 @@ run_js("""
                         x: {
                             title: {
                                 display: true,
-                                text: 'Caractéristique x',
+                                text: 'Feature x',
                             },
                             min,
                             max,
@@ -1316,7 +1312,7 @@ run_js("""
                                     return context.parsed.x.toFixed(2);
                                 },
                                 label(context) {
-                                    return `Caractéristique x : ${context.parsed.x.toFixed(2)}`;
+                                    return `Feature x : ${context.parsed.x.toFixed(2)}`;
                                 },
                             }
                         }
@@ -1326,7 +1322,7 @@ run_js("""
 
             if (t != undefined) {
                 config.data.datasets.push({
-                    label: 'Seuil t',
+                    label: 'Thresold t',
                     data: [{x: t, y: 0}],
                     pointStyle: 'line',
                     rotation: 90,
@@ -1365,11 +1361,11 @@ def create_sidebox():
     sidebox.innerHTML = `
         <div class="sidebox-main">
             <div class="sidebox-header">
-                <h3>Erreur</h3>
+                <h3>Error</h3>
             </div>
             <div style="display: flex; flex-wrap: wrap; justify-content: space-around; width: 100%; margin-top: 2rem">
                 <div class="sidebox-section">
-                    <h4>Meilleur</h4>
+                    <h4>Best</h4>
                     <svg xmlns="http://www.w3.org/2000/svg" width=40 height=40 viewBox="0 0 512 512"><!--!Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path fill="#B197FC" d="M4.1 38.2C1.4 34.2 0 29.4 0 24.6C0 11 11 0 24.6 0H133.9c11.2 0 21.7 5.9 27.4 15.5l68.5 114.1c-48.2 6.1-91.3 28.6-123.4 61.9L4.1 38.2zm503.7 0L405.6 191.5c-32.1-33.3-75.2-55.8-123.4-61.9L350.7 15.5C356.5 5.9 366.9 0 378.1 0H487.4C501 0 512 11 512 24.6c0 4.8-1.4 9.6-4.1 13.6zM80 336a176 176 0 1 1 352 0A176 176 0 1 1 80 336zm184.4-94.9c-3.4-7-13.3-7-16.8 0l-22.4 45.4c-1.4 2.8-4 4.7-7 5.1L168 298.9c-7.7 1.1-10.7 10.5-5.2 16l36.3 35.4c2.2 2.2 3.2 5.2 2.7 8.3l-8.6 49.9c-1.3 7.6 6.7 13.5 13.6 9.9l44.8-23.6c2.7-1.4 6-1.4 8.7 0l44.8 23.6c6.9 3.6 14.9-2.2 13.6-9.9l-8.6-49.9c-.5-3 .5-6.1 2.7-8.3l36.3-35.4c5.6-5.4 2.5-14.8-5.2-16l-50.1-7.3c-3-.4-5.7-2.4-7-5.1l-22.4-45.4z"/></svg>
                     <span id="highscore" class="score">{score_str(highscore) if highscore is not None else "..."}</span>
                 </div>
@@ -1439,7 +1435,7 @@ def update_score():
 
 def set_step(number):
     colors = ['#2E8B57', '#87CEEB', '#4169E1', '#DC143C']
-    names = ['Algorithme Fainéant', 'Algorithme Moyenne', 'Optimisation' , 'Faire mieux']
+    names = ['Dumb Algorithm', 'Mean Algorithm', 'Optimization' , 'Do Better']
     
     run_js(f"""
         const pageElement = document.getElementById('notebook');
@@ -1452,7 +1448,7 @@ def set_step(number):
             card = document.createElement('div');
             card.id = 'step-card';
             card.innerHTML = `
-                <h3>Étape <span id="step-number">{number + 1}</span> / 4</h3>
+                <h3>Step <span id="step-number">{number + 1}</span> / 4</h3>
                 <p id="step-name" style="font-size: 1.5rem;">{names[number]}</p>
             `
             pageElement.appendChild(card);
@@ -1495,7 +1491,7 @@ class _MathadataValidate():
         try:
             res = self.validate(errors, answers)
         except Exception as e:
-            errors.append("Il y a eu une erreur dans la validation de la question. Vérifie que ta réponse est écrite correctement")
+            errors.append("There was an error in the validation of the question. Check that your answer is written correctly")
             if debug:
                 errors.append(str(e))
 
@@ -1519,11 +1515,11 @@ class _MathadataValidate():
                     print(tip['tip'])
 
                 if 'print_solution' in tip and tip['print_solution'] == True:
-                    print("Voici la solution :")
+                    print("Here's the solution :")
                     self.print_variables()
                 
                 if 'validate' in tip and tip['validate'] == True:
-                    print("Tu peux passer cette question et continuer")
+                    print("You can skip this question and continue")
                     res = True
                 
                 break
@@ -1558,7 +1554,7 @@ class _MathadataValidate():
             if self.success:
                 print(self.success)
         else:
-            print("Bravo, c'est la bonne réponse !")
+            print("Good job, that's the right answer !")
         if self.child_on_success is not None:
             self.child_on_success(answers)
 
@@ -1624,7 +1620,7 @@ def check_errors(errors, name, val, expected):
                 return
 
     # Default error message
-    errors.append(f"{name} n'a pas la bonne valeur.")
+    errors.append(f"{name} doesn't have the correct value.")
  
 class MathadataValidateVariables(MathadataValidate):
     def __init__(self, name_and_values=None, get_names_and_values=None, *args, **kwargs):
@@ -1640,9 +1636,9 @@ class MathadataValidateVariables(MathadataValidate):
         undefined_variables_str = ", ".join(undefined_variables)
 
         if len(undefined_variables) == 1:
-            errors.append(f"As-tu bien remplacé les ... ? La variable {undefined_variables_str} n'a pas été définie.")
+            errors.append(f"Did you replace the ... ? The variable {undefined_variables_str} has not been defined.")
         elif len(undefined_variables) > 1:
-            errors.append(f"As-tu bien remplacé les ... ? Les variables {undefined_variables_str} n'ont pas été définies.")
+            errors.append(f"Did you replace the ... ? The variables {undefined_variables_str} have not been defined.")
 
         return undefined_variables
     
@@ -1683,13 +1679,13 @@ class MathadataValidateVariables(MathadataValidate):
                 if 'is' in expected:
                     solution = expected['is']
                 elif 'min' in expected and 'max' in expected:
-                    solution = f"entre {expected['min']} et {expected['max']}"
+                    solution = f"between {expected['min']} et {expected['max']}"
                 elif 'min' in expected:
-                    solution = f"supérieur ou égal à {expected['min']}"
+                    solution = f"more than or equal to {expected['min']}"
                 elif 'max' in expected:
-                    solution = f"inférieur ou égal à {expected['max']}"
+                    solution = f"less than or equal to {expected['max']}"
                 elif 'in' in expected:
-                    solution = f"l'une de ces valeurs : {', '.join(expected['in'])}"
+                    solution = f"one of : {', '.join(expected['in'])}"
                 else:
                     raise ValueError(f"Malformed validation class")
             else:
@@ -1698,7 +1694,7 @@ class MathadataValidateVariables(MathadataValidate):
 
 
 class MathadataValidateFunction(MathadataValidate):
-    def __init__(self, function_name, test_set=[], expected=[], success="Bravo, ta fonction est correcte", *args, **kwargs):
+    def __init__(self, function_name, test_set=[], expected=[], success="Congratulations, your function is correct", *args, **kwargs):
         super().__init__(success=success, *args, **kwargs)
         self.function_name = function_name
         self.test_set = test_set
@@ -1706,7 +1702,7 @@ class MathadataValidateFunction(MathadataValidate):
         
     def validate(self, errors, answers):
         if not has_variable(self.function_name):
-            errors.append(f"La fonction {self.function_name} n'est pas définie. Tu dois avoir une ligne de code qui commence par 'def {self.function_name}(...):'")
+            errors.append(f"The function {self.function_name} is not defined. You should have a line of code that starts with 'def {self.function_name}(...):'")
             return False
         
         func = get_variable(self.function_name)
@@ -1728,12 +1724,12 @@ class MathadataValidateFunction(MathadataValidate):
                 else:
                     res = func(*test_set[i])
                 if res != expected[i]:
-                    errors.append("Pour les paramètres suivant :")
+                    errors.append("For the following parameters :")
                     errors.append(f"{test_set[i]}")
-                    errors.append(f"Ta fonction a renvoyé {res} au lieu de {expected[i]}.")
+                    errors.append(f"Your function returned {res} instead of {expected[i]}.")
                     return False
             except Exception as e:
-                errors.append(f"Ta fonction a fait une erreur pendant le test :")
+                errors.append(f"Your function raised an error during the test :")
                 errors.append(str(e))
                 return False
 
@@ -1749,38 +1745,38 @@ class ValidateScoreThresold(MathadataValidate):
 
         
         if not has_variable('classification'):
-            print_error("La fonction classification n'a pas été définie.")
+            print_error("Function 'classification' is not defined.")
             return False
-        if not has_variable('caracteristique'):
-            print_error("La fonction caracteristique n'a pas été définie.")
+        if not has_variable('feature'):
+            print_error("Function 'feature' is not defined.")
             return False
         if not has_variable('t'):
-            print_error("Le seuil t n'a pas été défini.")
+            print_error("Variable 't' is not defined.")
             return False
     
-        caracteristique = get_variable('caracteristique')
+        feature = get_variable('feature')
         classification = get_variable('classification')
         t = get_variable('t')
         def algorithme(d):
-            x = caracteristique(d)
+            x = feature(d)
             return classification(x, t)
         
-        if not has_variable('erreur_10'):
-            errors.append("La variable erreur_10 n'a pas été définie.")
+        if not has_variable('error_10'):
+            errors.append("Variable 'error_10' is not defined.")
             return False
         
-        e_train_10 = get_variable('erreur_10')
+        e_train_10 = get_variable('error_10')
         nb_errors = np.count_nonzero(np.array([algorithme(d) for d in challenge.d_train[0:10]]) != challenge.r_train[0:10]) 
         if nb_errors * 10 == e_train_10:
-            print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 premières images, soit {e_train_10}% d'erreur")
+            print(f"Well done, your current algorithm made {nb_errors} errors on the first 10 images, which is {e_train_10}% error")
             return True
         else:
             if e_train_10 == nb_errors:
-                errors.append("Ce n'est pas la bonne valeur. Pour passer du nombre d'erreurs sur 10 images au pourcentage, tu dois multiplier par 10 !")
+                errors.append("This is not the right value. You gave the number of errors and not the error percentage.")
             elif e_train_10 < 0 or e_train_10 > 100:
-                errors.append("Ce n'est pas la bonne valeur. Le pourcentage d'erreur doit être compris entre 0 et 100.")
+                errors.append("This is not the right value. The error percentage must be between 0 and 100.")
             else:
-                errors.append("Ce n'est pas la bonne valeur. Compare ta liste de prédictions avec les vraies valeurs pour trouver le pourcentage d'erreur.")
+                errors.append("This is not the right value. Note the response given by your algorithm for each image and count the number of differences with the correct answers.")
             return False
 
 if sequence:
@@ -1800,26 +1796,26 @@ if sequence:
 # Instances de validation communes
 
 def validation_func_score_fixed(errors, answers):     
-    score_10 = answers['erreur_10']
-    algorithme = get_algorithme_func(error="La fonction algorithme n'existe plus. Revenez en arrière et réexecutez la cellule avec 'def algorithme(d): ...'")
+    error_10 = answers['error_10']
+    algorithme = get_algorithme_func(error="Function algorithme does not exist anymore. Go back and re-run the cell with 'def algorithme(d): ...'")
     
     estimations = [algorithme(d) for d in challenge.d_train[0:10]]
     nb_errors = np.sum(estimations != challenge.r_train[0:10])
 
-    if not isinstance(score_10, int):
-        errors.append("La variable erreur_10 doit être un entier. Attention, écrivez uniquement le nombre sans le %.")
+    if not isinstance(error_10, int):
+        errors.append("error_10 must be an integer. Be careful, write only the number without the %.")
         return False
 
-    if score_10 == nb_errors * 10:
-        print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 premières images, soit {score_10}% d'erreur")
+    if error_10 == nb_errors * 10:
+        print(f"Well done, your current algorithm made {nb_errors} errors on the first 10 images, which is {error_10}% error")
         return True
     
-    if score_10 == nb_errors:
-        errors.append("Ce n'est pas la bonne valeur. Tu as donné le nombre d'erreur et non le pourcentage d'erreur.")
-    elif score_10 < 0 or score_10 > 100:
-        errors.append("Ce n'est pas la bonne valeur. Le pourcentage d'erreur doit être compris entre 0 et 100.")
+    if error_10 == nb_errors:
+        errors.append('That is not the right value. You gave the number of errors and not the error percentage.')
+    elif error_10 < 0 or error_10 > 100:
+        errors.append('That is not the right value. The error percentage must be between 0 and 100.')
     else:
-        errors.append("Ce n'est pas la bonne valeur. Note la réponse donnée par ton algorithme pour chaque image et compte le nombre de différences avec les bonnes réponses.")
+        errors.append('That is not the right value. Note the response given by your algorithm for each image and count the number of differences with the correct answers.')
     
     return False
 
@@ -1832,13 +1828,13 @@ def validate_exercice_droite_carac(errors, answers):
     if exercice_droite_carac_ok:
         return True
     else:
-        errors.append("Réponds d'abord à la question ci-dessus en plaçant les points sur la droite.")
+        errors.append("First complete the exercise by placing the points on the line.")
         return False
 
 def get_validate_seuil():
     data = challenge.d_train[0:10]
-    caracteristique = get_variable('caracteristique')
-    caracs = [caracteristique(d) for d in data]
+    feature = get_variable('feature')
+    caracs = [feature(d) for d in data]
     return {
         't': {
             'value': {
@@ -1863,32 +1859,32 @@ validation_execution_algo_fixe = MathadataValidate(success="")
 validation_execution = MathadataValidate(success="")
 validation_execution_calcul_score = MathadataValidate(success="")
 validation_question_score_fixe = MathadataValidateVariables({
-    'erreur_10': None
+    'error_10': None
 }, function_validation=validation_func_score_fixed, success="")
 validation_score_fixe = MathadataValidate(success="")
 
 validation_execution_affichage_classif = MathadataValidate(success="")
 validation_exercice_droite_carac = MathadataValidate(function_validation=validate_exercice_droite_carac)
 validation_question_ordre_caracteristique = MathadataValidateVariables(get_names_and_values=lambda: {
-    'r_petite_caracteristique': {
+    'r_low_feature': {
         'value': challenge.r_petite_caracteristique,
         'errors': [
             {
                 'value': {
                     'in': challenge.classes
                 },
-                'else': f"Tu dois répondre {challenge.classes[0]} ou {challenge.classes[1]}"
+                'else': f"You must answer by {challenge.classes[0]} or {challenge.classes[1]}"
             },
         ]
     },
-    'r_grande_caracteristique': {
+    'r_high_feature': {
         'value': challenge.r_grande_caracteristique,
         'errors': [
             {
                 'value': {
                     'in': challenge.classes
                 },
-                'else': f"Tu dois répondre {challenge.classes[0]} ou {challenge.classes[1]}"
+                'else': f"You must answer by {challenge.classes[0]} or {challenge.classes[1]}"
             },
         ]
     }
@@ -1896,7 +1892,7 @@ validation_question_ordre_caracteristique = MathadataValidateVariables(get_names
     
 validation_question_seuil = MathadataValidateVariables(
     get_names_and_values=get_validate_seuil,
-    success="Ton seuil est correct ! Il n'est pas forcément optimal, on verra dans la suite comment l'optimiser."
+    success="Your threshold is correct! It is not necessarily optimal, we will see in the next part how to optimize it."
 )
 validation_execution_classif = MathadataValidate(success="")
 validation_execution_affichage_score = MathadataValidate(success="")
@@ -1905,27 +1901,27 @@ validation_score_carac = MathadataValidate(success="")
 validation_execution_graph_erreur = MathadataValidate(success="")
 validation_question_seuil_optimise = MathadataValidateVariables(
     get_names_and_values=get_validate_seuil_optimized,
-    success="Bravo, c'est la bonne réponse ! Ton seuil est maintenant optimal"
+    success="Congratulations, your threshold is now optimal!"
 )
 
 validation_execution_nombre_7 =MathadataValidateVariables({
-    'Nombre_7': {
+    'Count_7': {
         'value': 3,
         'errors': [
             {
                 'value':3,
-                'else' :"As-tu bien regardé les 10 premières lignes du tableau ? "
+                'else' :"Did you look at the first 10 lines of the table ? "
             },
         ]
     }
     })
 
 validation_execution_nombre_total =MathadataValidateVariables(get_names_and_values=lambda: {
-    'Nombre_total_images': {
+    'Count_total': {
         'value': len(challenge.d_train),
         'errors': [
             {'value':len(challenge.d_train),
-             'else': "Ce n'est pas la bonne réponse. Le tableau est intéractif."
+             'else': "This is not the right answer. The table is interactive."
             },
         ]
     }
@@ -1936,37 +1932,37 @@ chat = 0
 cat = 0
 
 validation_question_faineant = MathadataValidateVariables(get_names_and_values=lambda: {
-    'Reponse_Image_A': {
+    'Answer_Image_A': {
         'value': challenge.classes[0],
         'errors': [
             {
                 'value': challenge.classes[0],
-                'else': "Reponse_Image_A n'a pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
+                'else': "Answer_Image_A doesn't have the right value. Have you read what the lazy algorithm does?"
             },
         ]
     },
-    'Reponse_Image_B': {
+    'Answer_Image_B': {
         'value': challenge.classes[0],
         'errors': [
             {
                 'value': challenge.classes[0],
-                'else': "Reponse_Image_B n'as pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
+                'else': "Answer_Image_B doesn't have the right value. Have you read what the lazy algorithm does?"
             },
         ]
     },
-    'Reponse_Image_C': {
+    'Answer_Image_C': {
         'value': challenge.classes[0],
         'errors': [
             {
                 'value': challenge.classes[0],
-                'else': "Reponse_Image_C n'as pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
+                'else': "Answer_Image_C doesn't have the right value. Have you read what the lazy algorithm does?"
             },
         ]
     }
-}, success="", on_success=lambda answers: print(f"Bravo, quelle que soit l'image l'algorithme fainéant répond toujours {challenge.classes[0]} !"))
+}, success="", on_success=lambda answers: print(f"Well done, whatever the image the lazy algorithm always answers {challenge.classes[0]}!"))
 
-validation_custom = MathadataValidate(success="Bravo, c'est un excellent taux d'erreur ! Tu peux passer à la suite pour essayer de faire encore mieux.")
-validation_code_eleve = MathadataValidate(success="Bravo, c'est un excellent taxu d'erreur ! Tu as fini ce notebook.")
+validation_custom = MathadataValidate(success="Good job, that's an excellent percentage error ! You can move on to try to do even better.")
+validation_code_eleve = MathadataValidate(success="Good job, that's an excellent percentage error ! You have completed this notebook !.")
 
 ### --- Config matplotlib ---
 

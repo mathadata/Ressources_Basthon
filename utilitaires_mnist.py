@@ -37,7 +37,7 @@ if not sequence:
 ### --- IMPORT DES DONNÉES ---
 # Téléchargement et extraction des inputs contenus dans l'archive zip
 
-print("Chargement de la base de donnée d'images en cours...")
+print("Loading the image database...")
 
 inputs_zip_url = "https://raw.githubusercontent.com/akimx98/challenge_data/main/input_mnist_2.zip"
 inputs_zip = requests.get(inputs_zip_url)
@@ -94,7 +94,7 @@ d_train_par_population = [d_train[r_train==k] for k in classes]
 d = d_train[10,:,:].copy()
 d2 = d_train[2,:,:].copy()
 
-print("Images chargées !") 
+print("Images loaded!") 
 
 # Noms de variables pour la question 'fainéant
 chat = 'chat'
@@ -108,8 +108,8 @@ class Mnist(common.Challenge):
         self.d = d
         self.d2 = d2
         self.classes = chiffres
-        self.r_petite_caracteristique = 7
-        self.r_grande_caracteristique = 2
+        self.r_low_feature = 7
+        self.r_high_feature = 2
         self.custom_zone = None
         self.custom_zones = None
         
@@ -155,6 +155,7 @@ class Mnist(common.Challenge):
         ''')
 
     def display_custom_selection_2d(self, id):
+        self.custom_zones = None
         run_js(f'''
             setTimeout(() => {{
                 window.mathadata.setup_zone_selection_2d('{id}', '{json.dumps(self.d_train[0:8].tolist())}')
@@ -170,29 +171,29 @@ class Mnist(common.Challenge):
         ''')
             
 
-    def caracteristique(self, d):
+    def feature(self, d):
         return moyenne(d)
     
     def caracteristique_custom(self, d):
         if self.custom_zone is None:
             return 0
         
-        return moyenne_zone(d, self.custom_zone[0], self.custom_zone[1])
+        return area_mean(d, self.custom_zone[0], self.custom_zone[1])
 
     def deux_caracteristiques(self, d):
         zone_1 = [(0,0), (13,27)]
         zone_2 = [(14,0), (27,27)]
 
-        k1 = moyenne_zone(d, zone_1[0], zone_1[1])
-        k2 = moyenne_zone(d, zone_2[0], zone_2[1])
+        k1 = area_mean(d, zone_1[0], zone_1[1])
+        k2 = area_mean(d, zone_2[0], zone_2[1])
         return (k1, k2)
 
     def deux_caracteristiques_custom(self, d):
         if self.custom_zones is None:
             return (0, 0)
         
-        k1 = moyenne_zone(d, self.custom_zones[0][0], self.custom_zones[0][1])
-        k2 = moyenne_zone(d, self.custom_zones[1][0], self.custom_zones[1][1])
+        k1 = area_mean(d, self.custom_zones[0][0], self.custom_zones[0][1])
+        k2 = area_mean(d, self.custom_zones[1][0], self.custom_zones[1][1])
         return (k1, k2)
 
     def affichage_2_cara(self, A1=None, B1=None, A2=None, B2=None, displayPoints=False, titre1="", titre2=""):
@@ -242,7 +243,7 @@ def outline_selected(ax, a=None, b=None, displayPoints=False, zoneName=None, zon
         numero_colonne_fin = max(a[1], b[1])
     
         if numero_ligne_debut < 0 or numero_colonne_debut < 0 or numero_ligne_fin > 27 or numero_colonne_fin > 27:
-            print_error("Les valeurs des index doivent être compris entre 0 et 27.")
+            print_error("Index values must be between 0 and 27.")
             return
 
         padding = 0  # adjust this value as needed
@@ -297,14 +298,14 @@ def outline_selected(ax, a=None, b=None, displayPoints=False, zoneName=None, zon
 
 
 # Affichage d'une image
-def affichage(image, a=None, b=None, displayPoints=False, titre=""):
+def display_image(image, a=None, b=None, displayPoints=False, titre=""):
     """Fonction qui affiche une image avec un rectangle rouge délimité par les points a et b
         a : tuple (ligne, colonne) représentant le coin en haut à gauche du rectangle
         b : tuple (ligne, colonne) représentant le coin en bas à droite du rectangle
     Si displayPoints est True, les points A et B sont affichés
     """
     if image.min().min() < 0 or image.max().max() > 255:
-        print_error("fonction affichage : Les valeurs des pixels de l'image doivent être compris entre 0 et 255.")
+        print_error("fonction display_image : Les valeurs des pixels de l'image doivent être compris entre 0 et 255.")
         return
 
     fig, ax = plt.subplots(figsize=(figw_full /2, figw_full /2))
@@ -319,7 +320,7 @@ def affichage(image, a=None, b=None, displayPoints=False, titre=""):
     plt.show()
     plt.close()
 
-def affichage_2_geo(display_k=False):
+def display_2_geo(display_k=False):
     zone_1 = [(0,0), (13,27)]
     zone_2 = [(14,0), (27,27)]
     deux_caracteristiques = common.challenge.deux_caracteristiques
@@ -351,7 +352,7 @@ def affichage_2_geo(display_k=False):
     reversed = c_train[::-1]
 
     if not display_k:
-        df = pd.DataFrame({'$x$': reversed[:,0], '$y$': reversed[:,1], '$r$': ['$r_1$ = 2 ou 7 ?', '$r_2$ = 2 ou 7 ?']})
+        df = pd.DataFrame({'$x$': reversed[:,0], '$y$': reversed[:,1], '$r$': ['$r_1$ = 2 or 7 ?', '$r_2$ = 2 or 7 ?']})
         df.index += 1
         display(df)
         return
@@ -363,7 +364,7 @@ pd.set_option('display.max_columns', 28)
 pd.set_option('display.float_format', '{:.2f}'.format)
 pd.set_option('colheader_justify', 'center')
 
-def affichage_tableau(image, a=None, b=None):
+def display_table(image, a=None, b=None):
     """Fonction qui affiche une image sous forme de tableau avec un rectangle rouge délimité par les points a et b
         a : tuple (ligne, colonne) représentant le coin en haut à gauche du rectangle
         b : tuple (ligne, colonne) représentant le coin en bas à droite du rectangle
@@ -403,9 +404,9 @@ def moyenne(liste):
     arr = np.array(liste)
     return np.mean(arr)
 
-def moyenne_zone(arr, a, b):
+def area_mean(arr, a, b):
     if a is None or b is None:
-        print_error("Les points A et B ne sont pas définis.")
+        print_error("Points A and B are not defined.")
         return 0
     
     numero_ligne_debut = min(a[0], b[0])
@@ -417,17 +418,17 @@ def moyenne_zone(arr, a, b):
  
 def check_pixel_coordinates(coords, errors):
     if not isinstance(coords, tuple) or len(coords) != 2:
-        errors.append("Les coordonnées du pixel doivent être entre parenthèses séparées par une virgule. Exemple :")
+        errors.append("Pixel coordinates must be between parentheses separated by a comma. Example:")
         errors.append("(0, 0)")
         return False
     if coords[0] is Ellipsis or coords[1] is Ellipsis:
-        errors.append("Tu n'as pas remplacé les ...")
+        errors.append("You haven't replaced the ...")
         return False
     if not isinstance(coords[0], int) or not isinstance(coords[1], int):
-        errors.append("Les coordonnées du pixel doivent être des nombres entiers.")
+        errors.append("Pixel coordinates must be integers.")
         return False
     if coords[0] < 0 or coords[0] > 27 or coords[1] < 0 or coords[1] > 27:
-        errors.append("Les coordonnées du pixel doivent être entre 0 et 27.")
+        errors.append("Pixel coordinates must be between 0 and 27.")
         return False
     return True 
 
@@ -551,16 +552,18 @@ function selectCells() {
 
     clearSelection();
 
-    for (const table of window.mathadata.image_tables) {
-        for (let i = minRowIndex; i <= maxRowIndex; i++) {
-            for (let j = minColIndex; j <= maxColIndex; j++) {
-                const cell = table.rows[i].cells[j];
-                toggleCellSelection(cell, true, 1);
+    if (minRowIndex !== null && maxRowIndex !== null && minColIndex !== null && maxColIndex !== null) {
+        for (const table of window.mathadata.image_tables) {
+            for (let i = minRowIndex; i <= maxRowIndex; i++) {
+                for (let j = minColIndex; j <= maxColIndex; j++) {
+                    const cell = table.rows[i].cells[j];
+                    toggleCellSelection(cell, true, 1);
+                }
             }
         }
     }
 
-    if (zone1 || zone2) {
+    if ((zone1 || zone2) && minRowIndex2 !== null && maxRowIndex2 !== null && minColIndex2 !== null && maxColIndex2 !== null) {
         for (const table of window.mathadata.image_tables) {
             for (let i = minRowIndex2; i <= maxRowIndex2; i++) {
                 for (let j = minColIndex2; j <= maxColIndex2; j++) {
@@ -571,12 +574,21 @@ function selectCells() {
         }
     }
 
+    document.getElementById('selection-gif')?.remove();
+
+    if (minRowIndex === null || maxRowIndex === null || minColIndex === null || maxColIndex === null) {
+        return;
+    }
+    
+    if ((zone1 || zone2) && (minRowIndex2 === null || maxRowIndex2 === null || minColIndex2 === null || maxColIndex2 === null)) {
+        return;
+    }
+
     if (exec_python) {
         clearTimeout(exec_python);
     }
 
     exec_python = setTimeout(() => {
-        document.getElementById('selection-gif')?.remove();
         let python
         if (zone1 || zone2) {
             python = `update_selected_2((${minRowIndex}, ${minColIndex}), (${maxRowIndex}, ${maxColIndex}), (${minRowIndex2}, ${minColIndex2}), (${maxRowIndex2}, ${maxColIndex2}))`
@@ -590,7 +602,7 @@ function selectCells() {
     }, 200);
 }
 
-window.mathadata.affichage = (id, matrix, params) => {
+window.mathadata.display = (id, matrix, params) => {
     if (params) {
         if (typeof params === 'string') {
             params = JSON.parse(params)
@@ -711,7 +723,7 @@ window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
         const table = document.createElement('div')
         table.id = `${id}-image-${i}`
         imagesContainer.appendChild(table)
-        window.mathadata.image_tables.push(window.mathadata.affichage(`${id}-image-${i}`, matrixes[i], {with_selection: true}))
+        window.mathadata.image_tables.push(window.mathadata.display(`${id}-image-${i}`, matrixes[i], {with_selection: true}))
     }
 }
 """)
@@ -738,9 +750,9 @@ def validate_pixel_noir(errors, answers):
     if d[17][15] == 0:
         return True
     elif d[17][15] == 254:
-        errors.append("Tu n'as pas changé la valeur du pixel, il vaut toujours 254")
+        errors.append("You haven't changed the pixel value, it's still 254")
     else:
-        errors.append("Tu as bien changé la valeur mais ce n'est pas la bonne. Relis l'énoncé pour voir la valeur à donner pour un pixel noir.")
+        errors.append("You changed the value but it's not the right one. Read the statement to see the value to give for a black pixel.")
     return False
  
 validation_execution_affichage = MathadataValidate(success="")
@@ -753,22 +765,22 @@ validation_question_pixel = MathadataValidateVariables({
                     'min': 0,
                     'max': 255
                 },
-                'else': "Ta réponse n'est pas bonne. Les pixels peuvent uniquement avoir des valeurs entre 0 et 255."
+                'else': "Your answer is not correct. Pixels can only have values between 0 and 255."
             },
             {
                 'value': int(d[15,18]),
-                'if': "Attention ! Les coordonnées sont données en (ligne, colonne)."
+                'if': "Be careful ! The coordinates are given in (row, column)."
             }
         ]
     }
 })
-validation_question_pixel_noir = MathadataValidate(success="Bravo, le pixel est devenu noir", function_validation=validate_pixel_noir)
-validation_question_moyenne = MathadataValidateVariables({'moyenne_zone_4pixels': np.mean(d[14:16,15:17])}, success="Bravo, la moyenne vaut en effet (142 + 154 + 0 + 0) / 4 = 74")
+validation_question_pixel_noir = MathadataValidate(success="Good job, the pixel is now black", function_validation=validate_pixel_noir)
+validation_question_moyenne = MathadataValidateVariables({'mean_zone_4pixels': np.mean(d[14:16,15:17])}, success="Good job, the mean is indeed (142 + 154 + 0 + 0) / 4 = 74")
 
 # Geometrie
 
 def on_success_2_caracteristiques(answers):
-    affichage_2_geo(display_k=True)
+    display_2_geo(display_k=True)
 
 validation_execution_2_caracteristiques = MathadataValidate(success="")
 validation_question_2_caracteristiques = MathadataValidateVariables({
@@ -779,7 +791,7 @@ validation_question_2_caracteristiques = MathadataValidateVariables({
                 'value': {
                     'in': [2, 7],
                 },
-                'else': "r1 n'a pas la bonne valeur. Tu dois répondre par 2 ou 7."
+                'else': "r1 doesn't have the right value. You must answer 2 or 7."
             }
         ]
     },
@@ -790,11 +802,11 @@ validation_question_2_caracteristiques = MathadataValidateVariables({
                 'value': {
                     'in': [2, 7],
                 },
-                'else': "r2 n'a pas la bonne valeur. Tu dois répondre par 2 ou 7."
+                'else': "r2 doesn't have the right value. You must answer 2 or 7."
             }
         ]
     }
-}, success="C'est la bonne réponse. L'image de 7 a presque la même moyenne sur la moitié haute et la moitié basse. L'image de 2 a une moyenne plus élevée sur la moitié basse car il y a plus de pixels blancs.",
+}, success="That's the right answer. The image of 7 often has a lower mean on the top half than the image of 2. The image of 2 has a higher mean on the bottom half because there are more white pixels.",
     on_success=on_success_2_caracteristiques)
 
 validation_execution_def_caracteristiques_ripou = MathadataValidate(success="")
@@ -803,32 +815,33 @@ validation_execution_def_caracteristiques_ripou = MathadataValidate(success="")
 # Notebook histogramme
 
 validation_question_hist_1 = MathadataValidateVariables({
-    'r_histogramme_orange': {
+    'r_orange_histogram': {
         'value': common.challenge.classes[1],
         'errors': [
             {
                 'value': {
                     'in': common.challenge.classes,
                 },
-                'else': f"r_histogramme_orange n'a pas la bonne valeur. Tu dois répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}."
+                'else': f"r_orange_histogram doesn't have the right value. You must answer {common.challenge.classes[0]} or {common.challenge.classes[1]}."
             }
         ]
     },
-    'r_histogramme_bleu': {
+    'r_blue_histogram': {
         'value': common.challenge.classes[0],
         'errors': [
             {
                 'value': {
                     'in': common.challenge.classes,
                 },
-                'else': f"r_histogramme_bleu n'a pas la bonne valeur. Tu dois répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}."
+                'else': f"r_blue_histogram doesn't have the right value. You must answer {common.challenge.classes[0]} or {common.challenge.classes[1]}."
             }
         ]
     }
-}, success="C'est la bonne réponse ! Les images de 7 ont souvent moins de pixels blancs que les images de 2. C'est pourquoi leur caractéristique est souvent plus petite.")
+}, success="That's the right answer. The image of 7 often has a lower mean on the top half than the image of 2. The image of 2 has a higher mean on the bottom half because there are more white pixels."
+                                                        )
 
 validation_question_hist_2 = MathadataValidateVariables({
-    'nombre_2': {
+    'count_2': {
         'value': 46,
         'errors': [
             {
@@ -836,11 +849,11 @@ validation_question_hist_2 = MathadataValidateVariables({
                     'min': 0,
                     'max': 350
                 },
-                'else': "nombre_2 n'a pas la bonne valeur. As-tu bien remplacé les ... par le nombre d'image de 2 avec une caractéristique entre 20 et 22 ?"
+                'else': "count_2 doesn't have the right value. Did you replace the ... with the number of images of 2 with a feature between 20 and 22?"
             }
         ]
     },
-    'nombre_7': {
+    'count_7': {
         'value': 237,
         'errors': [
             {
@@ -848,14 +861,14 @@ validation_question_hist_2 = MathadataValidateVariables({
                     'min': 0,
                     'max': 350
                 },
-                'else': "nombre_7 n'a pas la bonne valeur. As-tu bien remplacé les ... par le nombre d'image de 7 avec une caractéristique entre 20 et 22 ?"
+                'else': "count_7 doesn't have the right value. Did you replace the ... with the number of images of 7 with a feature between 20 and 22?"
             }
         ]
     },
 })
 
 validation_question_hist_3 = MathadataValidateVariables({
-    'nombre_2_inf_16': {
+    'count_2_less_than_16': {
         'value': 13,
         'errors': [
             {
@@ -863,11 +876,11 @@ validation_question_hist_3 = MathadataValidateVariables({
                     'min': 0,
                     'max': 350,
                 },
-                'else': "nombre_2_inf_16 n'a pas la bonne valeur. As-tu bien remplacé les ... par le nombre d'image de 2 avec une caractéristique inférieure à 16 ?"
+                'else': "count_2_less_than_16 doesn't have the right value. Did you replace the ... with the number of images of 2 with a feature less than 16?"
             }
         ]
     },
-    'nombre_7_inf_16': {
+    'count_7_less_than_16': {
         'value': 62,
         'errors': [
             {
@@ -875,7 +888,7 @@ validation_question_hist_3 = MathadataValidateVariables({
                     'min': 0,
                     'max': 400
                 },
-                'else': "nombre_7_inf_16 n'a pas la bonne valeur. As-tu bien remplacé les ... par le nombre d'image de 7 avec une caractéristique inférieure à 16 ?"
+                'else': "count_7_less_than_16 doesn't have the right value. Did you replace the ... with the number of images of 7 with a feature less than 16?"
             }
         ]
     },
@@ -889,22 +902,22 @@ validation_question_hist_seuil = MathadataValidateVariables({
                 'value': {
                     'max': 30,
                 },
-                'if': "Ton seuil t est trop bas. Regarde ou les 2 histogrammes se croisent pour trouver le meilleur seuil."
+                'if': "Your threshold t is too low. Look at where the 2 histograms intersect to find the best threshold."
             },
             {
                 'value': {
                     'min': 38,
                 },
-                'if': "Ton seuil t est trop haut. Regarde ou les 2 histogrammes se croisent pour trouver le meilleur seuil."
+                'if': "Your threshold t is too high. Look at where the 2 histograms intersect to find the best threshold."
             },
             {
                 'value': {
                     'min': 30,
                     'max': 38
                 },
-                'if': "Tu te rapproches mais ce n'est pas le meilleur seuil. Il doit y avoir plus de 7 que de 2 qui ont une caractéristique x inférieure ou égale à t et inversement pour x supérieur à t."
+                'if': "You are getting closer but it is not the best threshold. There should be more 7s than 2s with a feature x less than or equal to t and vice versa for x greater than t."
             }
         ]
         
     }
-}, success="Bravo, ton seuil est maintenant optimal !")
+}, success="Congratulations, you have found the optimal threshold !")
