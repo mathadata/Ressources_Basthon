@@ -915,12 +915,14 @@ run_js("""
                 const wrapper = document.createElement('div');
                 wrapper.style.width = '100%';
                 wrapper.style.maxHeight = '75vh';
+                wrapper.style.aspectRatio = config.options.aspectRatio;
                 wrapper.style.display = 'flex';
                 wrapper.style.justifyContent = 'center';
                 wrapper.style.alignItems = 'center';
 
                 // move inside wrapper
                 const canvas = document.getElementById(div_id)
+                canvas.style.width = '100%'
                 canvas.parentNode.insertBefore(wrapper, canvas)
                 wrapper.appendChild(canvas)
                 
@@ -1340,8 +1342,8 @@ run_js("""
         // variables in mathadata object
         charts: {},
         exercises: {},
-        classColors: ['rgba(0,0,255,0.5)', 'rgba(255, 165, 0, 0.5)', 'rgba(128, 0, 32, 0.5)', 'rgba(144, 238, 144, 0.5)'],
-        classColorCodes: ['0,0,255', '255, 165, 0','128, 0, 32','144, 238, 144'],
+        classColors: ['rgba(0,0,255,0.5)', 'rgba(255, 165, 0, 0.5)'],
+        classColorCodes: ['0,0,255', '255, 165, 0'],
     }
 
     window.mathadata = mathadata;
