@@ -32,16 +32,6 @@ try:
 except: 
     pass
 
-### --- IMPORT DE BASTHON ---
-# Ne marche que si on est sur basthon ou capytale, sinon ignorer : 
-try:
-    import basthon  # Ne marche que si on est sur Capytale ou Basthon
-    basthon = True
-
-except ModuleNotFoundError: 
-    basthon = False
-    pass
-
 ### --- Import du validation_kernel ---
 # Ne marche que si fourni et si va avec le notebook en version séquencé. Sinon, ignorer :
 sequence = False
@@ -51,8 +41,12 @@ try:
     from capytale.random import user_seed
 
     sequence = True
-except ModuleNotFoundError: 
-    sequence = False
+except ModuleNotFoundError:
+    try:
+        from basthon.autoeval import Validate, validationclass
+        sequence = True
+    except ModuleNotFoundError:
+        pass
 
 ## Pour valider l'exécution d'une cellule de code, dans le cas du notebook sequencé :
 if sequence:
@@ -582,6 +576,7 @@ capytale_id = None
 capytale_classroom = None
 
 def start_analytics_session(notebook_id):
+    return
     global capytale_id, capytale_classroom
     if sequence:
         seed = user_seed()
@@ -639,6 +634,7 @@ def score_str(score):
     return f"{percent:.1f}%"
 
 def get_highscore(challenge_id=116):
+    return
     def cb(data):
         if data is not None and isinstance(data, dict) and 'highscore' in data:
             global highscore
