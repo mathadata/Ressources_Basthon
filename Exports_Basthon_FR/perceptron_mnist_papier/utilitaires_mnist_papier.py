@@ -37,7 +37,7 @@ if not sequence:
 ### --- IMPORT DES DONNÉES ---
 # Téléchargement et extraction des inputs contenus dans l'archive zip
 
-print("Chargement de la base de donnée d'images en cours...")
+print("Chargement de la base de données d'images en cours...")
 
 inputs_zip_url = "https://dev.mathadata.fr/assets/fichiers_notebooks/mnist-papier.zip"
 inputs_zip = requests.get(inputs_zip_url)
@@ -348,6 +348,75 @@ def affichage_tableau(image, a=None, b=None):
     display(df)
     return
 
+# Afficher les poids d'un neurone
+def afficher_poids_heatmap(poids):
+    fig, ax = plt.subplots(figsize=(3, 3))
+    cax = ax.imshow(poids, cmap='bwr', vmin=-3, vmax=3)  # Blue = negative, Red = positive
+    # Valeurs dans les cases
+    for i in range(poids.shape[0]):
+        for j in range(poids.shape[1]):
+            ax.text(j, i, str(poids[i, j]), ha='center', va='center', color='black' if poids[i, j] >= 0 else 'white')
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    # Titre
+    ax.set_title('Poids du neurone', fontsize=13, pad=10)
+    #plt.colorbar(cax)
+    plt.show()
+
+def afficher_poids_et_mini_images(poids, biais, d_liste, img_titles=['Chiffre : 0', 'Chiffre : 1']):
+    # Trois carrés sur une ligne : heatmap des poids, mini image 0, mini image 1
+    # Sous chaque mini image, le vote du neurone
+
+    # reshape des poids from 9 to 3x3
+    poids_square = np.array(poids).reshape(3, 3)
+
+    # liste des caractéristiques = pixels des images
+    c_liste = [np.array(d).flatten() for d in d_liste]
+
+    fig, ax = plt.subplots(1, 3, figsize=(figw_full, figw_full / 3))
+    # Heatmap des poids
+    ax[0].imshow(poids_square, cmap='bwr', vmin=-3, vmax=3)
+    # Valeurs dans les cases
+    for i in range(poids_square.shape[0]):
+        for j in range(poids_square.shape[1]):
+            ax[0].text(j, i, str(poids_square[i, j]), ha='center', va='center', color='black' if poids_square[i, j] >= 0 else 'white')
+    ax[0].set_xticks([])
+    ax[0].set_yticks([])
+    ax[0].set_title('Poids du neurone', fontsize=16, pad=12)
+
+    # Mini images
+    for i in range(2):
+        ax[i + 1].imshow(d_liste[i], cmap='gray', vmin=0, vmax=255)
+        # Add text annotations to each pixel. White pixels (< 128) will have a black font color, and vice versa
+        for k in range(d_liste[i].shape[0]):
+            for j in range(d_liste[i].shape[1]):
+                ax[i + 1].text(j, k, str(d_liste[i][k, j]), ha='center', va='center', color='black' if d_liste[i][k, j] > 128 else
+                'white')
+        # Add rectangle around the image
+        ax[i + 1].add_patch(plt.Rectangle((-0.5, -0.5), 3, 3, fill=False, edgecolor='black', lw=3))
+
+        # Hide the axes
+        ax[i + 1].axis('off')
+
+        # Add title with vecrtical margin
+        ax[i + 1].set_title(img_titles[i], fontsize=16, pad=12)
+
+        # Add vote under the image
+        #vote_neurone = get_variable('vote_neurone')
+        ax[i + 1].text(1., 3., f'Vote : {vote_neurone(c_liste[i], poids, biais):.0f}', ha='center', va='center', fontsize=16, color='blue', fontweight='bold')
+    
+    plt.show()
+
+# Mini images exemple, 0 et 1, 3*3 pixels
+d_1 = np.array([[255, 0, 255],
+                [255, 0, 255],
+                [255, 0, 255]])
+
+d_0 = np.array([[0, 0, 0],
+                [0, 255, 0],
+                [0, 0, 0]])
+
 # Moyenne
 def moyenne(liste):
     arr = np.array(liste)
@@ -383,7 +452,37 @@ def check_pixel_coordinates(coords, errors):
 
 def update_selected(A,B):
     common.challenge.custom_zone = (A,B)
+
+# Images 3x3 pour les exemples simples
+mini_image_1 = np.array([[255, 0, 255],
+                        [255, 0, 255],
+                        [255, 0, 255]])
+
+mini_image_0 = np.array([[0, 0, 0],
+                        [0, 255, 0],
+                        [0, 0, 0]])
+
+def affichage_mini_images(d_liste, titles=['Mini image 0', 'Mini image 1']):
+    fig, ax = plt.subplots(1, len(d_liste), figsize=(figw_full, figw_full / len(d_liste)))
+    for i in range(len(d_liste)):
+        d = d_liste[i]
+        ax[i].imshow(d, cmap='gray', vmin=0, vmax=255)
+        # Add text annotations to each pixel. White pixels (< 128) will have a black font color, and vice versa
+        for k in range(d.shape[0]):
+            for j in range(d.shape[1]):
+                ax[i].text(j, k, str(d[k, j]), ha='center', va='center', color='black' if d[k, j] > 128 else
+                'white')
+        # Add rectangle around the image
+        ax[i].add_patch(plt.Rectangle((-0.5, -0.5), 3, 3, fill=False, edgecolor='black', lw=3))
+
+        # Hide the axes
+        ax[i].axis('off')
+
+        # Add title
+        ax[i].set_title(titles[i], fontsize=16, pad=15)
+    plt.show()
     
+
 # JS
 
 styles = '''
@@ -799,3 +898,89 @@ validation_question_hist_seuil = MathadataValidateVariables({
         
     }
 }, success="Bravo, ton seuil est maintenant optimal !")
+
+def vote_neurone(c, w, b):
+    v = 0 # On initialise à 0
+    for i in range(len(c)): # Pour chaque pixel
+        # Ajouter les votes du pixel i
+        v = v + c[i] * w[i]
+    
+    # Ajouter le biais
+    v = v + b
+    
+    return v
+
+def validate_poids_mini_images(errors, answers):
+    w = get_variable('w')
+    b = get_variable('b')
+    d_0 = get_variable('d_0')
+    d_1 = get_variable('d_1')
+    vote_neurone = get_variable('vote_neurone')
+
+    c_0 = np.array(d_0).flatten().tolist()
+    c_1 = np.array(d_1).flatten().tolist()
+
+    if w is None:
+        print_error("Les liste des poids w n'est pas définie.")
+        return False
+
+    if len(w) != 9:
+        print_error("La liste des poids w doit être de longueur 9.")
+        return False
+    
+    if b is None:
+        print_error("Le biais b n'est pas défini.")
+        return False
+    
+    vote_0 = vote_neurone(c_0, w, b)
+    vote_1 = vote_neurone(c_1, w, b)
+
+    if vote_0 < 0 and vote_1 > 0:
+        return True
+    else:
+        print_error("w et b ne permettent pas encore de d'avoir un vote positif pour l'image de 1 et négatif pour l'image de 0. Change les valeurs de la liste w et execute à nouveau la cellule.")
+        return False
+
+validation_poids_mini_images = MathadataValidate(success="Bravo, les poids et le biais permettent maintenant de distinguer les deux images.", function_validation=validate_poids_mini_images)
+
+validation_initialisation_poids = MathadataValidateVariables({
+    'nombre_poids': {
+        'value': 784,
+        'errors': [
+            {
+            'value': 
+                {
+                    'min': 0,
+                    'max': 1000
+                },
+            'if': "La variable nombre_poids n'est pas bonne. Elle doit être égale au nombre de caractéristiques d'une image.",
+            'else': "La variable nombre_poids n'est pas bonne. As-tu bien remplacé les ... ?"
+            }
+        ]
+    },
+    'nombre_classes': {
+        'value': 10,
+        'errors': [
+            {
+            'value': 
+                {
+                    'min': 0,
+                    'max': 100
+                },
+            'if': "La variable nombre_classes n'est pas bonne. Elle doit être égale au nombre de classes à distinguer.",
+                'else': "La variable nombre_classes n'est pas bonne. As-tu bien remplacé les ... ?"
+            }
+        ]
+    },
+})
+
+def _liste_pixels(d):
+    return d.flatten().tolist()
+
+validation_liste_pixels = MathadataValidateFunction(
+    "liste_pixels",
+    test_set=[np.random.randint(0, 255, size=(28,28))],
+    expected_function=_liste_pixels,
+    #on_success=lambda _: setattr(__main__, 'liste_pixels', _liste_pixels),
+)
+              

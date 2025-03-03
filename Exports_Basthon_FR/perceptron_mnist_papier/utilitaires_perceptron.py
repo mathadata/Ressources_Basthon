@@ -47,7 +47,8 @@ def _estimation(c, tous_les_poids, tous_les_biais):
         c = np.array(c)
     return np.argmax(_calcul_votes(c, tous_les_poids, tous_les_biais))
 
-def _apprentissage_perceptron(d_train, r_train, a = 1):
+# version pour passer le validate : sans le print
+def _apprentissage_perceptron_test(d_train, r_train, a = 1):
     if not has_variable("calculer_caracteristiques"):
         print_error("Vous devez définir la fonction `calculer_caracteristiques` pour pouvoir entraîner le réseau.")
         return
@@ -69,6 +70,71 @@ def _apprentissage_perceptron(d_train, r_train, a = 1):
             B[r] = B[r] + a
             
             W[r_est] = W[r_est] - a * c
+            B[r_est] = B[r_est] - a
+
+    return W, B
+
+# version finale : avec le print
+def _apprentissage_perceptron(d_train, r_train, a = 1):
+    if not has_variable("calculer_caracteristiques"):
+        print_error("Vous devez définir la fonction `calculer_caracteristiques` pour pouvoir entraîner le réseau.")
+        return
+    
+    calculer_caracteristiques = get_variable("calculer_caracteristiques")
+
+    nb_caracteristiques = len(calculer_caracteristiques(d_train[0]))
+    W = np.zeros((10, nb_caracteristiques))
+    B = np.zeros(10)
+
+    print('Apprentissage des poids en cours, patience...')
+    
+    for i in range(len(d_train)):
+        d = d_train[i]
+        c = calculer_caracteristiques(d)
+        r = r_train[i] # La vraie réponse
+
+        r_est = _estimation(c, W, B)
+        if r_est != r:
+            W[r] = W[r] + a * c
+            B[r] = B[r] + a
+            
+            W[r_est] = W[r_est] - a * c
+            B[r_est] = B[r_est] - a
+
+    return W, B
+
+def initialiser_poids(nombre_poids, nombre_classes):
+    poids = np.zeros((nombre_classes, nombre_poids))
+    biais = np.zeros(nombre_classes)
+    return poids, biais
+
+def apprentissage_perceptron(d_train, r_train, a = 1):
+    calculer_caracteristiques = get_variable("calculer_caracteristiques")
+    estimation = get_variable("estimation")
+
+    nb_caracteristiques = len(calculer_caracteristiques(d_train[0]))
+    W = np.zeros((10, nb_caracteristiques))
+    B = np.zeros(10)
+    
+    for i in range(len(d_train)):
+        d = d_train[i]
+        c = calculer_caracteristiques(d)
+        r = r_train[i] # La vraie réponse
+    
+        r_est = estimation(c, W, B)
+
+        if r_est != r:
+            # Poids du neurone pour le bon chiffre
+            w_r = W[r]
+            
+            # Poids du neurone pour le mauvais chiffre estimé
+            w_r_est = W[r_est]
+            
+            for k in range(len(c)): # Boucle sur les caractéristiques pour faire les modifications de poids
+                w_r[k] = w_r[k] + a * c[k]
+                w_r_est[k] = w_r_est[k] - a * c[k]
+                
+            B[r] = B[r] + a
             B[r_est] = B[r_est] - a
 
     return W, B
@@ -185,6 +251,18 @@ def calculer_caracteristiques_contours(d):
     c = np.concatenate((d_flat, np.absolute(d_flat[1:] - d_flat[:-1])))
     return c
 
+# fonction vote d'un neurone, si l'élève ne la définit pas
+def vote_neurone(c, w, b):
+    v = 0 # On initialise à 0
+    for i in range(len(c)): # Pour chaque pixel
+        # TODO : Ajouter les votes du pixel i
+        v = v + c[i] * w[i]
+    
+    # TODO : ajouter le biais
+    v = v + b
+    
+    return v
+
 ### ----- CELLULES VALIDATION ----
 
 def validation_token():
@@ -209,6 +287,8 @@ def validation_token():
 validation_breakpoint_token = MathadataValidate(success="")
 
 validation_execution_calculer_caracteristiques = MathadataValidate(success="")
+
+validation_execution_apprentissage = MathadataValidate(success="")
 
 validation_question_vote_neurone = MathadataValidateVariables({
     'v': {
@@ -270,7 +350,7 @@ validation_estimation = MathadataValidateFunction(
 validation_apprentissage_perceptron = MathadataValidateFunction(
     'apprentissage_perceptron',
     test_set=lambda: [(common.challenge.d_train[100*i:100 + 100*i], common.challenge.r_train[100*i:100+100*i]) for i in range(10)],
-    expected_function=_apprentissage_perceptron,
+    expected_function=_apprentissage_perceptron_test,
     on_success=lambda _: setattr(__main__, 'apprentissage_perceptron', _apprentissage_perceptron),
 )
 
