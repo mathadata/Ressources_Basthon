@@ -354,6 +354,8 @@ validation_apprentissage_perceptron = MathadataValidateFunction(
     on_success=lambda _: setattr(__main__, 'apprentissage_perceptron', _apprentissage_perceptron),
 )
 
+validation_lancement_apprentissage = MathadataValidate(success="")
+
 validation_soumission = MathadataValidate(success="")
 
 validation_calculer_caracteristiques_contours = MathadataValidateFunction(
