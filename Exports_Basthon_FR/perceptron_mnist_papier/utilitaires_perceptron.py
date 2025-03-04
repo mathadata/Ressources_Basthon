@@ -81,6 +81,19 @@ def _apprentissage_perceptron(d_train, r_train, W_0, B_0, a = 1):
     
     calculer_caracteristiques = get_variable("calculer_caracteristiques")
 
+    # nb de caractéristiques
+    l = len(calculer_caracteristiques(d_train[0]))
+
+    # check taille de W
+    if W_0.shape != (10, l):
+        print_error("La taille de W_0 est incorrecte. Elle doit être de la forme (10, " + str(l) + ").")
+        return
+
+    # check taille de B
+    if B_0.shape != (10,):
+        print_error("La taille de B_0 est incorrecte. Elle doit être de la forme (10,).")
+        return
+
     W = W_0.copy()
     B = B_0.copy()
 
@@ -347,7 +360,9 @@ def function_validation_calculer_caracteristiques(errors, answers):
             if not isinstance(c[j], (int, float)) and not np.issubdtype(type(c[j]), np.number):
                 errors.append("La liste retournée par `calculer_caracteristiques` doit contenir uniquement des nombres. Votre liste contient un élément de type " + str(type(c[j])) + " : " + str(c[j]))
                 return False
-    
+            
+    l = len(calculer_caracteristiques(common.challenge.d_train[0]))
+    print("\n", "Taille de la liste de caractéristiques : ", l, "\n")
     return True
 
 validation_calculer_caracteristiques_custom = MathadataValidate(function_validation=function_validation_calculer_caracteristiques, success="Votre fonction renvoit bien une liste de nombres. Vous pouvez tester vos caractéristiques en lançant l'apprentissage dans la cellule suivante.")
