@@ -983,4 +983,35 @@ validation_liste_pixels = MathadataValidateFunction(
     expected_function=_liste_pixels,
     #on_success=lambda _: setattr(__main__, 'liste_pixels', _liste_pixels),
 )
+
+validation_initialisation_poids_contours = MathadataValidateVariables({
+    'nombre_poids': {
+        'value': 784+783,
+        'errors': [
+            {
+            'value': 
+                {
+                    'min': 0,
+                    'max': 5000
+                },
+            'if': "La variable nombre_poids n'est pas bonne. Elle doit être égale au nombre de caractéristiques d'une image.",
+            'else': "La variable nombre_poids n'est pas bonne. As-tu bien remplacé les ... ?"
+            }
+        ]
+    },
+    'nombre_classes': {
+        'value': 10,
+        'errors': [
+            {
+            'value': 
+                {
+                    'min': 0,
+                    'max': 100
+                },
+            'if': "La variable nombre_classes n'est pas bonne. Elle doit être égale au nombre de classes à distinguer.",
+                'else': "La variable nombre_classes n'est pas bonne. As-tu bien remplacé les ... ?"
+            }
+        ]
+    },
+})
               
