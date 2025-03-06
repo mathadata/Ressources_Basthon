@@ -53,14 +53,10 @@ with open('train_set.pickle', 'rb') as f:
     d_train = pickle.load(f).astype(int)
 
 with open('test_set.pickle', 'rb') as f:
-    d_test = pickle.load(f)
+    d_test = pickle.load(f).astype(int)
     
 with open('train_labels.pickle', 'rb') as f:
     r_train = pickle.load(f)
-
-# All datasets to int
-d_train = d_train.astype(int)
-d_test = d_test.astype(int)
 
 N = len(d_train)
 

@@ -223,6 +223,8 @@ def soumettre(tous_les_poids, tous_les_biais):
         """))
 
         validation_soumission()
+
+    validation_soumission()
     
     http_request(mathadata_endpoint + "/contest/submit", "POST", headers=headers, body=body, cb=cb)
 
