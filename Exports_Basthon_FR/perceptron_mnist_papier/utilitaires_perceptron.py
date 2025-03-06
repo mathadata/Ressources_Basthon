@@ -222,8 +222,9 @@ def soumettre(tous_les_poids, tous_les_biais):
             </div>       
         """))
 
-        validation_soumission()
+        #validation_soumission()
 
+    # Quoi qu'il en soit, on valide la cellule
     validation_soumission()
     
     http_request(mathadata_endpoint + "/contest/submit", "POST", headers=headers, body=body, cb=cb)
@@ -262,7 +263,7 @@ def validation_token():
             if 'highScore' in res:
                 common.highscore = res['highScore']
                 update_score()
-            validation_breakpoint_token()
+            #validation_breakpoint_token()
     
     # Quoi qu'il on valide la cellule
     validation_soumission()
