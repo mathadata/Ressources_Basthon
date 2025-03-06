@@ -255,20 +255,20 @@ def http_request(url, method='GET', body=None, files=None, fields=None, headers=
     if body is not None and (files is not None or fields is not None):
         raise ValueError("Cannot have both body and files in the same request")
     try:
-        # if sequence:
-        #     call_async(fetch_async, cb, url, method, body, files, fields, headers)
-        # else:
-        if method == 'GET':
-            response = requests.get(url, headers=headers)
-        elif method == 'POST':
-            response = requests.post(url, json=body, files=files, data=fields, headers=headers)
-        elif debug:
-            raise ValueError(f"Invalid method: {method}")
+        if sequence:
+            call_async(fetch_async, cb, url, method, body, files, fields, headers)
         else:
-            return None
-    
-        if cb is not None:
-            cb(response.json())
+            if method == 'GET':
+                response = requests.get(url, headers=headers)
+            elif method == 'POST':
+                response = requests.post(url, json=body, files=files, data=fields, headers=headers)
+            elif debug:
+                raise ValueError(f"Invalid method: {method}")
+            else:
+                return None
+        
+            if cb is not None:
+                cb(response.json())
                 
     except Exception as e:
         print_error("Il y a une erreur innatendue. Veuillez réessayer plus tard et nous contacter si le problème persiste : https://mathadata.fr/contact.")
