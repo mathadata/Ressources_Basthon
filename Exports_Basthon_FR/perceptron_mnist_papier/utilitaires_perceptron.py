@@ -222,12 +222,13 @@ def soumettre(tous_les_poids, tous_les_biais):
             </div>       
         """))
 
-        #validation_soumission()
+        validation_soumission()
 
-    # Quoi qu'il en soit, on valide la cellule
-    validation_soumission()
-    
-    http_request(mathadata_endpoint + "/contest/submit", "POST", headers=headers, body=body, cb=cb)
+    try:
+        http_request(mathadata_endpoint + "/contest/submit", "POST", headers=headers, body=body, cb=cb)
+    except:
+        # Quoi qu'il en soit, on valide la cellule
+        validation_soumission()
 
 def calculer_caracteristiques_contours(d):
     d_flat = d.flatten()
