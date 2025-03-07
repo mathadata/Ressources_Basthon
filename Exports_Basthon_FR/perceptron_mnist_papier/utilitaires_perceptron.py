@@ -267,7 +267,7 @@ def validation_token():
             #validation_breakpoint_token()
     
     # Quoi qu'il on valide la cellule
-    validation_soumission()
+    validation_breakpoint_token()
     http_request(mathadata_endpoint + "/contest/user", "GET", headers=headers, cb=cb) 
 
 validation_breakpoint_token = MathadataValidate(success="")
