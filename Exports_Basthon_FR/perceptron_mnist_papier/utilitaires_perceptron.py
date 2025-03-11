@@ -162,6 +162,9 @@ def soumettre(tous_les_poids, tous_les_biais):
         if response is None:
             print_error("Il y a eu une erreur lors de la soumission. Vérifie ta réponse et réessaie plus tard.")
             return
+        if 'error' in response:
+            print_error(response['error'])
+            return
         score = response.get('score', None)
         if score is None:
             print_error("Il y a eu une erreur lors de la soumission. Vérifie ta réponse et réessaie plus tard.")
@@ -229,6 +232,7 @@ def soumettre(tous_les_poids, tous_les_biais):
         http_request(mathadata_endpoint + "/contest/submit", "POST", headers=headers, body=body, cb=cb)
     except:
         # Quoi qu'il en soit, on valide la cellule
+        print_error("Il y a eu une erreur lors de la soumission. Vérifie ta réponse et réessaie plus tard.")
         validation_soumission()
 
 def calculer_caracteristiques_contours(d):
@@ -258,18 +262,21 @@ def validation_token():
     }
     
     def cb(res):
-        if res is None or 'pseudo' not in res:
+        if res is None or 'error' in res or 'pseudo' not in res:
             print_error("Le token est invalide. Pour recevoir à nouveau votre token, rendez vous sur https://mathadata.fr/fr/challenge/renvoi_mail")
         else:
             print("Votre token est valide. Vous êtes inscrit sous le pseudo " + res['pseudo'])
             if 'highScore' in res:
                 common.highscore = res['highScore']
                 update_score()
-            validation_breakpoint_token()
-    
+
+    try:
+        http_request(mathadata_endpoint + "/contest/user", "GET", headers=headers, cb=cb) 
+    except:
+        print_error("Le token est invalide. Pour recevoir à nouveau votre token, rendez vous sur https://mathadata.fr/fr/challenge/renvoi_mail")
+
     # Quoi qu'il on valide la cellule
     validation_breakpoint_token()
-    http_request(mathadata_endpoint + "/contest/user", "GET", headers=headers, cb=cb) 
 
 validation_breakpoint_token = MathadataValidate(success="")
 
