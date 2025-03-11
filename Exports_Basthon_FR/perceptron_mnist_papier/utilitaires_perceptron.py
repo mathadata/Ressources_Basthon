@@ -152,6 +152,7 @@ def soumettre(tous_les_poids, tous_les_biais):
     }
     
     token = get_variable("token")
+    token = token.strip()
     headers = {
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json',
@@ -222,7 +223,7 @@ def soumettre(tous_les_poids, tous_les_biais):
             </div>       
         """))
 
-        validation_soumission()
+    validation_soumission()
 
     try:
         http_request(mathadata_endpoint + "/contest/submit", "POST", headers=headers, body=body, cb=cb)
@@ -251,20 +252,20 @@ def vote_neurone(c, w, b):
 
 def validation_token():
     token = get_variable("token")
-
+    token = token.strip()
     headers = {
         'Authorization': f'Bearer {token}',
     }
     
     def cb(res):
-        if 'pseudo' not in res:
+        if res is None or 'pseudo' not in res:
             print_error("Le token est invalide. Pour recevoir à nouveau votre token, rendez vous sur https://mathadata.fr/fr/challenge/renvoi_mail")
         else:
             print("Votre token est valide. Vous êtes inscrit sous le pseudo " + res['pseudo'])
             if 'highScore' in res:
                 common.highscore = res['highScore']
                 update_score()
-            #validation_breakpoint_token()
+            validation_breakpoint_token()
     
     # Quoi qu'il on valide la cellule
     validation_breakpoint_token()

@@ -179,7 +179,7 @@ if sequence:
     import asyncio
     
     debug = False
-    mathadata_endpoint = "https://dev.mathadata.fr/api"
+    mathadata_endpoint = "https://mathadata.fr/api"
     challengedata_endpoint = "https://challengedata.ens.fr/api"
     
     Validate()() # Validate import cell
@@ -247,7 +247,7 @@ analytics_endpoint = mathadata_endpoint + "/notebooks"
 
 ### Utilitaires requêtes HTTP ###
 
-mathadata_url = "https://dev.mathadata.fr"
+mathadata_url = "https://mathadata.fr"
 files_url = mathadata_url + "/assets/fichiers_notebooks/"
 
 # Send HTTP request. To send body as form data use parameter files (dict of key, StringIO value) and fields (dict of key, value)
@@ -255,21 +255,20 @@ def http_request(url, method='GET', body=None, files=None, fields=None, headers=
     if body is not None and (files is not None or fields is not None):
         raise ValueError("Cannot have both body and files in the same request")
     try:
-        # MODIF
-        #if sequence:
-            #call_async(fetch_async, cb, url, method, body, files, fields, headers)
-        #else:
-        if method == 'GET':
-            response = requests.get(url, headers=headers)
-        elif method == 'POST':
-            response = requests.post(url, json=body, files=files, data=fields, headers=headers)
-        elif debug:
-            raise ValueError(f"Invalid method: {method}")
+        if sequence:
+            call_async(fetch_async, cb, url, method, body, files, fields, headers)
         else:
-            return None
-    
-        if cb is not None:
-            cb(response.json())
+            if method == 'GET':
+                response = requests.get(url, headers=headers)
+            elif method == 'POST':
+                response = requests.post(url, json=body, files=files, data=fields, headers=headers)
+            elif debug:
+                raise ValueError(f"Invalid method: {method}")
+            else:
+                return None
+        
+            if cb is not None:
+                cb(response.json())
                 
     except Exception as e:
         print_error("Il y a une erreur innatendue. Veuillez réessayer plus tard et nous contacter si le problème persiste : https://mathadata.fr/contact.")
