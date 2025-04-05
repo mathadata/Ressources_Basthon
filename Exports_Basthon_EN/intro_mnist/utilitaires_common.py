@@ -819,7 +819,7 @@ run_js(f"""
 run_js("""
 
     function chartjs_title(context) {
-        return context[0].parsed.y.toFixed(2); // afficher l'ordonnée plutôt que l'abscisse quand on passe la souris
+        return context[0].parsed.y.toFixed(2); // display the ordinate instead of the abscissa when hovering
     }
     
     function chartjs_label(context) {
@@ -941,7 +941,7 @@ run_js("""
                     <div id="${div_id}-question" class="question"></div>
                     <canvas id="${div_id}-canvas"></canvas>
                     <div id="${div_id}-answers" class="answers"></div>
-                    <button id="${div_id}-submit">Valider</button>
+                    <button id="${div_id}-submit">Validate</button>
                     <p id="${div_id}-status" class="status"></p>
                 </div>
             `
@@ -979,11 +979,11 @@ run_js("""
                     
                     if (res.is_correct) {
                         if (current_step < nb_steps - 1) {
-                            setStatus("Bravo, c'est la bonne réponse !", "success")
+                            setStatus("Well done, that's the correct answer!", "success")
                             current_step++
                             window.mathadata.display_exercise_step(div_id, config[current_step])
                         } else {
-                            setStatus("Bravo, c'est la bonne réponse ! Vous pouvez passer à la suite du notebook", "success")
+                            setStatus("Well done, that's the correct answer! You can move on to the next part of the notebook.", "success")
                         }
                     }
                     else {
@@ -1223,7 +1223,7 @@ run_js("""
             }
 
             if (i_exercice_droite_carac < c_train.length) {
-                setStatusMessage(`Cliquez sur la droite au bon endroit pour placer l\'image n°${i_exercice_droite_carac + 1}.`)
+                setStatusMessage(`Click on the line at the correct location to place image #${i_exercice_droite_carac + 1}.`)
                 chart.options.onClick = (e) => {
                     console.log('click', e)
                     const canvasPosition = Chart.helpers.getRelativePosition(e, chart);
@@ -1234,18 +1234,18 @@ run_js("""
                         i_exercice_droite_carac++
                         if (i_exercice_droite_carac == c_train.length) {
                             chart.options.onClick = null;
-                            setStatusMessage(`Bravo, vous avez placé tous les points ! Exécutez la cellule suivante pour passer à la suite.`)
+                            setStatusMessage(`Well done, you have placed all the points! Run the next cell to continue.`)
                             window.mathadata.run_python(`set_exercice_droite_carac_ok()`)
                         } else {
-                            setStatusMessage(`Bravo, vous pouvez placer l'image suivante (n°${i_exercice_droite_carac + 1}) !`)
+                            setStatusMessage(`Well done, you can place the next image (#${i_exercice_droite_carac + 1})!`)
                         }
                         chart.update()
                     } else {
-                        setStatusMessage(`L'image ne va pas ici sur la droite. Tu as placé un point à l'abscisse ${dataX.toFixed(2)} alors que l'image a une caractéristique x = ${c_train[i_exercice_droite_carac].toFixed(2)}`)
+                        setStatusMessage(`The image doesn't go here on the line. You placed a point at x = ${dataX.toFixed(2)}, but the image has a characteristic x = ${c_train[i_exercice_droite_carac].toFixed(2)}`)
                     }
                 }
             } else {
-                setStatusMessage(`Bravo, vous avez placé tous les points ! Exécutez la cellule suivante pour passer à la suite.`)
+                setStatusMessage(`Well done, you have placed all the points! Run the next cell to continue.`)
             }
 
             chart.update()
