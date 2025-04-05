@@ -1906,10 +1906,10 @@ validation_question_seuil_optimise = MathadataValidateVariables(
 
 validation_execution_nombre_7 =MathadataValidateVariables({
     'Count_7': {
-        'value': 3,
+        'value': 4,
         'errors': [
             {
-                'value':3,
+                'value':4,
                 'else' :"Did you look at the first 10 lines of the table ? "
             },
         ]
