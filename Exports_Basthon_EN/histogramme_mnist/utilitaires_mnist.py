@@ -854,7 +854,7 @@ validation_question_hist_2 = MathadataValidateVariables({
         ]
     },
     'count_7': {
-        'value': 237,
+        'value': 238,
         'errors': [
             {
                 'value': {
