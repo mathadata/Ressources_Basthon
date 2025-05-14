@@ -444,7 +444,7 @@ def compute_erreur(func_carac=None):
 
     return (t_values, scores_array)
     
-def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=None, caracteristique=None):
+def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=None, caracteristique=None, banque=True):
     try:
         print("Calcul du pourcentage d'erreur en cours...")
 
@@ -453,7 +453,8 @@ def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=
         set_score(score)
 
         print(f"Voici les prédictions r^ de ton algorithme pour chaque {challenge.strings['dataname']}")
-        affichage_banque(carac=caracteristique, showPredictions=True, estimations=r_prediction_train)
+        if banque:
+            affichage_banque(carac=caracteristique, showPredictions=True, estimations=r_prediction_train)
         
         if cb is not None:
             cb(score)
@@ -1291,6 +1292,55 @@ run_js("""
             
             answers.innerHTML = answers_html
         },
+        
+        display_tip(parent, text) {
+            const tipContainer = document.createElement('div')
+            tipContainer.className = 'tip'
+            tipContainer.innerHTML = text
+            parent.appendChild(tipContainer)
+        },
+        
+        add_tip(parentId, tip, answers) {
+            const parent = document.getElementById(parentId)
+            if (!parent) {
+                return
+            }
+
+            if (tip.tip) {
+                window.mathadata.display_tip(parent, `💡 ${tip.tip}`)
+            }
+
+            if (tip.print_solution && answers) {
+                window.mathadata.display_tip(parent, `📝 Voici la solution :<br/>${answers.join('<br/>')}`)
+            }
+
+            if (tip.validate) {
+                window.mathadata.display_tip(parent, `🔓 Tu peux passer cette question et continuer`)
+                mathadata.pass_breakpoint()
+            }
+        },
+
+        setup_tips(id, params) {
+            params = JSON.parse(params)
+            const {tips, first_call_time, trials, answers} = params
+
+            const now = Date.now()
+            const time_since_first_call_s = now / 1000 - first_call_time // python uses seconds, js uses milliseconds
+            
+            for (const tip of tips) {
+                if ('trials' in tip && trials < tip.trials) {
+                    continue
+                }
+
+                if (!('seconds' in tip) || tip.seconds <= time_since_first_call_s) {
+                    window.mathadata.add_tip(id, tip, answers) 
+                } else {
+                    setTimeout(() => {
+                        window.mathadata.add_tip(id, tip, answers)
+                    }, (tip.seconds - time_since_first_call_s) * 1000)
+                }
+            }
+        },
             
         setup_test_bank(id, params) {
             params = JSON.parse(params)
@@ -1916,8 +1966,6 @@ class _MathadataValidate():
         self.function_validation = function_validation
         self.child_on_success = on_success
         self.tips = tips
-        if self.tips is not None:
-            self.tips.reverse() # Display the last tip first
 
     def __call__(self):
         self.last_call_time = time.time()
@@ -1948,38 +1996,21 @@ class _MathadataValidate():
         if len(errors) > 0:
             for error in errors:
                 print_error(error)
-
+                
         if not res and self.tips is not None:
-            for tip in self.tips: 
-                if 'trials' in tip and self.trials < tip['trials']:
-                    continue
-                if 'seconds' in tip and (self.first_call_time is None or time.time() - self.first_call_time < tip['seconds']):
-                    continue
-
-                if 'tip' in tip:
-                    display(HTML(f'''
-                        <div class="tip">
-                            <p>💡 {tip['tip']}</p>
-                        </div>
-                    '''))
-
-                if 'print_solution' in tip and tip['print_solution'] == True:
-                    display(HTML(f'''
-                        <div class="tip">
-                            <p>💡 Voici la solution :</p>
-                            {"<br/>".join(self.get_variables_str())}
-                        </div>
-                    '''))
-                
-                if 'validate' in tip and tip['validate'] == True:
-                    display(HTML(f'''
-                        <div class="tip">
-                            <p>🔓 Tu peux passer cette question et continuer</p>
-                        </div>
-                    '''))
-                    res = True
-                
-                break
+            id = uuid.uuid4().hex
+            display(HTML(f'''<div id="{id}-tips"></div>'''))
+            params = {
+                'first_call_time': self.first_call_time,
+                'tips': self.tips,
+                'trials': self.trials,
+                'answers': self.get_variables_str(),
+            }
+            run_js(f'''
+                setTimeout(() => {{
+                    window.mathadata.setup_tips('{id}-tips', '{json.dumps(params, cls=NpEncoder)}');
+                }}, 500);
+            ''')
 
         if has_variable('superuser') and get_variable('superuser') == True:
             res = True
