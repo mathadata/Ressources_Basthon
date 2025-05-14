@@ -115,6 +115,7 @@ def tracer_6000_points():
             'B': [55,32],
             'C': [65,61]    
         },
+        'hover': True,
     }
     
     run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
@@ -155,7 +156,6 @@ def tracer_10_points_centroides():
             'm': 0.5,
             'p': 20
         },
-        'hover': True,
         'segmentHover': True,
     }
     
@@ -551,12 +551,11 @@ run_js('''
         window.mathadata.create_chart(id, chartConfig); 
     }
 
-
 window.mathadata.tracer_points = function(id, params) {
     if (typeof params === 'string') {
         params = JSON.parse(params);
     }
-    const {points, hideClasses, hideCentroids, additionalPoints, segmentHover} = params;
+    const {points, hideClasses, hideCentroids, additionalPoints, segmentHover, hover} = params;
 
     // Calculate the min and max values for the axes
     const allData = points.flat(2);
@@ -564,239 +563,8 @@ window.mathadata.tracer_points = function(id, params) {
     const min = Math.floor(Math.min(...allData, 1) - 1);
 
     // Colors for the populations
-    const colors = mathadata.classColorCodes.map(c => `rgba(${c}, 0.5)`);
-    const centroidColors = mathadata.centroidColorCodes.map(c => `rgb(${c})`);
-
-    // Colors for additional points
-    const additionalPointsColors = {
-        A: 'rgba(255, 2, 10, 0.5)',
-        B: 'rgba(10, 255, 2, 0.5)',
-        C: 'rgba(2, 150, 225, 0.5)'
-    };
-
-    // Calculate centroids 
-    const centroids = points.map(set => {
-        const xMean = set.reduce((sum, [x]) => sum + x, 0) / set.length;
-        const yMean = set.reduce((sum, [, y]) => sum + y, 0) / set.length;
-        return { x: xMean, y: yMean };
-    });
-
-    // Prepare the data for Chart.js 
-    const datasets = points.map((set, index) => {
-        return {
-            label: `Images de ${hideClasses ? '?' : (index === 0 ? '2' : '7')}`,
-            data: set.map(([x, y]) => ({ x, y, centroids, classLabel: index === 0 ? '2' : '7' })),
-            backgroundColor: colors[index],
-            borderColor: colors[index],
-            pointStyle: 'cross',
-            pointRadius: 5,
-            order: 1,
-
-        }
-    });
-    
-    // Add centroids to the dataset 
-    if (!hideCentroids) {
-        centroids.forEach((centroid, index) => {
-            datasets.push({
-                label: `Point moyen de la classe: ${index === 0 ? '2' : '7'}`,
-                data: [centroid],
-                backgroundColor: colors[index],
-                borderColor: 'black',
-                pointStyle: 'circle',
-                pointRadius: 12,
-                borderWidth: 2,
-                order: 0,
-
-            });
-        });
-    }
-
-    // Add additional points 
-if (additionalPoints) {
-    Object.entries(additionalPoints).forEach(([label, point]) => {
-        datasets.push({
-            label: `point ${label}`, // Légende
-            data: [{ x: point[0], y: point[1], label: label }],
-            backgroundColor: additionalPointsColors[label],
-            borderColor: 'black',
-            pointStyle: 'circle',
-            pointRadius: 8,
-            borderWidth: 2,
-            order: 2,
-            isAdditionalPoint: true,
-            // Ajoutez ceci pour le label directement sur le point :
-            callbacks: {
-                afterDraw: (chart) => {
-                    const ctx = chart.ctx;
-                    const meta = chart.getDatasetMeta(chart.data.datasets.length - 1); // Dernier dataset ajouté
-                    const element = meta.data[0];
-
-                    ctx.save();
-                    ctx.font = 'bold 12px Arial';
-                    ctx.fillStyle = 'black';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'bottom'; // Place le texte au-dessus du point
-
-                    // Position du texte (au-dessus du point)
-                    const x = element.x;
-                    const y = element.y - 10; // Décalage vers le haut
-
-                    // Fond blanc semi-transparent pour lisibilité
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                    const textWidth = ctx.measureText(label).width;
-                    ctx.fillRect(x - textWidth/2 - 2, y - 14, textWidth + 4, 18);
-
-                    // Texte
-                    ctx.fillStyle = 'black';
-                    ctx.fillText(label, x, y);
-                    ctx.restore();
-                }
-            }
-        });
-    });
-}
-
-    
-    const chartConfig = {
-        type: 'scatter',
-        data: { datasets },
-        options: {
-            scales: {
-                x: {
-                    title: { display: true, text: 'Caractéristique x' },
-                    min, max,
-                },
-                y: {
-                    title: { display: true, text: 'Caractéristique y' },
-                    min, max,
-                }
-            },
-            aspectRatio: 1,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    display: true,
-                    labels: {
-                        usePointStyle: true,
-                        boxWidth: 10,
-                    }
-                },
-                tooltip: {
-                    enabled: true,
-                    position: 'nearest',
-                    callbacks: {
-                        label: function(context) {
-                            const dataset = context.dataset;
-                            const point = dataset.data[context.dataIndex];
-                            if (dataset.label.includes('Point moyen')) {
-                                return `Point moyen de : ${dataset.label.split(' ').pop()}`;
-                            } else if (dataset.isAdditionalPoint) {
-                                return `Point ${point.label} \n Quelle est ma classe ?`;
-                            } else {
-                                if (hideCentroids) {
-                                    return `Image de: ${point.classLabel}`;
-                                }
-                                const distanceTo2 = Math.sqrt((point.x - centroids[0].x) ** 2 + (point.y - centroids[0].y) ** 2).toFixed(2);
-                                const distanceTo7 = Math.sqrt((point.x - centroids[1].x) ** 2 + (point.y - centroids[1].y) ** 2).toFixed(2);
-                                return `Image de: ${point.classLabel} \n Distance au point moyen 2: ${distanceTo2} \n Distance au point moyen 7: ${distanceTo7}`;
-                            }
-                        }
-                    }
-                }
-            },
-            // Hover sur les points pour afficher les segments pointillés  :
-            onHover: (event, chartElements) => {
-                if (segmentHover) {
-                    if (!chartElements || chartElements.length === 0 ) return;
-                    
-                    const chart = event.chart;
-                    const ctx = chart.ctx;
-                    const activePoint = chartElements[0];
-                    const {x, y} = activePoint.element;
-                    
-                    // Efface les précédentes lignes
-                    chart.draw();
-                    
-                    // Dessine les nouvelles lignes
-                    ctx.save();
-                    centroids.forEach((centroid, idx) => {
-                        ctx.beginPath();
-                        ctx.setLineDash([5, 5]);
-                        ctx.moveTo(x, y);
-                        ctx.lineTo(
-                            chart.scales.x.getPixelForValue(centroid.x),
-                            chart.scales.y.getPixelForValue(centroid.y)
-                        );
-                        ctx.strokeStyle = centroidColors[idx];
-                        ctx.lineWidth = 1.5;
-                        ctx.stroke();
-                    });
-                    ctx.restore();
-                }
-            },
-        plugins: [{
-            afterDatasetsDraw: function(chart) {
-                const ctx = chart.ctx;
-                const offset = 10; // Décalage identique à tracer_2_points
-                
-                // 1. Dessiner les labels "A", "B", "C" des points additionnels
-                chart.data.datasets.forEach((dataset, datasetIndex) => {
-                    if (dataset.isAdditionalPoint) {
-                        const meta = chart.getDatasetMeta(datasetIndex);
-                        meta.data.forEach((point, index) => {
-                            const {x, y} = point.getProps(['x', 'y'], true);
-                            const label = dataset.data[index].label;
-                            
-                            ctx.save();
-                            ctx.font = 'bold 18px Arial'; // Style identique à tracer_2_points
-                            ctx.fillStyle = 'black';
-                            ctx.textAlign = 'center';
-                            ctx.fillText(label, x + offset, y - offset); // Positionnement identique
-                            ctx.restore();
-                        });
-                    }
-                });
-                
-                // 2. Conserver le dessin des labels des centroïdes (si nécessaire)
-                if (!hideCentroids) {
-                    centroids.forEach((centroid, index) => {
-                        const meta = chart.getDatasetMeta(datasets.length - (hideCentroids ? 0 : 2) + index);
-                        const element = meta.data[0];
-                        const x = element.x;
-                        const y = element.y;
-                        
-                        ctx.save();
-                        ctx.font = 'bold 12px Arial';
-                        ctx.fillStyle = 'black';
-                        ctx.textAlign = 'left';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillText(`point moyen de ${index === 0 ? '2' : '7'}`, x + 15, y);
-                        ctx.restore();
-                    });
-                }
-            }
-        }]
-        }
-    };
-
-    window.mathadata.create_chart(id, chartConfig);
-};
-
-window.mathadata.tracer_points = function(id, params) {
-    if (typeof params === 'string') {
-        params = JSON.parse(params);
-    }
-    const {points, hideClasses, hideCentroids, additionalPoints, segmentHover} = params;
-
-    // Calculate the min and max values for the axes
-    const allData = points.flat(2);
-    const max = Math.ceil(Math.max(...allData, -1) + 1);
-    const min = Math.floor(Math.min(...allData, 1) - 1);
-
-    // Colors for the populations
-    const colors = mathadata.classColorCodes.map(c => `rgba(${c}, 0.5)`);
-    const centroidColors = mathadata.centroidColorCodes.map(c => `rgb(${c})`);
+    const colors = mathadata.classColorCodes.map(c => `rgba(${c}, ${allData.length > 100 ? 0.5 : 1})`);
+    const centroidColors = mathadata.classColorCodes.map(c => `rgba(${c}, 0.5)`);
 
     // Colors for additional points
     const additionalPointsColors = {
@@ -834,8 +602,8 @@ window.mathadata.tracer_points = function(id, params) {
                 backgroundColor: colors[index],
                 borderColor: 'black',
                 pointStyle: 'circle',
-                pointRadius: 12,
-                borderWidth: 2,
+                pointRadius: 6,
+                borderWidth: 1,
                 order: 0,
             });
         });
@@ -874,6 +642,11 @@ window.mathadata.tracer_points = function(id, params) {
             },
             aspectRatio: 1,
             maintainAspectRatio: true,
+            interaction: {
+                mode: 'nearest',
+                axis: 'xy',
+                intersect: false
+            },
             plugins: {
                 legend: {
                     display: true,
@@ -887,7 +660,7 @@ window.mathadata.tracer_points = function(id, params) {
                     }
                 },
                 tooltip: {
-                    enabled: true,
+                    enabled: !segmentHover,
                     position: 'nearest',
                     callbacks: {
                         label: function(context) {
@@ -898,6 +671,9 @@ window.mathadata.tracer_points = function(id, params) {
                             } else if (dataset.isAdditionalPoint) {
                                 return `Point ${point.label} \n Quelle est ma classe ?`;
                             } else {
+                                if (hideClasses) {
+                                    return
+                                }
                                 if (hideCentroids) {
                                     return `Image de: ${point.classLabel}`;
                                 }
@@ -911,36 +687,115 @@ window.mathadata.tracer_points = function(id, params) {
             },
             onHover: (event, chartElements) => {
                 if (segmentHover) {
-                    if (!chartElements || chartElements.length === 0 ) return;
-                    
                     const chart = event.chart;
-                    const ctx = chart.ctx;
-                    const activePoint = chartElements[0];
-                    const {x, y} = activePoint.element;
-                    
-                    chart.draw();
-                    
-                    ctx.save();
-                    centroids.forEach((centroid, idx) => {
-                        ctx.beginPath();
-                        ctx.setLineDash([5, 5]);
-                        ctx.moveTo(x, y);
-                        ctx.lineTo(
-                            chart.scales.x.getPixelForValue(centroid.x),
-                            chart.scales.y.getPixelForValue(centroid.y)
-                        );
-                        ctx.strokeStyle = centroidColors[idx];
-                        ctx.lineWidth = 1.5;
-                        ctx.stroke();
-                    });
-                    ctx.restore();
+
+                    // Initialize trackers on the chart object if they don't exist
+                    if (typeof chart.lastHoveredElementKey === 'undefined') {
+                        chart.lastHoveredElementKey = null;
+                    }
+                    if (typeof chart.customHoverDetails === 'undefined') {
+                        chart.customHoverDetails = null;
+                    }
+
+                    if (chartElements && chartElements.length > 0) {
+                        const activeElement = chartElements[0];
+                        const datasetIndex = activeElement.datasetIndex;
+                        const index = activeElement.index;
+                        const currentHoveredElementKey = `${datasetIndex}-${index}`;
+
+                        if (chart.lastHoveredElementKey !== currentHoveredElementKey) {
+                            chart.lastHoveredElementKey = currentHoveredElementKey;
+
+                            const hoveredElement = activeElement.element;
+                            const hoveredPixelX = hoveredElement.x;
+                            const hoveredPixelY = hoveredElement.y;
+                            const dataHoveredX = chart.scales.x.getValueForPixel(hoveredPixelX);
+                            const dataHoveredY = chart.scales.y.getValueForPixel(hoveredPixelY);
+                            
+                            // Store details for afterDraw to use
+                            chart.customHoverDetails = {
+                                hoveredPixelX,
+                                hoveredPixelY,
+                                dataHoveredX,
+                                dataHoveredY,
+                            };
+                            chart.draw(); // Trigger redraw for afterDraw
+                        }
+                        // If key is the same, do nothing, afterDraw will use existing details
+                    } else {
+                        // No element is being hovered
+                        if (chart.lastHoveredElementKey !== null) {
+                            chart.lastHoveredElementKey = null;
+                            chart.customHoverDetails = null; // Clear details
+                            chart.draw(); // Trigger redraw for afterDraw to clear segments
+                        }
+                    }
                 }
             },
         },
         plugins: [{
             afterDraw: function(chart) {
                 const ctx = chart.ctx;
+
+                // Part 1: Draw segments and distances if customHoverDetails exists
+                if (chart.customHoverDetails && segmentHover) { // check segmentHover again
+                    const { 
+                        hoveredPixelX, hoveredPixelY, 
+                        dataHoveredX, dataHoveredY, 
+                    } = chart.customHoverDetails;
+
+                    ctx.save();
+                    centroids.forEach((centroid, idx) => {
+                        const centroidPixelX = chart.scales.x.getPixelForValue(centroid.x);
+                        const centroidPixelY = chart.scales.y.getPixelForValue(centroid.y);
+
+                        // Draw segment
+                        ctx.beginPath();
+                        ctx.setLineDash([5, 5]);
+                        ctx.moveTo(hoveredPixelX, hoveredPixelY);
+                        ctx.lineTo(centroidPixelX, centroidPixelY);
+                        ctx.strokeStyle = colors[idx];
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+
+                        // Calculate distance
+                        const distance = Math.sqrt(Math.pow(dataHoveredX - centroid.x, 2) + Math.pow(dataHoveredY - centroid.y, 2));
+                        const distanceText = distance.toFixed(2);
+
+                        // Calculate midpoint for text
+                        const midSegmentX = (hoveredPixelX + centroidPixelX) / 2;
+                        const midSegmentY = (hoveredPixelY + centroidPixelY) / 2;
+                        
+                        ctx.font = '12px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle'; // Align text vertically to center for background
+
+                        // Text dimensions for background
+                        const textMetrics = ctx.measureText(distanceText);
+                        const textWidth = textMetrics.width;
+                        const textHeight = parseInt(ctx.font, 10); // Approximate height
+                        const padding = 3;
+
+                        let textPosX = midSegmentX + (idx % 2 === 0 ? 20 : -20); // Adjusted base offset X
+                        let textPosY = midSegmentY + (idx % 2 === 0 ? -10 : 10); // Adjusted base offset Y
+
+                        // Draw background for text
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                        ctx.fillRect(
+                            textPosX - textWidth / 2 - padding,
+                            textPosY - textHeight / 2 - padding,
+                            textWidth + padding * 2,
+                            textHeight + padding * 2
+                        );
+                        
+                        // Draw text
+                        ctx.fillStyle = colors[idx];
+                        ctx.fillText(distanceText, textPosX, textPosY);
+                    });
+                    ctx.restore();
+                }
                 
+                // Part 2: Existing afterDraw logic for labels A/B/C and centroid labels
                 // Dessiner les labels A/B/C
                 chart.data.datasets.forEach(dataset => {
                     if (!dataset.isAdditionalPoint) return;
@@ -954,7 +809,7 @@ window.mathadata.tracer_points = function(id, params) {
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'bottom';
                     ctx.fillStyle = 'black';
-                    ctx.fillText(label, point.x, point.y - 8);
+                    ctx.fillText(label, point.x, point.y - 10); // Increased Y offset from -8
                     ctx.restore();
                 });
                 
@@ -971,7 +826,7 @@ window.mathadata.tracer_points = function(id, params) {
                             ctx.fillStyle = 'black';
                             ctx.textAlign = 'left';
                             ctx.textBaseline = 'middle';
-                            ctx.fillText(`point moyen de ${index === 0 ? '2' : '7'}`, element.x + 15, element.y);
+                            ctx.fillText(`point moyen de ${index === 0 ? '2' : '7'}`, element.x + 18, element.y - 3); // Adjusted X and Y offset
                             ctx.restore();
                         }
                     });
@@ -979,6 +834,16 @@ window.mathadata.tracer_points = function(id, params) {
             }
         }]
     };
+
+    if (hover) {
+        chartConfig.options.plugins.tooltip = {
+            enabled: false,
+            position: 'nearest',
+            external: (context) => {
+                mathadata.dataTooltip(context, id)
+            }
+        }
+    }
 
     window.mathadata.create_chart(id, chartConfig);
 };
@@ -1120,7 +985,7 @@ window.mathadata.tracer_points_2 = function(id, params) {
     const max = Math.ceil(Math.max(...allData, -1) + 1);
     const min = Math.floor(Math.min(...allData, 1) - 1);
 
-    const colors = mathadata.classColorCodes.map(c => `rgba(${c}, 0.5)`);
+    const colors = mathadata.classColorCodes.map(c => `rgba(${c}, 1)`);
 
     const datasets = points.map((set, index) => {
         return {
@@ -1129,7 +994,7 @@ window.mathadata.tracer_points_2 = function(id, params) {
             backgroundColor: colors[index],
             borderColor: colors[index],
             pointStyle: 'cross',
-            pointRadius: 10,
+            pointRadius: 8,
             order: 1,
         };
     });
@@ -1138,10 +1003,10 @@ window.mathadata.tracer_points_2 = function(id, params) {
         datasets.push({
             label: 'Point moyen de la classe 2',
             data: [{ x: centroide2[0], y: centroide2[1] }],
-            backgroundColor: `rgb(${mathadata.centroidColorCodes[0]})`,
-            borderColor: `rgb(${mathadata.centroidColorCodes[0]})`,
-            pointStyle: 'crossRot',
-            pointRadius: 15,
+            backgroundColor: colors[0],
+            borderColor: 'black',
+            pointStyle: 'circle',
+            pointRadius: 6,
             order: 0,
             dragData: false, // Disable dragging for centroids
         });
@@ -1150,10 +1015,10 @@ window.mathadata.tracer_points_2 = function(id, params) {
         datasets.push({
             label: 'Point moyen de la classe 7',
             data: [{ x: centroide7[0], y: centroide7[1] }],
-            backgroundColor: `rgb(${mathadata.centroidColorCodes[1]})`,
-            borderColor: `rgb(${mathadata.centroidColorCodes[1]})`,
-            pointStyle: 'crossRot',
-            pointRadius: 15,
+            backgroundColor: colors[1],
+            borderColor: 'black',
+            pointStyle: 'circle',
+            pointRadius: 6,
             order: 0,
             dragData: false, // Disable dragging for centroids
         });
