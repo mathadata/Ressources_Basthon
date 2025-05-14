@@ -40,7 +40,7 @@ def tracer_2_points():
         'y2': c_train[1][1],
     }
     
-    run_js(f"setTimeout(() => window.mathadata.tracer_2_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 100)")
+    run_js(f"setTimeout(() => window.mathadata.tracer_2_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
     df = pd.DataFrame()
     labels = ['Point A :', 'Point B :']
@@ -63,7 +63,7 @@ def tracer_200_points(nb=200):
         'hideClasses': True,
     }
     
-    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 100)")
+    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
 def tracer_10_points_droite():
     data = common.challenge.d_train[20:30]
@@ -83,7 +83,7 @@ def tracer_10_points_droite():
         'hover': True
     }
     
-    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 100)")
+    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
 
 def tracer_points_droite(id=None, input="range", carac=None, initial_hidden=False, save=True):
@@ -121,7 +121,7 @@ def tracer_points_droite(id=None, input="range", carac=None, initial_hidden=Fals
             'save': save
         }
     
-        run_js(f"setTimeout(() => window.mathadata.tracer_points_droite('{id}', '{json.dumps(params, cls=NpEncoder)}'), 100)")
+        run_js(f"setTimeout(() => window.mathadata.tracer_points_droite('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
 
 def create_graph(figsize=(figw_full, figw_full)):
@@ -823,7 +823,7 @@ def check_coordinates(coords, errors):
         errors.append("Les coordonnées doivent être écrites entre parenthèses séparés par une virgule. Exemple : (3, 5)")
         return False
     if len(coords) != 2:
-        errors.append("Les coordonnées doivent être composées de deux valeurs séparés par une virgule. Pour les nombres à virgule, utilisez un point '.' et non une virgule")
+        errors.append("Les coordonnées doivent être composées de deux valeurs séparés par une virgule. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
     if coords[0] is Ellipsis or coords[1] is Ellipsis:
         errors.append("Tu n'as pas remplacé les ...")

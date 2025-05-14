@@ -347,7 +347,7 @@ def affichage_2_geo(display_k=False):
     deux_caracteristiques = common.challenge.deux_caracteristiques
 
     images = np.array([common.challenge.d2, common.challenge.d])
-    fig, ax = plt.subplots(1, len(images), figsize=(figw_full, figw_full / 2))
+    fig, ax = plt.subplots(1, len(images), figsize=(figw_full * 0.8, figw_full * 0.8 / 2))
     c_train = np.array([np.array(deux_caracteristiques(d)) for d in images])
     
     for i in range(len(images)):
@@ -896,7 +896,7 @@ validation_question_pixel = MathadataValidateVariables({
         ]
     }
 })
-validation_question_pixel_noir = MathadataValidate(success="Bravo, le pixel est devenu noir", function_validation=validate_pixel_noir)
+validation_question_pixel_noir = MathadataValidate(success="Bravo, le pixel est devenu noir.", function_validation=validate_pixel_noir)
 validation_question_moyenne = MathadataValidateVariables({'moyenne_zone_4pixels': np.mean(d[14:16,15:17])}, success="Bravo, la moyenne vaut en effet (142 + 154 + 0 + 0) / 4 = 74")
 
 # Geometrie
@@ -989,3 +989,17 @@ validation_question_hist_3 = MathadataValidateVariables({
         ]
     },
 })
+
+
+
+
+#Stockage valeur zones custom proposés
+A_2 = (7, 2)       # <- coordonnées du point A1
+B_2 = (9, 25)     # <- coordonnées du point B1
+A_1 = (14, 2)     # <- coordonnées du point A2
+B_1 = (23, 10)     # <- coordonnées du point B2
+
+
+def affichage_zones_custom_2_cara(A1, B1, A2, B2):
+    common.challenge.affichage_2_cara(A1, B1, A2, B2, True)
+    
