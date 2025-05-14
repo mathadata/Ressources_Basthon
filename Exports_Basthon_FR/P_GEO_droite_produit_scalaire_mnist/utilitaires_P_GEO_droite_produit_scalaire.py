@@ -1060,7 +1060,7 @@ def calculer_score_droite():
         if score < 0.08:
             validation_score_droite()
 
-    calculer_score(algorithme, method="2 moyennes", parameters=f"a={g_a}, b={g_b}, c={g_c}", cb=cb) 
+    calculer_score(algorithme, method="2 moyennes", parameters=f"a={g_a}, b={g_b}, c={g_c}", cb=cb, banque=False) 
 
 def calculer_score_droite_normal():
     global g_a, g_b, g_c
