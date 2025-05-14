@@ -22,17 +22,6 @@ subdirectories = [os.path.join(base_directory, d) for d in os.listdir(base_direc
 # Adding all subdirectories to the Python path
 sys.path.extend(subdirectories)
 
-# Import des strings pour lire l'export dans jupyter
-try:
-    # For dev environment
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    spec = importlib.util.spec_from_file_location("strings", os.path.join(current_dir, "strings.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    globals().update(vars(module))
-except: 
-    pass
-
 ### --- Import du validation_kernel ---
 # Ne marche que si fourni et si va avec le notebook en version séquencé. Sinon, ignorer :
 sequence = False
@@ -48,6 +37,19 @@ except ModuleNotFoundError:
         sequence = True
     except ModuleNotFoundError:
         pass
+
+# Import des strings pour lire l'export dans jupyter
+try:
+    # For dev environment
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    spec = importlib.util.spec_from_file_location("strings", os.path.join(current_dir, "strings.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    globals().update(vars(module))
+except Exception as e: 
+    if not sequence:
+        print(f"Error loading strings: {e}")
+    pass
 
 ## Pour valider l'exécution d'une cellule de code, dans le cas du notebook sequencé :
 if sequence:
@@ -68,6 +70,14 @@ class Challenge:
         self.classes = [0,1]
         self.r_petite_caracteristique = 0
         self.r_grande_caracteristique = 1
+        self.strings = {
+            'dataname': "donnée",
+            'dataname_plural': "données",
+            'feminin': True,
+            'contraction': False,
+            'classes': ["classe1", "classe2"],
+            'train_size': "1000"
+        }
 
     def affichage_banque(self, carac=None, mode=1, showPredictions=False, estimations=None):
         id = uuid.uuid4().hex
@@ -95,7 +105,7 @@ class Challenge:
             'mode': mode
         }
 
-        run_js(f"setTimeout(() => window.mathadata.setup_test_bank('{id}', '{json.dumps(params, cls=NpEncoder)}'), 100)")
+        run_js(f"setTimeout(() => window.mathadata.setup_test_bank('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
     
     def get_data(self, index=None, dataClass=None):
         d = None
@@ -120,7 +130,7 @@ class Challenge:
         if d is None:
             d = self.d
             
-        run_js(f"setTimeout(() => window.mathadata.affichage('{id}', {json.dumps(d, cls=NpEncoder)}), 100)")
+        run_js(f"setTimeout(() => window.mathadata.affichage('{id}', {json.dumps(d, cls=NpEncoder)}), 500)")
 
 def init_challenge(challenge_instance):
     global challenge
@@ -130,6 +140,9 @@ def init_challenge(challenge_instance):
 
     run_js(f"""
         window.mathadata.classes = {challenge.classes};
+        window.mathadata.challenge = window.mathadata.challenge || {{}};
+        window.mathadata.challenge.classes = {challenge.classes};
+        window.mathadata.challenge.strings = JSON.parse('{json.dumps(challenge.strings, cls=NpEncoder)}');
     """)
 
     if sequence:
@@ -268,7 +281,11 @@ analytics_endpoint = mathadata_endpoint + "/notebooks"
 
 ### Utilitaires requêtes HTTP ###
 
-mathadata_url = "https://mathadata.fr"
+if sequence:
+    mathadata_url = "https://mathadata.fr"
+else:
+    mathadata_url = "https://dev.mathadata.fr"
+
 files_url = mathadata_url + "/assets/fichiers_notebooks/"
 
 # Send HTTP request. To send body as form data use parameter files (dict of key, StringIO value) and fields (dict of key, value)
@@ -435,7 +452,7 @@ def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=
         score = np.mean(r_prediction_train != challenge.r_train)
         set_score(score)
 
-        print("Voici les prédictions r^ de ton algorithme pour chaque image")
+        print(f"Voici les prédictions r^ de ton algorithme pour chaque {challenge.strings['dataname']}")
         affichage_banque(carac=caracteristique, showPredictions=True, estimations=r_prediction_train)
         
         if cb is not None:
@@ -445,6 +462,23 @@ def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=
         print_error("Il y a eu un problème lors du calcul de l'erreur. Vérifie ta réponse.")
         if debug:
             raise(e)
+        
+def calculer_score_2(algorithme, method=None, parameters=None, cb=None, a=None, b=None, caracteristique=None):
+    try:
+        print("Calcul du pourcentage d'erreur en cours...")
+
+        r_prediction_train = get_estimations(challenge.d_train, algorithme=algorithme)
+        score = np.mean(r_prediction_train != challenge.r_train)
+        set_score(score)
+
+        
+        if cb is not None:
+            cb(score)
+
+    except Exception as e:
+        print_error("Il y a eu un problème lors du calcul de l'erreur. Vérifie ta réponse.")
+        if debug:
+            raise(e)        
 
 # Fonctions trame notebook générique
 
@@ -491,12 +525,9 @@ def calculer_score_custom():
             return r_grande_caracteristique
         
     def cb(score):
-        if score < 0.1:
+        res = challenge.cb_custom_score(score)
+        if res:
             validation_custom()
-        elif score < 0.3:
-            print("Bravo, ta zone choisie pour calculer la moyenne est meilleure que faire la moyenne de toute l'image. Améliore encore ta zone pour faire moins de 10% d'erreur et passer à la suite.")
-        else:
-            print_error("Modifie ta zone pour faire moins de 10% d'erreur et passer à la suite. Cherche une zone où l'image est différente si c'est un 2 ou un 7")
     
     calculer_score(algorithme, method="carac custom", parameters=f"t={t}", caracteristique=challenge.caracteristique_custom, cb=cb)
 
@@ -545,7 +576,7 @@ def tracer_erreur(id=None, func_carac=None):
             <canvas id="{id}"/>
         '''))
 
-    run_js(f'setTimeout(() => window.mathadata.tracer_erreur("{id}", {t_values.tolist()}, {scores_array.tolist()}), 100)')
+    run_js(f'setTimeout(() => window.mathadata.tracer_erreur("{id}", {t_values.tolist()}, {scores_array.tolist()}), 500)')
 
 def update_graph_erreur(id="graph_custom", func_carac=None):
     if func_carac is None:
@@ -571,7 +602,7 @@ def exercice_droite_carac():
         'labels': [0 if r == challenge.classes[0] else 1 for r in challenge.r_train[0:size]],
     }
     
-    run_js(f"setTimeout(() => window.mathadata.exercice_droite_carac('{id}', '{json.dumps(params, cls=NpEncoder)}'), 100)")
+    run_js(f"setTimeout(() => window.mathadata.exercice_droite_carac('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
 def calculer_score_seuil_optimise():
     if not validation_question_seuil_optimise():
@@ -827,6 +858,115 @@ styles = """
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
     text-align: center;
 }
+
+#sos-box {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.sos-button {
+    background-color: #ff4444;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s, background-color 0.2s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.sos-button:hover {
+    transform: scale(1.1);
+    background-color: #ff6666;
+}
+
+.sos-details {
+    background-color: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    max-width: 300px;
+    display: none;
+}
+
+.sos-details.visible {
+    display: block;
+}
+
+.sos-details h3 {
+    margin-top: 0;
+    color: #ff4444;
+}
+
+.sos-details p {
+    margin: 10px 0;
+    line-height: 1.4;
+}
+
+.sos-details code {
+    background-color: #f5f5f5;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-family: monospace;
+}
+
+.sos-details .shortcut {
+    background-color: #e0e0e0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-weight: bold;
+}
+
+.tip {
+    background-color: lightyellow; /* Light yellow background */
+    padding: 15px; /* Increased padding */
+    border-radius: 5px;
+    border-left: 5px solid #ffcc00; /* Yellow-orange left border */
+    margin-bottom: 10px; /* Margin at the bottom */
+}
+
+.mcq-question {
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+.mcq-answers {
+    margin-bottom: 15px;
+}
+.mcq-choice {
+    margin-bottom: 5px;
+}
+.mcq-choice label {
+    margin-left: 5px;
+}
+.mcq-validate-button {
+    padding: 8px 15px;
+    background-color: #4CAF50; /* Green */
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 10px;
+}
+.mcq-validate-button:hover {
+    background-color: #45a049;
+}
+.mcq-message {
+    font-weight: bold;
+    padding: 5px;
+    border-radius: 3px;
+}
 """
 
 run_js(f"""
@@ -852,6 +992,65 @@ run_js("""
 
     let i_exercice_droite_carac = 0
     const mathadata = {
+
+        data(article, params) {
+            const { plural, uppercase } = params || {};
+            let res = "";
+            if (article === "de") {
+                if (window.mathadata.challenge.strings.contraction) {
+                    res += "d'";
+                } else {
+                    res += "de ";
+                }
+            } else if (article === "un") {
+                if (window.mathadata.challenge.strings.feminin) {
+                    res += "une ";
+                } else {
+                    res += "un ";
+                }
+            } else if (article === "du") {
+                if (window.mathadata.challenge.strings.contraction) {
+                    res += "de l'";
+                } else if (window.mathadata.challenge.strings.feminin) {
+                    res += "de la ";
+                } else {
+                    res += "du ";
+                }
+            } else if (article === "le") {
+                if (window.mathadata.challenge.strings.contraction) {
+                    res += "l'";
+                } else if (window.mathadata.challenge.strings.feminin) {
+                    res += "la ";
+                } else {
+                    res += "le ";
+                }
+            }
+            
+            if (plural) {
+                res += window.mathadata.challenge.strings.dataname_plural;
+            } else {
+                res += window.mathadata.challenge.strings.dataname;
+            }
+
+            if (uppercase) {
+                res = res.charAt(0).toUpperCase() + res.slice(1);
+            }
+            
+            return res;
+        },
+
+        ac_fem(fem, mas) {
+            if (window.mathadata.challenge.strings.feminin) {
+                return fem;
+            } else {
+                return mas;
+            }
+        },
+
+        e_fem() {
+            return window.mathadata.ac_fem("e", "");
+        },
+
         run_python(python, onResult, onStream) {
             console.log('Execute python code', python)
             const onPythonResult = (data) => {
@@ -933,6 +1132,12 @@ run_js("""
                 }
             }
 
+            if (config.options.plugins.dragData === undefined) {
+                config.options.plugins.dragData = {
+                   dragY: false, 
+                }
+            }
+
             if (window.mathadata.charts[div_id] !== undefined) {
                 console.log('update chart')
                 Object.assign(window.mathadata.charts[div_id], config)
@@ -946,6 +1151,7 @@ run_js("""
                 wrapper.style.display = 'flex';
                 wrapper.style.justifyContent = 'center';
                 wrapper.style.alignItems = 'center';
+                wrapper.style.backgroundColor = 'white';
 
                 // move inside wrapper
                 const canvas = document.getElementById(div_id)
@@ -956,6 +1162,8 @@ run_js("""
                 const ctx = canvas.getContext('2d');
                 window.mathadata.charts[div_id] = new Chart(ctx, config);
             }
+
+            console.log(Object.keys(window.mathadata.charts))
         },
 
         create_exercise(div_id, config) {
@@ -1108,7 +1316,7 @@ run_js("""
             } else {
                 caracColumnDefs = [{headerName: 'Caractéristique x', field: 'x', hide: !display_carac}]
                 if (display_carac) {
-                    getCaracData = () => ({x: Math.round(c_train[index] * 100) / 100})
+                    getCaracData = (index) => ({x: Math.round(c_train[index] * 100) / 100})
                 } else {
                     getCaracData = () => ({})
                 }
@@ -1180,7 +1388,7 @@ run_js("""
             
             agGrid.createGrid(bank, config)
             
-            setTimeout(() => select(0), 100)
+            setTimeout(() => select(0), 500)
         },
 
         tracer_erreur(id, t_values, scores_array) {
@@ -1248,7 +1456,10 @@ run_js("""
                     return undefined
                 }
                 
-                return `Image n°${context[0].dataIndex + 1}`;    
+                let dataname = window.mathadata.challenge.strings.dataname
+                dataname = dataname.charAt(0).toUpperCase() + dataname.slice(1)
+                
+                return `${dataname} n°${context[0].dataIndex + 1}`;    
             }
 
             function setStatusMessage(msg) {
@@ -1257,7 +1468,7 @@ run_js("""
             }
 
             if (i_exercice_droite_carac < c_train.length) {
-                setStatusMessage(`Cliquez sur la droite au bon endroit pour placer l\'image n°${i_exercice_droite_carac + 1}.`)
+                setStatusMessage(`Cliquez sur la droite au bon endroit pour placer ${mathadata.data('le')} n°${i_exercice_droite_carac + 1}.`)
                 chart.options.onClick = (e) => {
                     const canvasPosition = Chart.helpers.getRelativePosition(e, chart);
                     const dataX = chart.scales.x.getValueForPixel(canvasPosition.x);
@@ -1272,11 +1483,11 @@ run_js("""
                             localStorage.setItem('exercice_droite_carac_ok', 'true')
                             window.mathadata.run_python(`set_exercice_droite_carac_ok()`)
                         } else {
-                            setStatusMessage(`Bravo, vous pouvez placer l'image suivante (n°${i_exercice_droite_carac + 1}) !`)
+                            setStatusMessage(`Bravo, vous pouvez placer ${mathadata.data('le')} suivant${mathadata.e_fem()} (n°${i_exercice_droite_carac + 1}) !`)
                         }
                         chart.update()
                     } else {
-                        setStatusMessage(`L'image ne va pas ici sur la droite. Tu as placé un point à l'abscisse ${dataX.toFixed(2)} alors que l'image a une caractéristique x = ${c_train[i_exercice_droite_carac].toFixed(2)}`)
+                        setStatusMessage(`${mathadata.data('le', {uppercase: true})} ne va pas ici sur la droite. Tu as placé un point à l'abscisse ${dataX.toFixed(2)} alors que ${mathadata.data('le')} a une caractéristique x = ${c_train[i_exercice_droite_carac].toFixed(2)}`)
                     }
                 }
             } else {
@@ -1296,14 +1507,14 @@ run_js("""
                 data: {
                     datasets: [
                     {
-                        label: 'Images de 2',
+                        label: `${mathadata.data('', {plural: true, uppercase: true})} de ${mathadata.challenge.classes[0]}`,
                         data: [],
                         pointRadius: 4,
                         pointHoverRadius: 8,
                         pointBackgroundColor: window.mathadata.classColors[0],
                     },
                     {
-                        label: 'Images de 7',
+                        label: `${mathadata.data('', {plural: true, uppercase: true})} de ${mathadata.challenge.classes[1]}`,
                         data: [],
                         pointRadius: 4,
                         pointHoverRadius: 8,
@@ -1376,11 +1587,12 @@ run_js("""
             mathadata.create_chart(id, config)
         },
         
-        getOrCreateTooltip(chart) {
+        getOrCreateTooltip(chart, id) {
             let tooltipEl = chart.canvas.parentNode.querySelector('div');
 
             if (!tooltipEl) {
                 tooltipEl = document.createElement('div');
+                tooltipEl.id = `${id}-tooltip`;
                 tooltipEl.style.background = 'rgba(0, 0, 0, 0.7)';
                 tooltipEl.style.borderRadius = '3px';
                 tooltipEl.style.color = 'white';
@@ -1393,6 +1605,12 @@ run_js("""
                 tooltipEl.style.flexDirection = 'column';
                 tooltipEl.style.gap = '5px';
 
+                tooltipEl.innerHTML = `
+                    <div id="${id}-tooltip-infos"></div>
+                    <div id="${id}-tooltip-loading" style="width: 100%; text-align: center;">Chargement ${mathadata.data('du')}...</div>
+                    <div id="${id}-tooltip-data" style="width: 100%;"></div>
+                `
+
                 chart.canvas.parentNode.appendChild(tooltipEl);
             }
 
@@ -1402,12 +1620,12 @@ run_js("""
         dataTooltip(context, id) {
             // Tooltip Element
             const {chart, tooltip} = context;
-            if (tooltip.dataPoints.length == 0) {
+            if (!tooltip?.dataPoints?.length) {
                 return;
             }
             
             const {dataIndex, datasetIndex} = tooltip.dataPoints[0];
-            const tooltipEl = mathadata.getOrCreateTooltip(chart);
+            const tooltipEl = mathadata.getOrCreateTooltip(chart, id);
 
             if (datasetIndex >= 2) {
                 tooltipEl.style.opacity = 0;
@@ -1429,14 +1647,15 @@ run_js("""
             if (tooltip.body) {
                 const titleLines = tooltip.title || [];
                 const bodyLines = tooltip.body.map(b => b.lines);
+                const tooltipInfos = document.getElementById(`${id}-tooltip-infos`);
 
-                tooltipEl.innerHTML = '';
+                tooltipInfos.innerHTML = '';
 
                 titleLines.forEach(title => {
                     const span = document.createElement('span');
                     span.innerText = title;
                     span.style.fontWeight = 'bold';
-                    tooltipEl.appendChild(span);
+                    tooltipInfos.appendChild(span);
                 });
 
                 bodyLines.forEach((body, i) => {
@@ -1456,22 +1675,24 @@ run_js("""
 
                     div.appendChild(span);
                     div.appendChild(text);
-                    tooltipEl.appendChild(div);
+                    tooltipInfos.appendChild(div);
                 });
 
-                const dataDiv = document.createElement('div');
-                dataDiv.style.width = '100%';
-                dataDiv.style.aspectRatio = '1';
-                dataDiv.style.textAlign = 'center';
+                const loadingDiv = document.getElementById(`${id}-tooltip-loading`);
+                const dataDiv = document.getElementById(`${id}-tooltip-data`);
+
+                loadingDiv.style.visibility = 'visible';
+                dataDiv.style.visibility = 'hidden';
                 
-                dataDiv.innerHTML = "Chargement de l'image...";
-                dataDiv.id = `${id}-tooltip-data`;
+                let dataClass = mathadata.challenge.classes[datasetIndex]
+                if (typeof dataClass === 'string') {
+                    dataClass = `'${dataClass}'`
+                }
                 
-                tooltipEl.appendChild(dataDiv);
-            
-                const dataClass = datasetIndex === 0 ? 2 : 7;
                 window.mathadata.run_python(`get_data(index=${dataIndex}, dataClass=${dataClass})`, (data) => {
                     window.mathadata.affichage(`${id}-tooltip-data`, data);
+                    loadingDiv.style.visibility = 'hidden';
+                    dataDiv.style.visibility = 'visible';
                 });
             }
 
@@ -1523,6 +1744,10 @@ run_js("""
         window.mathadata.run_python(`set_exercice_droite_carac_ok()`)
         i_exercice_droite_carac = 10
     }
+""")
+
+run_js(f"""
+    window.mathadata.files_url = '{files_url}';
 """)
 
 def create_sidebox():
@@ -1594,8 +1819,50 @@ def create_sidebox():
     
     run_js(js_code)
 
+def create_sos_box():
+    js_code = f"""
+    let sosBox = document.getElementById('sos-box');
+    if (sosBox !== null) {{
+        sosBox.remove();
+    }}
+    
+    sosBox = document.createElement('div');
+    sosBox.id = 'sos-box';
+    
+    sosBox.innerHTML = `
+        <div class="sos-details">
+            <h3>Besoin d'aide ?</h3>
+            <p>Si votre notebook ne fonctionne pas correctement (un affichage semble bloqué, il ne se passe rien quand vous écécutez une cellule, etc.)</p>
+            <ol>
+                <li>Cliquez sur le boutton <img src="{files_url}/rerun_button.png" alt="restart" style="height: 2.5rem; aspect-ratio: auto;"/> en haut dans la barre d'outils</li>
+                <li>Confirmez en cliquant sur <img src="{files_url}/relancer_executer_confirmation.png" alt="Relancer et exécuter toutes les cellules" style="height: 2.5rem; aspect-ratio: auto;"/></li>
+            </ol>
+        </div>
+        <button class="sos-button" title="Besoin d'aide ?">SOS ?<br/>(Cliquer ici)</button>
+    `;
+
+    const button = sosBox.querySelector('.sos-button');
+    const details = sosBox.querySelector('.sos-details');
+    
+    button.addEventListener('click', () => {{
+        details.classList.toggle('visible');
+    }});
+
+    // Fermer les détails si on clique en dehors
+    document.addEventListener('click', (event) => {{
+        if (!sosBox.contains(event.target)) {{
+            details.classList.remove('visible');
+        }}
+    }});
+
+    document.body.appendChild(sosBox);
+    """
+    
+    run_js(js_code)
+
 # Exécuté à l'import du notebook
 create_sidebox()
+create_sos_box()
 
 def update_score():
     if highscore is None and session_score is None:
@@ -1690,14 +1957,26 @@ class _MathadataValidate():
                     continue
 
                 if 'tip' in tip:
-                    print(tip['tip'])
+                    display(HTML(f'''
+                        <div class="tip">
+                            <p>💡 {tip['tip']}</p>
+                        </div>
+                    '''))
 
                 if 'print_solution' in tip and tip['print_solution'] == True:
-                    print("Voici la solution :")
-                    self.print_variables()
+                    display(HTML(f'''
+                        <div class="tip">
+                            <p>💡 Voici la solution :</p>
+                            {"<br/>".join(self.get_variables_str())}
+                        </div>
+                    '''))
                 
                 if 'validate' in tip and tip['validate'] == True:
-                    print("Tu peux passer cette question et continuer")
+                    display(HTML(f'''
+                        <div class="tip">
+                            <p>🔓 Tu peux passer cette question et continuer</p>
+                        </div>
+                    '''))
                     res = True
                 
                 break
@@ -1738,7 +2017,7 @@ class _MathadataValidate():
         if self.child_on_success is not None:
             self.child_on_success(answers)
 
-    def print_variables(self):
+    def get_variables_str(self):
         pass
 
     def trial_count(self):
@@ -1858,7 +2137,8 @@ class MathadataValidateVariables(MathadataValidate):
 
         return len(errors) == 0
     
-    def print_variables(self):
+    def get_variables_str(self):
+        res = []
         for name in self.name_and_values:
             expected = self.name_and_values[name]
             if expected is None:
@@ -1881,7 +2161,8 @@ class MathadataValidateVariables(MathadataValidate):
                     raise ValueError(f"Malformed validation class")
             else:
                 solution = expected
-            print(f"{name} : {solution}")
+            res.append(f"{name} : {solution}")
+        return res
 
 
 class MathadataValidateFunction(MathadataValidate):
@@ -1969,11 +2250,11 @@ class ValidateScoreThresold(MathadataValidate):
         e_train_10 = get_variable('erreur_10')
         nb_errors = np.count_nonzero(np.array([algorithme(d) for d in challenge.d_train[0:10]]) != challenge.r_train[0:10]) 
         if nb_errors * 10 == e_train_10:
-            print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 premières images, soit {e_train_10}% d'erreur")
+            print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {e_train_10}% d'erreur")
             return True
         else:
             if e_train_10 == nb_errors:
-                errors.append("Ce n'est pas la bonne valeur. Pour passer du nombre d'erreurs sur 10 images au pourcentage, tu dois multiplier par 10 !")
+                errors.append(f"Ce n'est pas la bonne valeur. Pour passer du nombre d'erreurs sur 10 {challenge.strings['dataname_plural']} au pourcentage, tu dois multiplier par 10 !")
             elif e_train_10 < 0 or e_train_10 > 100:
                 errors.append("Ce n'est pas la bonne valeur. Le pourcentage d'erreur doit être compris entre 0 et 100.")
             else:
@@ -2005,14 +2286,14 @@ def validation_func_score_fixed(errors, answers):
     
     if not isinstance(score_10, int):
         if score_10 == float(nb_errors*10):
-            print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 premières images, soit {score_10}% d'erreur")
+            print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {score_10}% d'erreur")
             return True
         else:
             errors.append("La variable erreur_10 doit être un entier. Attention, écrivez uniquement le nombre sans le %.")
             return False
 
     if score_10 == nb_errors * 10:
-        print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 premières images, soit {score_10}% d'erreur")
+        print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {score_10}% d'erreur")
         return True
     
     if score_10 == nb_errors:
@@ -2020,7 +2301,7 @@ def validation_func_score_fixed(errors, answers):
     elif score_10 < 0 or score_10 > 100:
         errors.append("Ce n'est pas la bonne valeur. Le pourcentage d'erreur doit être compris entre 0 et 100.")
     else:
-        errors.append("Ce n'est pas la bonne valeur. Note la réponse donnée par ton algorithme pour chaque image et compte le nombre de différences avec les bonnes réponses.")
+        errors.append(f"Ce n'est pas la bonne valeur. Note la réponse donnée par ton algorithme pour chaque {challenge.strings['dataname']} et compte le nombre de différences avec les bonnes réponses.")
     
     return False
 
@@ -2109,20 +2390,20 @@ validation_question_seuil_optimise = MathadataValidateVariables(
     success="Bravo, c'est la bonne réponse ! Ton seuil est maintenant optimal"
 )
 
-validation_execution_nombre_7 =MathadataValidateVariables({
-    'Nombre_7': {
-        'value': 4,  # WTF pourquoi np.sum(challenge.r_train == 7) ne marche pas ?????????
+validation_question_nombre = MathadataValidateVariables(get_names_and_values=lambda: {
+    f'nombre_{challenge.strings["classes"][1]}': {
+        'value': np.sum(challenge.r_train[0:10] == challenge.classes[1]),
         'errors': [
             {
-                'value':4, # WTF pourquoi np.sum(challenge.r_train == 7) ne marche pas ?????????
+                'value': np.sum(challenge.r_train[0:10] == challenge.classes[1]),
                 'else' :"As-tu bien regardé les 10 premières lignes du tableau ? "
             },
         ]
     }
     })
 
-validation_execution_nombre_total =MathadataValidateVariables(get_names_and_values=lambda: {
-    'Nombre_total_images': {
+validation_question_nombre_total =MathadataValidateVariables(get_names_and_values=lambda: {
+    f'nombre_total_{challenge.strings["dataname_plural"]}': {
         'value': len(challenge.d_train),
         'errors': [
             {'value':len(challenge.d_train),
@@ -2164,7 +2445,7 @@ validation_question_faineant = MathadataValidateVariables(get_names_and_values=l
             },
         ]
     }
-}, success="", on_success=lambda answers: print(f"Bravo, quelle que soit l'image l'algorithme fainéant répond toujours {challenge.classes[0]} !"))
+}, success="", on_success=lambda answers: print(f"Bravo, {ac_fem('quelle', 'quel')} que soit {data('le')} l'algorithme fainéant répond toujours {challenge.classes[0]} !"))
 
 validation_custom = MathadataValidate(success="Bravo, c'est un excellent taux d'erreur ! Tu peux passer à la suite pour essayer de faire encore mieux.")
 validation_code_eleve = MathadataValidate(success="Bravo, c'est un excellent taxu d'erreur ! Tu as fini ce notebook.")
@@ -2194,7 +2475,53 @@ def has_variable(name):
 def get_variable(name):
     return getattr(__main__, name)
 
+### --- Print utils with challenge variables ---
 
+def data(article, plural=False, uppercase=False):
+    res = ""
+    if article == "de":
+        if challenge.strings['contraction']:
+            res += "d'"
+        else:
+            res += "de "
+    elif article == "un":
+        if challenge.strings['feminin']:
+            res += "une "
+        else:
+            res += "un "
+    elif article == "du":
+        if challenge.strings['contraction']:
+            res += "de l'"
+        elif challenge.strings['feminin']:
+            res += "de la "
+        else:
+            res += "du "
+    elif article == "le":
+        if challenge.strings['contraction']:
+            res += "l'"
+        elif challenge.strings['feminin']:
+            res += "la "
+        else:
+            res += "le "
+    
+    if plural:
+        res += challenge.strings['dataname_plural']
+    else:
+        res += challenge.strings['dataname']
+
+    if uppercase:
+        res = res.capitalize()
+        
+    return res
+
+def ac_fem(fem, mas):
+    if challenge.strings['feminin']:
+        return fem
+    else:
+        return mas
+    
+def e_fem():
+    return ac_fem("e", "")
 
 ### ONGOING ###
 
@@ -2396,3 +2723,87 @@ def generer_exercices_droites():
 
 def pass_breakpoint():
     Validate()()
+
+run_js('''
+/*
+window.mathadata.observed_ids = {}
+window.mathadata.add_observer = function(id, func) {
+    window.mathadata.observed_ids[id] = func
+}
+
+const observer = new MutationObserver((mutationsList, observer) => {
+    for (const mutation of mutationsList) {
+        for (const node of mutation.addedNodes) {
+            if (node.nodeType === 1 && node.id && node.id in window.mathadata.observed_ids) {
+                console.log(`Element with ID #${node.id} appeared!`);
+                window.mathadata.observed_ids[node.id]()
+            }
+        }
+    }
+});
+
+observer.observe(document.body, { childList: true, subtree: true });
+*/
+
+window.mathadata.create_qcm = function(id, config) {
+    if (typeof config === 'string') {
+        config = JSON.parse(config);
+    }
+    
+    //mathadata.add_observer(id, () => {
+        const container = document.getElementById(id);
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.alignItems = 'center';
+        
+        container.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 20px; text-align: center;">${config.question}</div>
+            <div style="display: flex; gap: 25px; flex-wrap: wrap; justify-content: center;">
+                ${config.choices.map(choice => {
+                    return `
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <input type="radio" name="${id}-qcm" value="${choice}" id="${id}-qcm-${choice}">
+                            <label for="${id}-qcm-${choice}">${choice}</label>
+                        </div>
+                    `
+                }).join('\\n')}
+            </div>
+            <button class="${id}-qcm-validate-button" style="margin: auto; margin-top: 10px; margin-bottom: 10px; padding: 5px 10px; border-radius: 5px; background-color: #007bff; color: white; border: none; cursor: pointer;">Valider</button>
+            <div class="${id}-qcm-status-text" style="margin-top: 10px; margin-bottom: 10px; text-align: center;"></div>
+        `
+        
+        const validateButton = container.querySelector('.' + id + '-qcm-validate-button');
+        validateButton.addEventListener('click', () => {
+            const selectedValue = container.querySelector('input[name="' + id + '-qcm"]:checked')?.value;
+            const statusText = container.querySelector('.' + id + '-qcm-status-text');
+
+            if (selectedValue === undefined) {
+                statusText.textContent = "Veuillez sélectionner une réponse.";
+                statusText.style.color = 'red';
+            } else if (selectedValue === config.answer) {
+                statusText.textContent = 'Bonne réponse !';
+                statusText.style.color = 'green';
+                mathadata.pass_breakpoint();
+            } else {
+                statusText.textContent = "Ce n'est pas la bonne réponse. Essaie encore !";
+                statusText.style.color = 'red';
+            }
+        });
+    //});
+}
+''')
+
+def create_qcm(div_id, config):
+    display(HTML(f'''
+        <div id="{div_id}"></div>
+    '''))
+    run_js(f'''
+        setTimeout(() => window.mathadata.create_qcm('{div_id}', '{json.dumps(config)}'), 500)
+    ''')
+
+def qcm_test():
+    create_qcm('qcm', {
+        'question': 'Quel est le plus grand nombre ?',
+        'choices': ['1', '2', '3'],
+        'answer': '3',
+    })

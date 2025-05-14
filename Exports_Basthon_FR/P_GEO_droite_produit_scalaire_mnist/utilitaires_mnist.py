@@ -6,40 +6,43 @@
 import requests
 import os
 import numpy as np
-import sys
 import matplotlib.pyplot as plt
 import pickle
 from zipfile import ZipFile
 from io import BytesIO, StringIO
-from matplotlib.colors import LinearSegmentedColormap, ListedColormap
 import matplotlib.patches as mpatches
 #from scipy.spatial import Voronoi, voronoi_plot_2d
 import pandas as pd
-
-from utilitaires_common import *
-import utilitaires_common as common
-
 from IPython.display import display # Pour afficher des DataFrames avec display(df)
+import importlib.util
 
-# Pour afficher les dataframe pandas en HTML
-from IPython.display import display_html
-from itertools import chain, cycle
+strings = {
+    "dataname": "image",
+    "dataname_plural": "images",
+    "feminin": True,
+    "contraction": True,
+    "classes": [2, 7],
+    "train_size": "6 000"
+}
 
-# Import des strings pour lire l'export dans jupyter
-if not sequence:
-    # For dev environment
+try:
+    # For dev environment - Import des strings - A FAIRE AVANT IMPORT utilitaires_common
     current_dir = os.path.dirname(os.path.abspath(__file__))
     spec = importlib.util.spec_from_file_location("strings", os.path.join(current_dir, "strings.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     globals().update(vars(module))
+except Exception as e:
+    pass
+
+from utilitaires_common import *
+import utilitaires_common as common
+
 
 ### --- IMPORT DES DONNÉES ---
 # Téléchargement et extraction des inputs contenus dans l'archive zip
 
-print("Chargement de la base de donnée d'images en cours...")
-
-inputs_zip_url = "https://raw.githubusercontent.com/akimx98/challenge_data/main/input_mnist_2.zip"
+inputs_zip_url = "https://raw.githubusercontent.com/mathadata/data_challenges_lycee/main/input_mnist_2.zip"
 inputs_zip = requests.get(inputs_zip_url)
 zf = ZipFile(BytesIO(inputs_zip.content))
 zf.extractall()
@@ -47,10 +50,10 @@ zf.close()
 
 
 # Téléchargement des outputs d'entraînement de MNIST-2 contenus dans le fichier y_train_2.csv
-output_train_url = "https://raw.githubusercontent.com/akimx98/challenge_data/main/y_train_2.csv"
+output_train_url = "https://raw.githubusercontent.com/mathadata/data_challenges_lycee/main/y_train_2.csv"
 output_train = requests.get(output_train_url)
 
-output_train_chiffres_url = "https://raw.githubusercontent.com/akimx98/challenge_data/main/y_train_2_chiffres.csv"
+output_train_chiffres_url = "https://raw.githubusercontent.com/mathadata/data_challenges_lycee/main/y_train_2_chiffres.csv"
 output_train_chiffres = requests.get(output_train_chiffres_url)
 
 
@@ -94,8 +97,6 @@ d_train_par_population = [d_train[r_train==k] for k in classes]
 d = d_train[10,:,:].copy()
 d2 = d_train[2,:,:].copy()
 
-print("Images chargées !") 
-
 # Noms de variables pour la question 'fainéant
 chat = 'chat'
 cat = 'cat'
@@ -103,6 +104,7 @@ cat = 'cat'
 class Mnist(common.Challenge):
     def __init__(self):
         super().__init__()
+        self.strings = strings
         self.d_train = d_train
         self.r_train = r_train
         self.d = d
@@ -112,6 +114,10 @@ class Mnist(common.Challenge):
         self.r_grande_caracteristique = 2
         self.custom_zone = None
         self.custom_zones = None
+
+        # STATS
+        # Moyenne histogramme
+        self.carac_explanation = f"C'est la bonne réponse ! Les images de 7 ont souvent moins de pixels blancs que les images de 2. C'est pourquoi leur caractéristique, leur moyenne, est souvent plus petite."
         
     def affichage_dix(self, d=d_train, a=None, b=None, zones=[], y = r_train, n=10, axes=False):
         global r_train
@@ -200,6 +206,16 @@ class Mnist(common.Challenge):
             k2 = moyenne_zone(d, self.custom_zones[1][0], self.custom_zones[1][1])
         
         return (k1, k2)
+
+    def cb_custom_score(self, score):
+        if score < 0.1:
+            return True
+        elif score < 0.3:
+            print("Bravo, ta zone choisie pour calculer la moyenne est meilleure que faire la moyenne de toute l'image. Améliore encore ta zone pour faire moins de 10% d'erreur et passer à la suite.")
+        else:
+            print_error("Modifie ta zone pour faire moins de 10% d'erreur et passer à la suite. Cherche une zone où l'image est différente si c'est un 2 ou un 7")
+        
+        return False
 
     def affichage_2_cara(self, A1=None, B1=None, A2=None, B2=None, displayPoints=False, titre1="", titre2=""):
         """Fonction qui affiche deux images côte à côté, avec un rectangle rouge délimité par les points A et B
@@ -331,7 +347,7 @@ def affichage_2_geo(display_k=False):
     deux_caracteristiques = common.challenge.deux_caracteristiques
 
     images = np.array([common.challenge.d2, common.challenge.d])
-    fig, ax = plt.subplots(1, len(images), figsize=(figw_full, figw_full / 2))
+    fig, ax = plt.subplots(1, len(images), figsize=(figw_full * 0.8, figw_full * 0.8 / 2))
     c_train = np.array([np.array(deux_caracteristiques(d)) for d in images])
     
     for i in range(len(images)):
@@ -614,6 +630,7 @@ window.mathadata.affichage = (id, matrix, params) => {
     const { with_selection } = params;
 
     const container = document.getElementById(id)
+    container.style.aspectRatio = '1'
     container.innerHTML = '';
     
     const table_id = id + '-table'
@@ -848,6 +865,9 @@ def validate_algo(errors, answers):
 
 
 def validate_pixel_noir(errors, answers):
+    if d[17][15] is Ellipsis:
+        errors.append("Tu n'as pas remplacé les ...")
+        return False
     answers['pixel'] = int(d[17][15])
     if d[17][15] == 0:
         return True
@@ -876,7 +896,7 @@ validation_question_pixel = MathadataValidateVariables({
         ]
     }
 })
-validation_question_pixel_noir = MathadataValidate(success="Bravo, le pixel est devenu noir", function_validation=validate_pixel_noir)
+validation_question_pixel_noir = MathadataValidate(success="Bravo, le pixel est devenu noir.", function_validation=validate_pixel_noir)
 validation_question_moyenne = MathadataValidateVariables({'moyenne_zone_4pixels': np.mean(d[14:16,15:17])}, success="Bravo, la moyenne vaut en effet (142 + 154 + 0 + 0) / 4 = 74")
 
 # Geometrie
@@ -915,31 +935,6 @@ validation_execution_def_caracteristiques_ripou = MathadataValidate(success="")
 
 
 # Notebook histogramme
-
-validation_question_hist_1 = MathadataValidateVariables({
-    'r_histogramme_orange': {
-        'value': common.challenge.classes[1],
-        'errors': [
-            {
-                'value': {
-                    'in': common.challenge.classes,
-                },
-                'else': f"r_histogramme_orange n'a pas la bonne valeur. Tu dois répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}."
-            }
-        ]
-    },
-    'r_histogramme_bleu': {
-        'value': common.challenge.classes[0],
-        'errors': [
-            {
-                'value': {
-                    'in': common.challenge.classes,
-                },
-                'else': f"r_histogramme_bleu n'a pas la bonne valeur. Tu dois répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}."
-            }
-        ]
-    }
-}, success="C'est la bonne réponse ! Les images de 7 ont souvent moins de pixels blancs que les images de 2. C'est pourquoi leur caractéristique est souvent plus petite.")
 
 validation_question_hist_2 = MathadataValidateVariables({
     'nombre_2': {
@@ -995,30 +990,16 @@ validation_question_hist_3 = MathadataValidateVariables({
     },
 })
 
-validation_question_hist_seuil = MathadataValidateVariables({
-    't': {
-        'value': 34,
-        'errors': [
-            {
-                'value': {
-                    'max': 30,
-                },
-                'if': "Ton seuil t est trop bas. Regarde ou les 2 histogrammes se croisent pour trouver le meilleur seuil."
-            },
-            {
-                'value': {
-                    'min': 38,
-                },
-                'if': "Ton seuil t est trop haut. Regarde ou les 2 histogrammes se croisent pour trouver le meilleur seuil."
-            },
-            {
-                'value': {
-                    'min': 30,
-                    'max': 38
-                },
-                'if': "Tu te rapproches mais ce n'est pas le meilleur seuil. Il doit y avoir plus de 7 que de 2 qui ont une caractéristique x inférieure ou égale à t et inversement pour x supérieur à t."
-            }
-        ]
-        
-    }
-}, success="Bravo, ton seuil est maintenant optimal !")
+
+
+
+#Stockage valeur zones custom proposés
+A_2 = (7, 2)       # <- coordonnées du point A1
+B_2 = (9, 25)     # <- coordonnées du point B1
+A_1 = (14, 2)     # <- coordonnées du point A2
+B_1 = (23, 10)     # <- coordonnées du point B2
+
+
+def affichage_zones_custom_2_cara(A1, B1, A2, B2):
+    common.challenge.affichage_2_cara(A1, B1, A2, B2, True)
+    

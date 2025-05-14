@@ -4,6 +4,11 @@ import os
 import sys
 # import mplcursors
 
+# Pour accepter réponse élèves QCM
+A = 'A'
+B = 'B'
+C = 'C'
+
 # Add parent directory to sys.path
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 if parent_dir not in sys.path:
@@ -40,7 +45,7 @@ def tracer_2_points():
         'y2': c_train[1][1],
     }
     
-    run_js(f"setTimeout(() => window.mathadata.tracer_2_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 100)")
+    run_js(f"setTimeout(() => window.mathadata.tracer_2_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
     df = pd.DataFrame()
     labels = ['Point A :', 'Point B :']
@@ -63,7 +68,7 @@ def tracer_200_points(nb=200):
         'hideClasses': True,
     }
     
-    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 100)")
+    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
 def tracer_10_points_droite():
     data = common.challenge.d_train[20:30]
@@ -80,41 +85,122 @@ def tracer_10_points_droite():
             'a': 0.5,
             'b': -1,
             'c': 20
-        },
+        },  
         'hover': True
     }
     
-    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 100)")
+    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
 
-def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save=True):
+def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save=True, normal= None, directeur=None, reglage_normal=None):
     if id is None:
         id = uuid.uuid4().hex
+    if directeur is None:
+        directeur = False
+    if reglage_normal is None:
+        reglage_normal = False
+    
+    # Mise en place du conteneur pour le graphique
     display(HTML(f'''
-        <div id="{id}-score-container" style="text-align: center; font-weight: bold; font-size: 2rem; {'' if not initial_hidden else 'display:none;'}">Erreur : <span id="{id}-score">...</span></div>
+        <!-- Conteneur pour afficher le taux d'erreur -->
+        <div id="{id}-score-container"
+            style="
+            text-align: center;
+            font-weight: bold;
+            font-size: 2rem;
+            {'display:none;' if initial_hidden else ''}
+            ">
+            Erreur : <span id="{id}-score">...</span>
+        </div>
 
-            <canvas id="{id}-chart"></canvas>
+        <!-- Zone canvas pour tracer le graphique -->
+        <canvas id="{id}-chart"></canvas>
 
-        <div id="{id}-inputs" style="display: flex; gap: 1rem; justify-content: center; flex-direction: row; {'' if not initial_hidden else 'display:none;'}">
+        <!-- Conteneur pour les champs d'entrée -->
+        <div id="{id}-inputs"
+            style="
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-direction: row;
+            {'display:none;' if initial_hidden else ''}
+            ">
+            <!-- Cas « directeur » et pas en mode « reglage_normal » -->
+            <div style="
+                display: {'flex' if (directeur and not reglage_normal) else 'none'};
+                flex-direction: row;
+                gap: 1rem;
+                ">
+                <!-- Paramètre ux -->
+                <div>
+                    <label for="{id}-input-ux" id="{id}-label-ux"></label>
+                    <input type="number"
+                        id="{id}-input-ux"
+                        value="5"
+                        step="1"
+                        style="width: 50px; height: 25px; font-size: 12px;">
+                </div>
+                <!-- Paramètre uy -->
+                <div>
+                    <label for="{id}-input-uy" id="{id}-label-uy"></label>
+                    <input type="number"
+                        id="{id}-input-uy"
+                        value="10"
+                        step="1"
+                        style="width: 50px; height: 25px; font-size: 12px;">
+                </div>
+            </div>
+
+            <!-- Cas du mode « reglage_normal » -->
+            <div style="
+                display: {'flex' if reglage_normal else 'none'};
+                flex-direction: row;
+                gap: 1rem;
+                ">
+                <!-- Paramètre a -->
                 <div>
                     <label for="{id}-input-a" id="{id}-label-a"></label>
-                    <input type="number" value="5" step="1" id="{id}-input-a" style="width: 50px; height: 25px; font-size: 12px;">
+                    <input type="number"
+                        id="{id}-input-a"
+                        value="10"
+                        step="1"
+                        style="width: 50px; height: 25px; font-size: 12px;">
                 </div>
+                <!-- Paramètre b -->
                 <div>
                     <label for="{id}-input-b" id="{id}-label-b"></label>
-                    <input type="number" value="10" step="1" id="{id}-input-b" style="width: 50px; height: 25px; font-size: 12px;">
+                    <input type="number"
+                        id="{id}-input-b"
+                        value="-5"
+                        step="1"
+                        style="width: 50px; height: 25px; font-size: 12px;">
                 </div>
-                <div>
-                    <label for="{id}-input-xA" id="{id}-label-xA"></label>
-                    <input type="number" value="30" step="1" id="{id}-input-xA" style="width: 50px; height: 25px; font-size: 12px;">
-                </div>
-                <div>
-                    <label for="{id}-input-yA" id="{id}-label-yA"></label>
-                    <input type="number" value="10" step="1" id="{id}-input-yA" style="width: 50px; height: 25px; font-size: 12px;">
-                </div>
+            </div>
+
+            <!-- Paramètre x_A -->
+            <div>
+                <label for="{id}-input-xA" id="{id}-label-xA"></label>
+                <input type="number"
+                    id="{id}-input-xA"
+                    value="50"
+                    step="1"
+                    style="width: 50px; height: 25px; font-size: 12px;">
+            </div>
+            <!-- Paramètre y_A -->
+            <div>
+                <label for="{id}-input-yA" id="{id}-label-yA"></label>
+                <input type="number"
+                    id="{id}-input-yA"
+                    value="50"
+                    step="1"
+                    style="width: 50px; height: 25px; font-size: 12px;">
             </div>
         </div>
     '''))
+
+
+    if normal is None:
+        normal = False
 
     if not initial_hidden:
         if carac is None:
@@ -128,12 +214,15 @@ def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save
             'hover': True,
             'displayValue': False,
             'save': save,
+            'directeur': directeur,
+            'normal': normal,
+            'reglageNormal': reglage_normal,
         }
     
-        run_js(f"setTimeout(() => window.mathadata.tracer_points_droite_vecteur('{id}', '{json.dumps(params, cls=NpEncoder)}'), 100)")
+        run_js(f"setTimeout(() => window.mathadata.tracer_points_droite_vecteur('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
 def produit_scalaire_exercice():
-    display(HTML("""<iframe scrolling="no" title="Produit scalaire et Classification" src="https://www.geogebra.org/material/iframe/id/gmtxwxat/width/1800/height/1056/border/888888/sfsb/true/smb/false/stb/true/stbh/false/ai/false/asb/false/sri/false/rc/false/ld/true/sdz/true/ctl/false" width="1800px" height="1056px" style="border:0px;"> </iframe>"""))
+    display(HTML("""<iframe scrolling="no" title="Produit scalaire et Classification" src="https://www.geogebra.org/material/iframe/id/gmtxwxat/width/3000/height/800/border/888888/sfsb/true/smb/false/stb/false/stbh/false/ai/false/asb/false/sri/false/rc/false/ld/true/sdz/true/ctl/false" width="3000px" height="800px" style="border:0px;"> </iframe>"""))
 
 
 def create_graph(figsize=(figw_full, figw_full)):
@@ -158,10 +247,8 @@ def create_graph(figsize=(figw_full, figw_full)):
 
     return fig, ax
 
-    
-def affichage_zones_custom(A1, B1, A2, B2):
-    common.challenge.affichage_2_cara(A1, B1, A2, B2, True)
-    tracer_points_droite_vecteur(carac=common.challenge.deux_caracteristiques_custom, save=False)
+   
+
 
 def afficher_customisation():
     id = uuid.uuid4().hex
@@ -170,7 +257,7 @@ def afficher_customisation():
     '''))
     common.challenge.display_custom_selection_2d(id)
 
-    tracer_points_droite_vecteur(id=id, carac=common.challenge.deux_caracteristiques_custom, initial_hidden=True, save=False)
+    tracer_points_droite_vecteur(id=id, carac=common.challenge.deux_caracteristiques_custom, initial_hidden=True, save=False, normal=True, reglage_normal=True)
 
     run_js(f'''
         window.mathadata.on_custom_update = () => {{
@@ -180,6 +267,8 @@ def afficher_customisation():
                     custom: true,
                     hover: true,
                     save: false,
+                    'normal': true,
+                    'reglageNormal':true,
                 }};
                 mathadata.tracer_points_droite_vecteur('{id}', params);
 
@@ -212,12 +301,14 @@ def erreur_lineaire(a, b, c, c_train):
 # JS
 
 run_js('''
-    if(localStorage.getItem('a') !== null && localStorage.getItem('b') !== null && localStorage.getItem('xA') !== null && localStorage.getItem('yA') !== null) {
+    if(localStorage.getItem('ux') !== null && localStorage.getItem('uy') !== null && localStorage.getItem('a') !== null && localStorage.getItem('b') !== null && localStorage.getItem('xA') !== null && localStorage.getItem('yA') !== null) {
+        const ux = parseFloat(localStorage.getItem('ux'));
+        const uy = parseFloat(localStorage.getItem('uy'));
         const a = parseFloat(localStorage.getItem('a'));
         const b = parseFloat(localStorage.getItem('b'));
         const y = parseFloat(localStorage.getItem('yA'));
         const x = parseFloat(localStorage.getItem('xA'));
-        mathadata.run_python (`set_vector_parameters(${a}, ${b}, ${x}, ${y})`);
+        mathadata.run_python (`set_vector_parameters(${ux}, ${uy}, ${a}, ${b}, ${x}, ${y})`);
     }
 
     function findIntersectionPoints(a, b, c, x_min, x_max) {
@@ -350,7 +441,7 @@ run_js('''
                         return;
                     }
                     
-                    const size = 180;
+                    const size = 80;
                     const offset = 10
                 
                     const chartArea = chart.chartArea;
@@ -444,7 +535,7 @@ run_js('''
             });
 
             datasets.push({
-                label: 'Aire de la classe r^ = 2',
+                label: 'Zone de la classe  r^ = 2',
                 type: 'line',
                 data: lineData,
                 pointsRadius: 0,
@@ -455,7 +546,7 @@ run_js('''
             });
 
             datasets.push({
-                label: 'Aire de la classe r^ = 7',
+                label: 'Zone de la classe  r^ = 7',
                 type: 'line',
                 data: lineData,
                 pointsRadius: 0,
@@ -515,66 +606,96 @@ run_js('''
         window.mathadata.create_chart(id, chartConfig);
     }
 
-    window.mathadata.tracer_points_droite_vecteur = function(id, params) {
-        mathadata.tracer_points(`${id}-chart`, params);
-        if (typeof params === 'string') {
-            params = JSON.parse(params);
-        }
-        const {custom, displayValue, save} = params;
-        const chart = window.mathadata.charts[`${id}-chart`]
+window.mathadata.tracer_points_droite_vecteur = function(id, params) {
+    mathadata.tracer_points(`${id}-chart`, params);
+    if (typeof params === 'string') {
+        params = JSON.parse(params);
+    }
+    const {custom, displayValue, save, normal, directeur, reglageNormal} = params;
+    const chart = window.mathadata.charts[`${id}-chart`]
 
-        // add vector
-        chart.data.datasets.push({
-            type: 'line',
-            data: [],
-            borderColor: 'red',
-            borderWidth: 2,
-            pointRadius: 0,
-            pointHitRadius: 0,
-            label: '\u20D7u',
-        }); 
+    const start_ux = 50
+    const start_uy = 10
 
-        chart.data.datasets.push({
-            type: 'line',
-            data: [],
-            borderColor: 'black',
-            borderWidth: 1,
-            pointRadius: 0,
-            pointHitRadius: 0,
-            label: 'ax + by + c = 0',
-        });
-       
-        // Ajout du dataset pour le point A (il sera à l'index 4)
-        // Point A initialisé à (50,50)
-        chart.data.datasets.push({
-            data: [{ x: 50, y: 50 }],
-            backgroundColor: 'black',
-            borderColor: 'black',
-            pointStyle: 'cross',
-            pointRadius: 10,       // Rayon agrandi pour une meilleure visibilité
-            pointHoverRadius: 10,
-            borderWidth: 3,
-            hoverBorderWidth: 3,
-            label: 'A',
-            z: 10,
-        });
+    // add vector u
+    chart.data.datasets.push({
+        type: 'line',
+        data: [],
+        borderColor: 'red',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHitRadius: 0,
+        label: '\u20D7u',
+        hidden: !params.directeur,
+    }); 
 
-        let input_a = document.getElementById(`${id}-input-a`)
-        let input_b = document.getElementById(`${id}-input-b`)
-        const label_a = document.getElementById(`${id}-label-a`)
-        const label_b = document.getElementById(`${id}-label-b`)
-        let input_xA = document.getElementById(`${id}-input-xA`);
-        let input_yA = document.getElementById(`${id}-input-yA`);
-        const label_xA = document.getElementById(`${id}-label-xA`);
-        const label_yA = document.getElementById(`${id}-label-yA`);
-        const score = document.getElementById(`${id}-score`)
+    // add line
+    chart.data.datasets.push({
+        type: 'line',
+        data: [],
+        borderColor: 'black',
+        borderWidth: 1,
+        pointRadius: 0,
+        pointHitRadius: 0,
+        label: 'ax + by + c = 0',
+    });
+   
+    // add point A
+    chart.data.datasets.push({
+        data: [{ x: 50, y: 50 }],
+        backgroundColor: 'black',
+        borderColor: 'black',
+        pointStyle: 'cross',
+        pointRadius: 10,
+        pointHoverRadius: 10,
+        borderWidth: 3,
+        hoverBorderWidth: 3,
+        label: 'A',
+        z: 10,
+    });
 
+     //Ajout du vecteur normal
+    chart.data.datasets.push({
+        type: 'line',
+        data: [],
+        borderColor: 'blue',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHitRadius: 0,
+        label: '\u20D7n',
+        hidden: !params.normal,
+    });
+
+    let input_ux = document.getElementById(`${id}-input-ux`)
+    let input_uy = document.getElementById(`${id}-input-uy`)
+    const label_ux = document.getElementById(`${id}-label-ux`)
+    const label_uy = document.getElementById(`${id}-label-uy`)
+    let input_a = document.getElementById(`${id}-input-a`)
+    let input_b = document.getElementById(`${id}-input-b`)
+    const label_a = document.getElementById(`${id}-label-a`)
+    const label_b = document.getElementById(`${id}-label-b`)
+    let input_xA = document.getElementById(`${id}-input-xA`);
+    let input_yA = document.getElementById(`${id}-input-yA`);
+    const label_xA = document.getElementById(`${id}-label-xA`);
+    const label_yA = document.getElementById(`${id}-label-yA`);
+    const score = document.getElementById(`${id}-score`)
+
+    if (chart.config.plugins[chart.config.plugins.length - 1]?.afterDraw === undefined) {
         chart.config.plugins.push({
             afterDraw: function(chart) {
                 const ctx = chart.ctx;
-
-                const a = parseFloat(input_a.value);
-                const b = parseFloat(input_b.value);
+                let a,b,ux,uy;
+                if (reglageNormal) {
+                    a = parseFloat(input_a.value);
+                    b = parseFloat(input_b.value);
+                    ux = b;
+                    uy = -a;
+                } else {
+                    ux = parseFloat(input_ux.value);
+                    uy = parseFloat(input_uy.value);
+                    a = uy;
+                    b = -ux;
+                }
                 const xA = parseFloat(input_xA.value);
                 const yA = parseFloat(input_yA.value);
 
@@ -589,8 +710,8 @@ run_js('''
                     const dx = x2 - x1;
                     const dy = y2 - y1;
 
-                    // Draw the arrowhead
-                    const headlen = 10; // Length of arrowhead
+                    // Draw vector u arrow
+                    const headlen = 10;
                     const angle = Math.atan2(dy, dx);
 
                     ctx.beginPath();
@@ -601,15 +722,12 @@ run_js('''
                     ctx.fillStyle = 'red';
                     ctx.fill();
 
-                    // Display the vector coordinates on the chart
-                    // get the coordinates of the vector
-                    
                     if (meta._parsed) {
                         ctx.save();
                         ctx.font = '18px Arial';
                         ctx.fillStyle = 'red';
                         ctx.textAlign = 'left';
-                        ctx.fillText(`\u20D7u(${a}, ${b})`, x2 + 10, y2);
+                        ctx.fillText(`\u20D7u(${ux}, ${uy})`, x2 + 10, y2);
                         ctx.restore(); 
                     }
                 }
@@ -617,25 +735,21 @@ run_js('''
                 if (chart.isDatasetVisible(3)) {
                     const meta = chart.getDatasetMeta(3);
                     const data = meta.data;
-                
-                    // display the line equation
-                    const lineParam_a = b;         // Normal vector x-component
-                    const lineParam_b = -a;        // Normal vector y-component
-                    const lineParam_c = a*yA - b*xA; // Constant term
-                
+                    let lineParam_a, lineParam_b, lineParam_c;
+                    lineParam_a = a;
+                    lineParam_b = b;
+                    lineParam_c = -a * xA - b * yA;  // La droite passe par A
                     const x1 = data[0].x;
                     const y1 = data[0].y;
                     const x2 = data[1].x;
                     const y2 = data[1].y;
                     const dx = x2 - x1;
                     const dy = y2 - y1;
-                
-                    // Calculate the angle of the line in radians
+
                     const angle = Math.atan2(dy, dx);
                     
-                    // Use text position near the end point with fixed offsets
-                    const textX = Math.min(x2 + 20, chart.chartArea.right - 5);  // Fixed offset to the left
-                    const textY = Math.min(y2 + 20, chart.chartArea.bottom - 5);  // Fixed offset downward
+                    const textX = Math.min(x2 + 20, chart.chartArea.right - 5);
+                    const textY = Math.min(y2 + 20, chart.chartArea.bottom - 5);
                     
                     ctx.save();
                     ctx.translate(textX, textY);
@@ -643,10 +757,7 @@ run_js('''
                     ctx.font = '16px Arial';
                     ctx.fillStyle = 'black';
                     ctx.textAlign = 'right';
-                    
-                    // Add the equation text
                     ctx.fillText(getLineEquationStr(lineParam_a, lineParam_b, lineParam_c), 0, 0);
-                    
                     ctx.restore();
                 }
 
@@ -655,7 +766,6 @@ run_js('''
                     const data = meta.data;
                     const x = data[0].x;
                     const y = data[0].y;
-                    const offset = 10;
                     ctx.save();
                     ctx.font = '18px Arial';
                     ctx.fillStyle = 'black';
@@ -664,125 +774,189 @@ run_js('''
                     ctx.fillText(`A(${xA}, ${yA})`, x + 10, y);
                     ctx.restore();
                 }
-            }
-        })
 
-        chart.config.options.plugins.legend = {
-            labels: {
-                filter(legendItem, chartData) {
-                    // Filter out the vector and line datasets from the legend
-                    const { datasetIndex } = legendItem;
-                    return datasetIndex !== 2 && datasetIndex !== 3 && datasetIndex !== 4;
+                // AJOUT : dessiner vecteur normal n
+                if (chart.isDatasetVisible(5)) {
+                    const meta = chart.getDatasetMeta(5);
+                    const data = meta.data;
+                    if (data.length >= 2) {
+                        const x1 = data[0].x;
+                        const y1 = data[0].y;
+                        const x2 = data[1].x;
+                        const y2 = data[1].y;
+                        const dx = x2 - x1;
+                        const dy = y2 - y1;
+                        const headlen = 10;
+                        const angle = Math.atan2(dy, dx);
+
+                        ctx.beginPath();
+                        ctx.moveTo(x2, y2);
+                        ctx.lineTo(x2 - headlen * Math.cos(angle - Math.PI / 6), y2 - headlen * Math.sin(angle - Math.PI / 6));
+                        ctx.lineTo(x2 - headlen * Math.cos(angle + Math.PI / 6), y2 - headlen * Math.sin(angle + Math.PI / 6));
+                        ctx.lineTo(x2, y2);
+                        ctx.fillStyle = 'blue';
+                        ctx.fill();
+                        
+                        // Étiquette n
+                        ctx.save();
+                        ctx.font = '18px Arial';
+                        ctx.fillStyle = 'blue';
+                        ctx.textAlign = 'left';
+                        ctx.fillText(`\u20D7n(${a}, ${b})`, x2 + 10, y2);
+                        ctx.restore();
+                    }
                 }
             }
-        };
+        });
+    }
 
-        let exec = null;
-        const update = () => {
-            const a = parseFloat(input_a.value);
-            const b = parseFloat(input_b.value);
-            const xA = parseFloat(input_xA.value);
-            const yA = parseFloat(input_yA.value);
-
-            if (isNaN(a) || isNaN(b) || isNaN(xA) || isNaN(yA)) {
-                return;
+    chart.config.options.plugins.legend = {
+        labels: {
+            filter(legendItem, chartData) {
+                const { datasetIndex } = legendItem;
+                return datasetIndex !== 2 && datasetIndex !== 3 && datasetIndex !== 4 && datasetIndex !== 5;
             }
-
-            const min_x = chart.options.scales.x.min
-            const max_x = chart.options.scales.x.max
-            
-            const vectorData = [{x: 0, y: 0}, {x: a, y: b}]
-
-            const lineParam_a = b;         // Normal vector x-component
-            const lineParam_b = -a;        // Normal vector y-component
-            const lineParam_c = a*yA - b*xA; // Constant term
-
-            const lineData = findIntersectionPoints(lineParam_a, lineParam_b, lineParam_c, min_x, max_x);
-            
-            chart.data.datasets[2].data = vectorData
-            chart.data.datasets[2].label = `\u20D7u(${a}, ${b})`
-
-            chart.data.datasets[3].data = lineData;
-            chart.data.datasets[3].label = getLineEquationStr(lineParam_a, lineParam_b, lineParam_c);
-
-            chart.data.datasets[4].data = [{ x: xA, y: yA }];
-
-            chart.update()
-       
-            if (save) {
-                // Sauvegarder les nouvelles valeurs dans le localStorage
-                localStorage.setItem('a', a);
-                localStorage.setItem('b', b);
-                localStorage.setItem('xA', xA);
-                localStorage.setItem('yA', yA);
-            }
-
-            if (a === 0 && b === 0) {
-                return;
-            }
-
-            const python = `compute_score_json(${lineParam_a}, ${lineParam_b}, ${lineParam_c}, custom=${custom ? 'True' : 'False'})`
-            if (exec) {
-                clearTimeout(exec)
-            }
-
-            exec = setTimeout(() => {
-                mathadata.run_python(python, ({error}) => {
-                    if (error > 50) {
-                        error = 100 - error
-                    }
-                    error = Math.round(error * 100) / 100
-                    score.innerHTML = `${error}%`
-                })
-                mathadata.run_python(`set_vector_parameters(${a}, ${b}, ${xA}, ${yA})`);
-                
-            }, 200)
-
-            label_a.innerHTML = `u<sub>x</sub> = ${displayValue ? a : ''}`
-            label_b.innerHTML = `u<sub>y</sub> = ${displayValue ? b : ''}`
-            label_xA.innerHTML = `x<sub>A</sub> = ${displayValue ? xA : ''}`;
-            label_yA.innerHTML = `y<sub>A</sub> = ${displayValue ? yA : ''}`;
         }
+    };
+
+    let exec = null;
+    const update = () => {
+       let a, b, ux, uy // a et b sont les coordonnées du vecteur normal n
+       if(reglageNormal) {
+            a = parseFloat(input_a.value);
+            b = parseFloat(input_b.value);
+            ux = -b;
+            uy = a;
+       }else {
+            ux = parseFloat(input_ux.value);
+            uy = parseFloat(input_uy.value);
+            a = uy;
+            b = -ux;
+       }
+
+        const xA = parseFloat(input_xA.value);
+        const yA = parseFloat(input_yA.value);
+
+        if (isNaN(a) || isNaN(b) || isNaN(xA) || isNaN(yA)) {
+            return;
+        }
+
+        const min_x = chart.options.scales.x.min;
+        const max_x = chart.options.scales.x.max;
+        
+        const vectorData = [{x: start_ux, y: start_uy}, {x: start_ux + ux, y: start_uy + uy}];
+
+        let lineParam_a, lineParam_b, lineParam_c;
+        lineParam_a = a;
+        lineParam_b = b;
+        lineParam_c = -a * xA - b * yA;  // La droite passe par A
+        
+
+        const lineData = findIntersectionPoints(lineParam_a, lineParam_b, lineParam_c, min_x, max_x);
+
+        chart.data.datasets[2].data = vectorData;
+        chart.data.datasets[2].label = `\u20D7u(${ux}, ${uy})`;
+
+        chart.data.datasets[3].data = lineData;
+        chart.data.datasets[3].label = getLineEquationStr(lineParam_a, lineParam_b, lineParam_c);
+
+        chart.data.datasets[4].data = [{ x: xA, y: yA }];
+       
+        // *** AJOUT CONDITIONNEL : calcul des coordonnées du vecteur normal n ***
+        if (normal) {
+            const u_length = Math.sqrt(ux * ux + uy * uy);
+            const n_length = u_length > 0 ? u_length : 30;
+
+            chart.data.datasets[5].data = [
+                { x: xA, y: yA },
+                { 
+                    x: xA + (u_length > 0 ? (uy / u_length) * n_length : 0), 
+                    y: yA - (u_length > 0 ? (ux / u_length) * n_length : 0) 
+                }
+            ];
+        }
+
+
+        chart.update()
 
         if (save) {
-            // Charger les valeurs depuis le localStorage si elles existent
-            const saved_a = localStorage.getItem('a');
-            const saved_b = localStorage.getItem('b');
-            const saved_xA = localStorage.getItem('xA');
-            const saved_yA = localStorage.getItem('yA');
-
-            if (saved_a !== null) {
-                input_a.value = saved_a;
-            }
-            if (saved_b !== null) {
-                input_b.value = saved_b;
-            }
-            if (saved_xA !== null) {
-                input_xA.value = saved_xA;
-            }
-            if (saved_yA !== null) {
-                input_yA.value = saved_yA;
-            }
+            localStorage.setItem('a', a);
+            localStorage.setItem('b', b);
+            localStorage.setItem('ux', ux);
+            localStorage.setItem('uy', uy);
+            localStorage.setItem('xA', xA);
+            localStorage.setItem('yA', yA);
         }
 
-        function removeAllEventListeners(element) {
-            const clone = element.cloneNode(true);
-            element.parentNode.replaceChild(clone, element);
-            return clone;
+        if (ux=== 0 && uy=== 0) {
+            return;
         }
 
-        input_a = removeAllEventListeners(input_a);
-        input_b = removeAllEventListeners(input_b);
-        input_xA = removeAllEventListeners(input_xA);
-        input_yA = removeAllEventListeners(input_yA);
+        const python = `compute_score_json(${lineParam_a}, ${lineParam_b}, ${lineParam_c}, custom=${custom ? 'True' : 'False'})`
+        if (exec) {
+            clearTimeout(exec)
+        }
 
-        input_a.addEventListener("input", update);
-        input_b.addEventListener("input", update);
-        input_xA.addEventListener("input", update);
-        input_yA.addEventListener("input", update);
-
-        update()
+        exec = setTimeout(() => {
+            mathadata.run_python(python, ({error}) => {
+                if (error > 50) {
+                    error = 100 - error
+                }
+                error = Math.round(error * 100) / 100
+                score.innerHTML = `${error}%`
+            })
+            mathadata.run_python(`set_vector_parameters(${ux}, ${uy}, ${a}, ${b}, ${xA}, ${yA})`);
+        }, 200)
+        
+        
+        label_a.innerHTML = `a = ${displayValue ? a : ''}`
+        label_b.innerHTML = `b = ${displayValue ? b : ''}`    
+        label_ux.innerHTML = `u<sub>x</sub> = ${displayValue ? ux : ''}`
+        label_uy.innerHTML = `u<sub>y</sub> = ${displayValue ? uy : ''}`
+        label_xA.innerHTML = `x<sub>A</sub> = ${displayValue ? xA : ''}`;
+        label_yA.innerHTML = `y<sub>A</sub> = ${displayValue ? yA : ''}`;
+        
     }
+
+    if (save) {
+        const saved_a = localStorage.getItem('a');
+        const saved_b = localStorage.getItem('b');
+        const saved_ux = localStorage.getItem('ux');
+        const saved_uy = localStorage.getItem('uy');
+        const saved_xA = localStorage.getItem('xA');
+        const saved_yA = localStorage.getItem('yA');
+
+        if (saved_a !== null) input_a.value = saved_a;
+        if (saved_b !== null) input_b.value = saved_b;
+        if (saved_ux !== null) input_ux.value = saved_ux;
+        if (saved_uy !== null) input_uy.value = saved_uy;
+        if (saved_xA !== null) input_xA.value = saved_xA;
+        if (saved_yA !== null) input_yA.value = saved_yA;
+    }
+
+    function removeAllEventListeners(element) {
+        const clone = element.cloneNode(true);
+        element.parentNode.replaceChild(clone, element);
+        return clone;
+    }
+
+    input_ux = removeAllEventListeners(input_ux);
+    input_uy = removeAllEventListeners(input_uy);
+    input_a = removeAllEventListeners(input_a);
+    input_b = removeAllEventListeners(input_b);
+    input_xA = removeAllEventListeners(input_xA);
+    input_yA = removeAllEventListeners(input_yA);
+
+    input_ux.addEventListener("input", update);
+    input_uy.addEventListener("input", update);
+    input_a.addEventListener("input", update);
+    input_b.addEventListener("input", update);
+    input_xA.addEventListener("input", update);
+    input_yA.addEventListener("input", update);
+
+    update();
+}
+
 ''')
 # TODO
 # run_js("""
@@ -832,6 +1006,8 @@ def compute_score_json(a, b, c, custom=False):
     error = compute_score(a, b, c, custom)
     return json.dumps({'error': error})
 
+ux = None
+uy = None
 a = None
 b = None
 
@@ -840,17 +1016,21 @@ xA = None
 yA = None
 
 
-def set_vector_parameters(a_val, b_val,xA_val, yA_val):
-    global a, b, xA, yA, g_a, g_b, g_c
+def set_vector_parameters(ux_val, uy_val, a_val, b_val, xA_val, yA_val):
+    global a, b, xA, yA, g_a, g_b, g_c, ux, uy
+    ux = ux_val
+    uy = uy_val
     a = a_val
     b = b_val
     xA = xA_val
     yA = yA_val
 
     if a and b:
-        g_a = b
-        g_b = -a
-        g_c = a*yA - b*xA
+        g_a = a      
+        g_b = b
+        g_c = -a * xA - b * yA
+
+
 
 def calculer_score_droite():
     global g_a, g_b, g_c
@@ -881,6 +1061,65 @@ def calculer_score_droite():
             validation_score_droite()
 
     calculer_score(algorithme, method="2 moyennes", parameters=f"a={g_a}, b={g_b}, c={g_c}", cb=cb) 
+
+def calculer_score_droite_normal():
+    global g_a, g_b, g_c
+    
+    deux_caracteristiques = common.challenge.deux_caracteristiques
+    base_score = compute_score(g_a, g_b, g_c)
+    
+    if base_score <= 50:
+        above = common.challenge.classes[0]
+        below = common.challenge.classes[1]
+    else:
+        above = common.challenge.classes[1]
+        below = common.challenge.classes[0]
+
+    if base_score >= 8 and base_score <= 92:
+        print_error("Vous pourrez passer à la suite quand vous aurez un pourcentage d'erreur de moins de 8%.")
+
+    deux_caracteristiques = common.challenge.deux_caracteristiques
+    def algorithme(d):
+        k = deux_caracteristiques(d)
+        if (g_b == 0 and k[0] > -g_c/g_a) or (g_b != 0 and g_a*k[0] + g_b*k[1] + g_c > 0):
+            return above
+        else:
+            return below
+    def cb(score):
+        if score < 0.08:
+            validation_score_droite_normal()
+
+    calculer_score_2(algorithme, method="2 moyennes", parameters=f"a={g_a}, b={g_b}, c={g_c}", cb=cb) 
+
+
+def calculer_score_droite_normal_2custom():
+    global g_a, g_b, g_c
+    
+    deux_caracteristiques = common.challenge.deux_caracteristiques
+    base_score = compute_score(g_a, g_b, g_c)
+    
+    if base_score <= 50:
+        above = common.challenge.classes[0]
+        below = common.challenge.classes[1]
+    else:
+        above = common.challenge.classes[1]
+        below = common.challenge.classes[0]
+
+    if base_score >= 8 and base_score <= 92:
+        print_error("Vous pourrez passer à la suite quand vous aurez un pourcentage d'erreur de moins de 8%.")
+
+    deux_caracteristiques = common.challenge.deux_caracteristiques
+    def algorithme(d):
+        k = deux_caracteristiques(d)
+        if (g_b == 0 and k[0] > -g_c/g_a) or (g_b != 0 and g_a*k[0] + g_b*k[1] + g_c > 0):
+            return above
+        else:
+            return below
+    def cb(score):
+        if score < 0.08:
+            validation_score_droite_normal_2custom()
+
+    calculer_score_2(algorithme, method="2 moyennes", parameters=f"a={g_a}, b={g_b}, c={g_c}", cb=cb) 
 
 def calculer_score_custom_droite():
     global g_a, g_b, g_c
@@ -914,7 +1153,7 @@ def check_coordinates(coords, errors):
         errors.append("Les coordonnées doivent être écrites entre parenthèses séparés par une virgule. Exemple : (3, 5)")
         return False
     if len(coords) != 2:
-        errors.append("Les coordonnées doivent être composées de deux valeurs séparés par une virgule. Pour les nombres à virgule, utilisez un point '.' et non une virgule")
+        errors.append("Les coordonnées doivent être composées de deux valeurs séparés par une virgule. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','")
         return False
     if coords[0] is Ellipsis or coords[1] is Ellipsis:
         errors.append("Tu n'as pas remplacé les ...")
@@ -956,6 +1195,11 @@ def function_validation_2_points(errors, answers):
             errors.append("Les coordonnées de B ne sont pas correctes. Attention, la première coordonnée est l'abscisse x et la deuxième l'ordonnée y.")
         else:
             errors.append("Les coordonnées de B ne sont pas correctes.")
+
+def is_n_vers_le_haut(n):
+    return (n[0]<=0)
+
+
 
 def function_validation_normal(errors, answers):
     n = answers['n']
@@ -1024,22 +1268,165 @@ validation_question_score_droite = MathadataValidateVariables({
 )
 validation_execution_tracer_points_droite_vecteur = MathadataValidate(success="")
 validation_execution_tracer_points_droite_vecteur_2 = MathadataValidate(success="")
+validation_execution_tracer_points_droite_vecteur_3 = MathadataValidate(success="")
 validation_score_droite = MathadataValidate(success="Bien joué, vous pouvez passer à la partie suivante.")
+validation_score_droite_normal = MathadataValidate(success="Bien joué, vous pouvez passer à la partie suivante.")
+validation_score_droite_normal_2custom = MathadataValidate(success="Bien joué, vous pouvez passer à la partie suivante.")
 validation_execution_point_droite = MathadataValidate(success="")
 validation_question_normal = MathadataValidateVariables({
     'n': None
-}, function_validation=function_validation_normal)
+}, function_validation=function_validation_normal,success="C'est une bonne réponse. Le vecteur n est orthogonal au vecteur directeur.")
 
 validation_execution_produit_scalaire_exercice = MathadataValidate(success="")
 
+
+## Attention la réponse dépend du choix fait dans geogebra pour le vecteur normal
+n_geogebra = (4, -8)
+A_geogebra = (20, 30)
+M1_geogebra = (40, 30)
+M2_geogebra = (25, 35)
+AM1_geogebra = (M1_geogebra[0] - A_geogebra[0], M1_geogebra[1] - A_geogebra[1])
+AM2_geogebra = (M2_geogebra[0] - A_geogebra[0], M2_geogebra[1] - A_geogebra[1])
+
+
+def function_validation_question_produit_scalaire(errors, answers):
+    produit_scalaire = answers['produit_scalaire']
+    if not isinstance(produit_scalaire, (int, float)):
+        errors.append("Le produit scalaire doit être un nombre. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','")
+        return False
+    if produit_scalaire==Ellipsis:
+        errors.append("Tu n'as pas remplacé les ...")
+        return False
+    if produit_scalaire!=function_calcul_produit_scalaire(n_geogebra,AM1_geogebra):
+        errors.append("Ce n'est pas la bonne valeur. Relis la définition du produit scalaire et vérifie tes calculs.")
+        return False 
+    return True
+
 validation_question_produit_scalaire = MathadataValidateVariables({
-    'produit_scalaire': -40
-})
+    'produit_scalaire': None
+}, function_validation=function_validation_question_produit_scalaire, tips=[
+    {
+      'trials': 1,
+      'tip': 'Vous devez calculer le produit scalaire entre n(4, -8) et AM(?, ?) avec A(20, 30) et M(40, 30)'
+    },
+    {
+      'trials': 2,
+      'seconds': 30,
+      'tip': 'Les coordonnées du vecteur AM sont (5, 5) (données par (40-20, 30-30))'
+    },
+    {
+      'trials': 3,
+      'seconds': 60,
+      'tip': 'Pour calculer le produit scalaire, vous devez multiplier les coordonnées des deux vecteurs et additionner les résultats. Nous avons n(4, -8) et AM(20, 0).'
+    },
+    {
+      'trials': 4,
+      'seconds': 120,
+      'tip': 'Le produit scalaire est donné par 4*20 + (-8)*0'
+    },
+     {
+      'trials': 5,
+      'seconds': 120,
+      'tip': 'Le produit scalaire est donné par 4*20 + (-8)*0 = 80'
+    }
+])
 
 validation_execution_caracteristiques_custom = MathadataValidate(success="")
 validation_execution_scatter_caracteristiques_ripou = MathadataValidate(success="")
 
+
+def function_validation_question_produit_scalaire_2(errors, answers):
+    produit_scalaire = answers['produit_scalaire']
+    if not isinstance(produit_scalaire, (int, float)):
+        errors.append("Le produit scalaire doit être un nombre. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','")
+        return False
+    if produit_scalaire==Ellipsis:
+        errors.append("Tu n'as pas remplacé les ...")
+        return False
+    if produit_scalaire!=function_calcul_produit_scalaire(n_geogebra,AM2_geogebra):
+        errors.append("Ce n'est pas la bonne valeur. Relis la définition du produit scalaire et vérifie tes calculs.")
+        return False 
+    return True
+
 validation_question_produit_scalaire_2 = MathadataValidateVariables({
+    'produit_scalaire': None
+}, function_validation=function_validation_question_produit_scalaire_2, tips=[
+    {
+      'trials': 1,
+      'tip': 'Vous devez calculer le produit scalaire entre n(4, -8) et AM(?, ?) avec A(20, 30) et M(25, 35)'
+    },
+    {
+      'trials': 2,
+      'seconds': 30,
+      'tip': 'Les coordonnées du vecteur AM sont (5, 5) (données par (25-20, 35-30))'
+    },
+    {
+      'trials': 3,
+      'seconds': 60,
+      'tip': 'Pour calculer le produit scalaire, vous devez multiplier les coordonnées des deux vecteurs et additionner les résultats. Nous avons n(4, -8) et AM(5, 5).'
+    },
+    {
+      'trials': 4,
+      'seconds': 120,
+      'tip': 'Le produit scalaire est donné par 4*5 + (-8)*5'
+    },
+     {
+      'trials': 5,
+      'seconds': 120,
+      'tip': 'Le produit scalaire est donné par  4*5 + (-8)*5 = -20'
+    }
+])
+
+
+
+validation_question_produit_scalaire_2 = MathadataValidateVariables({
+    'produit_scalaire': -20
+}, tips=[
+    {
+      'trials': 1,
+      'tip': 'Vous devez calculer le produit scalaire entre n(4,-8) et AM(?, ?) avec A(20, 30) et M(25, 35)'
+    },
+    {
+      'trials': 2,
+      'seconds': 30,
+      'tip': 'Les coordonnées du vecteur AM sont (5, 5) (données par (25-20, 35-30))'
+    },
+    {
+      'trials': 3,
+      'seconds': 60,
+      'tip': 'Pour calculer le produit scalaire, vous devez multiplier les coordonnées des deux vecteurs et additionner les résultats. Nous avons n(4, -8) et AM(5, 5).'
+    },
+    {
+      'trials': 4,
+      'seconds': 120,
+      'tip': 'Le produit scalaire est donné par 4*5 + (-8)*5 = -20'
+    }
+  ])
+
+
+validation_score_droite_custom = MathadataValidate(success="Bien joué, vous pouvez continuer à améliorer votre score. Il est possible de descendre à 3% d'erreur.")
+
+
+# ajout louis
+
+
+def function_calcul_produit_scalaire(u,v):
+    return u[0]*v[0] + u[1]*v[1]
+
+def function_calcul_produit_vectoriel(u,v):
+    return u[0]*v[1] - u[1]*v[0]
+
+
+def function_sign(x):
+    if x > 0:
+        return 1
+    elif x < 0:
+        return -1
+    else:
+        return 0
+    
+
+validation_question_produit_scalaire_louis = MathadataValidateVariables({
     'produit_scalaire': 10
 }, tips=[
     {
@@ -1062,7 +1449,299 @@ validation_question_produit_scalaire_2 = MathadataValidateVariables({
       'tip': 'Le produit scalaire est donné par -2*5 + 4*5 = 10'
     }
   ])
-validation_score_droite_custom = MathadataValidate(success="Bien joué, vous pouvez continuer à améliorer votre score. Il est possible de descendre à 3% d'erreur.")
+
+xM=40
+yM=20
+
+def function_validation_question_decouverte_vecteur_normal(errors, answers):
+    n = answers['n']
+    if not check_coordinates(n, errors):
+        return False
+    if function_calcul_produit_vectoriel(n,(a,b)) != 0:
+        if abs(n[0])==abs( a) and abs(n[1])==abs(b):
+            errors.append("Il y a une erreur de signe dans ta réponse. Relis la propriété juste au-dessus et lis l'équation de la droite sur le graphique.")
+        else:
+            errors.append("Ce n'est pas une réponse correcte. Relis la propriété juste au-dessus et lis l'équation de la droite sur le graphique.")
+        return False
+    if n[0] != a or n[1] != b:
+        errors.append("C'est bien un vecteur normal ! Mais nous cherchons le vecteur n = (a, b), avec a et b correspondant à l'équation de la droite." )
+        return False
+    return True
+    
+    
+
+validation_question_decouverte_vecteur_normal= MathadataValidateVariables({
+    'n': None,
+    
+}, function_validation=function_validation_question_decouverte_vecteur_normal,
+tips= [{
+      'trials': 1,
+      'seconds': 30,
+      'tip': 'Sur le graphique l\'équation de la droite est donnée par ax + by + c = 0. Lis les valeurs de a et b pour trouver un vecteur normal n.'
+    },
+    {
+      'trials': 2,
+      'seconds': 50,
+      'tip': 'Sur le graphique l\'équation de la droite est donnée par ax + by + c = 0. Un vecteur normal possible est n = (a, b).'
+    }
+    ])
+
+def function_validation_produit_n_u(errors, answers):
+    produit_scalaire_n_u = answers['produit_scalaire_n_u']
+    if produit_scalaire_n_u is Ellipsis:
+         errors.append("Tu n'as pas remplacé les ...")
+         return False
+    if not isinstance(produit_scalaire_n_u, (int, float)):
+            errors.append("Le résultat doit être un nombre. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','")
+            return False
+    if produit_scalaire_n_u!=0:
+        errors.append("La réponse est fausse. Relis la question.")
+        return False
+    return True
+
+validation_question_produit_n_u = MathadataValidateVariables({
+    'produit_scalaire_n_u': 0
+}, function_validation=function_validation_produit_n_u, success="Bravo, c'est la bonne réponse. Le produit scalaire entre tout vecteur normal n et tout vecteur directeur u vaut bien 0 car ils sont orthogonaux ! ",
+tips= [
+    {
+      'trials': 1,
+      'seconds': 3,
+      'tip': 'Tu dois calculer le produit scalaire entre le vecteur n (que tu as donné à la cellule précédente) et le vecteur u que tu as réglé dans le graphique.'
+    },
+    {
+      'trials': 2,
+      'seconds': 30,
+      'tip': 'Tu dois calculer le produit scalaire entre le vecteur n (celui que tu as donné à la cellule précédente) et le vecteur u que tu as réglé dans le graphique. Le produit scalaire est donné par n_x*u_x< + n_y*u_y.'
+    },
+    {
+      'seconds': 60,
+      'trials': 5,
+      'tip': 'Tu n\'as pas réussi cette question soit du fait d\'un bug de l\'activité soit du fait d\'une erreur de ta part. Mais tu peux poursuivre l\'activité',
+      'validate': True # Unlock the next cells
+    }
+    ]
+    )
 
 
-# ajout louis
+# Sens du vecteur normal : 
+# Attention dépend du choix de caractéristiques !! 
+def angle_vecteur(vecteur):
+    angle_rad = np.arctan2(vecteur[1], vecteur[0])  # y, x
+    angle_deg = np.degrees(angle_rad)
+    return angle_deg % 360  # Pour que l'angle soit toujours entre 0 et 360°
+
+## WIP 
+def function_validation_question_classe_direction_n(errors, answers):
+    classe_sens_vecteur_normal = answers['classe_sens_vecteur_normal']
+    classe_sens_oppose_vecteur_normal = answers['classe_sens_oppose_vecteur_normal']
+    n=(a,b)
+    if classe_sens_vecteur_normal is Ellipsis or classe_sens_oppose_vecteur_normal is Ellipsis:
+        errors.append("Tu n'as pas remplacé les ...")
+        return False
+    if angle_vecteur((12,10))<=angle_vecteur(n)<angle_vecteur((12,10))+180:
+        if classe_sens_vecteur_normal != 2:
+            errors.append("La réponse fournie pour \'classe_sens_vecteur normal\' est incorrecte. Relis la question et regarde le graphique.")
+            return False
+        if classe_sens_oppose_vecteur_normal != 7:
+            errors.append("La réponse fournie pour \'classe_sens_oppose_vecteur normal\' est incorrecte. Relis la question et regarde le graphique.")
+            return False
+    else:
+        if classe_sens_vecteur_normal != 7:
+            errors.append("La réponse fournie pour \'classe_sens_vecteur normal\' est incorrecte. Relis la question et regarde le graphique.")
+            return False
+        if classe_sens_oppose_vecteur_normal != 2:
+            errors.append("La réponse fournie pour \'classe_sens_oppose_vecteur normal\' est incorrecte. Relis la question et regarde le graphique.")
+            return False    
+    return True
+
+validation_question_classe_direction_n = MathadataValidateVariables({
+'classe_sens_vecteur_normal' : None,
+'classe_sens_oppose_vecteur_normal' : None
+}, function_validation=function_validation_question_classe_direction_n,
+tips= [{
+      'trials': 1,
+      'seconds': 30,
+      'tip': 'Ta réponse n\'est pas cohérente avec le graphique et le sens du vecteur normal n. Relis la question et regarde le graphique.'
+    },
+    ])
+
+
+
+M_retourprobleme=(40,20)
+
+def function_validation_normal_2a(errors, answers):
+    vec = answers['vecteur_AM']
+    x_A = answers['x_A']
+    y_A = answers['y_A']
+    x_M = answers['x_M']
+    y_M = answers['y_M']
+    
+    if check_coordinates(vec, errors) and (Ellipsis,Ellipsis,Ellipsis,Ellipsis)==(x_A, y_A, x_M, y_M):
+        if vec !=(M_retourprobleme[0]-xA,M_retourprobleme[1]-yA):
+            errors.append("Les coordonnées du vecteur AM ne sont pas correctes. Reprends les calculs.")
+            return False
+        return True
+      
+    if not all(isinstance(coord, (int, float)) for coord in (x_A, y_A, x_M, y_M)):
+        errors.append("Les coordonnées des points doivent être des nombres. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','")
+        return False
+    if not check_coordinates(vec, errors):
+        return False
+    if (xM, yM) != (x_M, y_M):
+        errors.append("Les coordonnées du point M ne sont pas correctes. Vérifie la position de M dans l'énoncé.")
+        return False
+    if (xA, yA) != (x_A, y_A):
+        errors.append("Les coordonnées du point A ne sont pas correctes. Vérifie la position de A sur le graphique")
+        return False
+    if vec != (xM - xA, yM - yA):
+        errors.append("Ce n'est pas une réponse correcte. Retrouve la formule pour obtenir les coordonnées d'un vecteur à partir des coordonnées de deux points.")
+        return False
+
+    return len(errors)==0     
+
+validation_question_normal_2a = MathadataValidateVariables({
+    'vecteur_AM': None,
+    'x_A' : None,
+    'y_A' : None,
+    'x_M' : None,
+    'y_M' : None
+}, function_validation=function_validation_normal_2a,
+tips= [{
+      'trials': 2,
+      'seconds': 60,
+      'tip': 'Pour calculer un vecteur à partir des coordonnées de deux points, il faut soustraire les coordonnées du point de départ (A) de celles du point d\'arrivée (M). Par exemple, pour le vecteur AM, on fait (xM - xA, yM - yA).'
+    }
+    ])
+
+
+
+
+def function_validation_normal_2b(errors, answers):
+    valeur = answers['produit_scalaire_n_AM']
+    vec = get_variable('vecteur_AM')
+    
+    if not isinstance(valeur, (int, float)):
+        errors.append("Le résultat doit être un nombre. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','")
+        return False
+
+    if valeur != function_calcul_produit_scalaire((a,b), vec):
+        errors.append("La réponse n'est pas correcte. ")
+        return False
+
+    return True     
+
+validation_question_normal_2b = MathadataValidateVariables({
+    'produit_scalaire_n_AM': None
+}, function_validation=function_validation_normal_2b,tips= [{
+      'trials': 1,
+      'seconds': 60,
+      'tip': 'Note sur un papier les coordonnées du vecteur n, les coordonnées du vecteur AM puis effectue le produit scalaire.'
+    },{
+      'trials': 2,
+      'seconds': 60,
+      'tip': 'Note sur un papier les coordonnées du vecteur n(a,b), les coordonnées du vecteur AM(e,f) puis effectue le produit scalaire ae+bf.'
+    }
+    ])
+
+
+def function_validation_normal_2c(errors, answers):
+    produit_scalaire= get_variable('produit_scalaire_n_AM')
+    reponse= answers['reponse']
+    if reponse is Ellipsis :
+        errors.append("Tu n'as pas remplacé les ...")
+        return False
+    
+    if reponse not in (A, B, C):  
+        errors.append(" La réponse ne peut être que A, B ou C.")
+        return False  
+    conditions = {
+    A: produit_scalaire > 0,
+    B: produit_scalaire < 0,
+    C: produit_scalaire == 0
+    }
+    if conditions.get(reponse, False):    
+        return True
+    errors.append("Ta réponse n'est pas correcte. Reprends l'énoncé")
+    return False
+
+
+validation_question_normal_2c = MathadataValidateVariables({
+    'reponse': None,
+  
+}, function_validation=function_validation_normal_2c)
+
+def function_validation_normal_2d(errors, answers):
+    classe_de_M =answers['classe_de_M'] 
+    if classe_de_M is Ellipsis :
+        errors.append("Tu n'as pas remplacé les ...")
+        return False
+    if classe_de_M!=7:
+        errors.append("La réponse est incorecte. Relis au dessus comment déterminer la classe d'un point à l'aide d'un produit scalaire.")
+        return False
+    return True 
+
+validation_question_normal_2d = MathadataValidateVariables({
+  'classe_de_M': None
+}, function_validation=function_validation_normal_2d,success="Bravo ! Tu es arrivé·e au bout du processus de Classification d'une image inconnue.")
+
+
+
+
+#Zone custom 
+A_2 = (7, 2)       # <- coordonnées du point A1
+B_2 = (9, 25)     # <- coordonnées du point B1
+
+
+A_1 = (14, 2)     # <- coordonnées du point A2
+B_1 = (23, 10)     # <- coordonnées du point B2
+
+ 
+def affichage_zones_custom_2(A1, B1, A2, B2,normal=False,trace=False):
+    common.challenge.affichage_2_cara(A1, B1, A2, B2, True)
+    if trace:
+        tracer_points_droite_vecteur(carac=common.challenge.deux_caracteristiques_custom, save=False, normal=normal, reglage_normal=normal,directeur= not normal)
+
+
+validation_question_2cara_comprehension = MathadataValidateVariables({
+    'reponse': {
+        'value': 2,
+        'errors': [
+            {
+                'value': {
+                    'in': [2, 7],
+                },
+                'else': "classe_points_bleus n'a pas la bonne valeur. Vous devez répondre par 2 ou 7."
+            },
+            {
+                'value': 7,
+                'if': "Il y a plus de pixels blanc (valeur élevée) dans la zone rouge pour le 2. La moyenne du niveau de gris sera donc plus élevée pour le 2"
+                },
+        ]
+    }
+})
+
+def calculer_score_custom_droite_2cara():
+    global g_a, g_b, g_c
+    if compute_score(g_a, g_b, g_c, custom=True) <= 50:
+        above = common.challenge.classes[0]
+        below = common.challenge.classes[1]
+    else:
+        above = common.challenge.classes[1]
+        below = common.challenge.classes[0]
+    
+    deux_caracteristiques = common.challenge.deux_caracteristiques_custom
+    def algorithme(d):
+        k = deux_caracteristiques(d)
+        if (g_b == 0 and k[0] > -g_c/g_a) or (g_b != 0 and g_a*k[0] + g_b*k[1] + g_c > 0):
+            return above
+        else:
+            return below
+        
+    def cb(score):
+        if score < 0.11:
+            validation_score_droite_custom_2cara()
+        else:
+            print_error("Continuez à chercher 2 zones pour avoir moins de 11% d'erreur. N'oubliez pas de mettre à jour les valeurs de a, b et y après avoir défini votre zone.")
+
+    calculer_score(algorithme, method="2 moyennes custom", parameters=f"a={g_a}, b={g_b}, c={g_c}", cb=cb) 
+validation_score_droite_custom = MathadataValidate(success="Bien joué, vous pouvez continuer à améliorer votre score.")
