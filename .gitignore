@@ -1,0 +1,24 @@
+Icon
+
+.DS_Store
+__pycache__/
+mnist_2_x_test.pickle
+mnist_2_x_train.pickle
+mnist_10_x_test.pickle
+mnist_10_x_train.pickle
+y_est_test.csv
+tags
+tags.lock
+.ipynb_checkpoints/
+Notebooks - OLD/
+Notebooks - backup - 14_12_23/
+"images/Icon\r"
+images/Icon
+Icon
+
+Icon?
+.DS_Store
+Exports*
+export_*.ipynb
+*.pickle
+*.csv
