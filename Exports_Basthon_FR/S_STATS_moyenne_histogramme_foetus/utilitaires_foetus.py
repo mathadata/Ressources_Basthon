@@ -99,7 +99,11 @@ strings = {
     "feminin": False,
     "contraction": False,
     "classes": ["Normal", "ALARMANT"],
-    "train_size": len(d_train)
+    "r_petite_caracteristique": "Normal",
+    "r_grande_caracteristique": "ALARMANT",
+    "train_size": int(round(len(d_train), -2)),  # arrondi à la dizaine
+    "objectif_score_droite": 21,
+    "pt_retourprobleme": "(40; 20)"
 }
 
 classes = strings['classes']
@@ -147,8 +151,8 @@ class Foetus(common.Challenge):
         self.d = d
         self.d2 = d2
         self.classes = strings['classes']
-        self.r_petite_caracteristique = strings['classes'][0]  # 'Normal'
-        self.r_grande_caracteristique = strings['classes'][1]  # 'ALARMANT'
+        self.r_petite_caracteristique = strings['r_petite_caracteristique']
+        self.r_grande_caracteristique = strings['r_grande_caracteristique']
         self.vmin = 100
         self.vmax = 150
 
@@ -156,22 +160,26 @@ class Foetus(common.Challenge):
         # Moyenne histogramme
         self.carac_explanation = f"C'est la bonne réponse ! Les foetus {classes[1]} ont souvent une fréquence cardiaque avec plus de baisses que les foetus {classes[0]}. C'est pourquoi leur caractéristique est souvent plus grande."
 
+        # GEO
+        # Tracer 10 points
+        self.dataset_10_points = d_train[0:10]
+        self.labels_10_points = r_train[0:10]
+        self.droite_10_points = {
+            'm': 1,
+            'p': 20,
+        }
+
+        # Droite produit scalaire
+        # Pour les versions question_normal
+        self.M_retourprobleme=(40,20)
+
+        # Objectif de score avec les 2 caracs de référence pour passer à la suite
+        self.objectif_score_droite = strings['objectif_score_droite']
+
     def affichage_dix(self):
         for d in d_train[:10]:
             affichage(d)
 
-    def affichage_html(self, id=None, d=None, index=None, histo=False):
-        if id is None:
-            id = uuid.uuid4().hex
-            display(HTML(f'<div id="{id}"></div>'))
-            
-        if d is None and index is not None:
-            d = d_train[index]
-            
-        if d is None:
-            d = self.d
-            
-        run_js(f"window.mathadata.affichage('{id}', '{json.dumps(d, cls=NpEncoder)}', false, {'true' if histo else 'false'})")
 
     def display_custom_selection(self, id):
         d_sain = d_train[np.where(r_train == classes[0])][:2]
@@ -182,6 +190,9 @@ class Foetus(common.Challenge):
         
         run_js(f"setTimeout(() => window.mathadata.setup_zone_selection('{id}', '{json.dumps(data, cls=NpEncoder)}', '{json.dumps(labels, cls=NpEncoder)}'), 500)")
 
+    def display_custom_selection_2d(self, id):
+        self.display_custom_selection(id)
+    
     def caracteristique(self, d):
         # Calculate the percentage of values less than v (v = 100)
         # Filter out NaN values
@@ -195,13 +206,44 @@ class Foetus(common.Challenge):
     def caracteristique_ecart_type(self, d):
         return d[~np.isnan(d)].std()
 
+    def caracteristique_vmin(self, d, vmin):
+        """% de valeurs < vmin"""
+        valid_values = d[~np.isnan(d)]
+        count = np.sum(valid_values < vmin)
+        return (count / len(valid_values)) * 100
+        
+    def caracteristique_vmax(self, d, vmax):
+        """% de valeurs > vmax"""
+        valid_values = d[~np.isnan(d)]
+        count = np.sum(valid_values > vmax)
+        return (count / len(valid_values)) * 100
+        
+    def deux_caracteristiques_custom(self, d):
+        """Retourne un tuple (x,y) où:
+           x = % valeurs < vmin
+           y = % valeurs > vmax"""
+        valid_values = d[~np.isnan(d)]
+        
+        if len(valid_values) == 0:
+            return (0, 0)
+            
+        x = (np.sum(valid_values < self.vmin) / len(valid_values)) * 100
+        y = (np.sum(valid_values > self.vmax) / len(valid_values)) * 100
+        
+        return (x, y)
+
+
     def caracteristique2(self, d):
         return np.nanmax(d) - np.nanmin(d)
 
     def deux_caracteristiques(self, d):
-        # return Q1 and Q3
-        Q1,Q2,Q3 = compute_quartiles_Q1_Q2_Q3(d)
-        return (Q1,Q3)
+        if (self.vmin > self.vmax):
+            return 100
+
+        valid_values = d[~np.isnan(d)]
+        
+        y, x = np.sum(valid_values < self.vmin)/len(valid_values) * 100, np.sum(valid_values > self.vmax)/len(valid_values) * 100
+        return x, y
     
     def caracteristique_custom(self, d):
         # Compute percentage of values in the range [vmin, vmax]
@@ -213,8 +255,8 @@ class Foetus(common.Challenge):
         count_out_of_range = np.sum(valid_values < self.vmin) + np.sum(valid_values > self.vmax)
         return count_out_of_range / len(valid_values) * 100
 
-    def deux_caracteristiques_custom(self, d):
-        return (0,0)
+    # def deux_caracteristiques_custom(self, d):
+    #     return (0,0)
 
     def cb_custom_score(self, score):
         if score < 0.2:
@@ -305,8 +347,17 @@ def affichage(d, start_minut:float = -60, duration_in_minuts: float = 30, displa
     plt.show()
 
 def affichage_tableau(d):
-  df = pd.DataFrame(d).round(2)
-  display(df)
+  df = pd.DataFrame(d,columns=['fréquence']).round(2)
+  dligne =  df.transpose()
+  display(dligne)
+
+def affichage_donnee_courbe(d):
+        df = pd.DataFrame(d).round(2)
+        dligne =  df.transpose()
+        display(dligne)
+        # Utile ici la suite ? 
+        affichage_html(d) 
+
 
 def get_histogramme_data(d=None, id=None):
     # Define custom bin edges
@@ -345,7 +396,11 @@ def affichage_10_frequences():
             random_frequencies.append(fr)
         
     df = pd.DataFrame(random_frequencies, columns=['fréquence'])
-    display(df)
+    #dligne = pd.DataFrame([random_frequencies], columns=[f'fréquence_{i+1}' for i in range(10)])
+    dtranspose= df.transpose()
+    #display(df)
+    #display(dligne)
+    display(dtranspose)
 
 def update_custom_epsilon(epsilon):
     common.challenge.custom_epsilon = epsilon
@@ -471,8 +526,9 @@ def animation_battement():
                 <path d="M48 64C21.5 64 0 85.5 0 112L0 400c0 26.5 21.5 48 48 48l32 0c26.5 0 48-21.5 48-48l0-288c0-26.5-21.5-48-48-48L48 64zm192 0c-26.5 0-48 21.5-48 48l0 288c0 26.5 21.5 48 48 48l32 0c26.5 0 48-21.5 48-48l0-288c0-26.5-21.5-48-48-48l-32 0z"/>
             </svg>
         </div>
-        <div class="heart" id="{id}-heart"><img src="{files_url}/heart-illustration.png" /></div>
-    </div>
+        <div class="heart" id="{id}-heart" style="display: flex; justify-content: center; align-items: center;">
+            <img id="{id}-heart-img" src="{files_url}/heart-illustration.png" />
+        </div>
     <script>
         function togglePlayPause(id) {{
             let playBtn = document.getElementById(id + '-play');
@@ -485,6 +541,18 @@ def animation_battement():
                 pauseBtn.style.display = 'inline';
             }}
         }}
+        (function() {{
+            const testImg = document.getElementById('{id}-heart-img');
+            testImg.onload = function() {{
+                // Image chargée avec succès, ne rien faire
+            }};
+            testImg.onerror = function() {{
+                const heartDiv = document.getElementById('{id}-heart');
+                if (heartDiv) {{
+                    heartDiv.innerHTML = '<div style="font-size: 4rem; color: red;">🔴</div>';
+                }}
+            }};
+        }})();
     </script>
     '''))
     run_js(f"setTimeout(() => window.mathadata.animation_battement('{id}', '{json.dumps(d_animation, cls=NpEncoder)}'), 500)")
@@ -492,6 +560,7 @@ def animation_battement():
 def set_v_limits(vmin, vmax):
     common.challenge.vmin = vmin
     common.challenge.vmax = vmax
+    # print(f"Seuils mis à jour : vmin={vmin}, vmax={vmax}")
 
 # JS
 
@@ -560,9 +629,12 @@ run_js("""
     const max = 240
 
     let vmin = 100
-    let vmax = 200
+    let vmax = 150
+       
+    //window.mathadata.preset_zoom_enabled = true;  // Valeur par défaut (le faire passer à false si on ne veut pas le zoom)
+
     
-    window.mathadata.affichage_chart = (id, data, with_selection) => {
+    window.mathadata.affichage_chart = (id, data, with_selection, preset_zoom) => {
         if (typeof data === 'string') {
             data = JSON.parse(data)
         }
@@ -606,7 +678,7 @@ run_js("""
                     zoom: {
                         zoom: {
                             wheel: {
-                                enabled: true,
+                                enabled: preset_zoom, //window.mathadata.preset_zoom_enabled pour la globale
                             },
                             pinch: {
                                 enabled: false,
@@ -614,7 +686,7 @@ run_js("""
                             mode: 'x',
                         },
                         pan: {
-                            enabled: true,
+                            enabled: preset_zoom, //window.mathadata.preset_zoom_enabled pour la globale
                             mode: 'x',
                         },
                         limits: {
@@ -747,7 +819,7 @@ run_js("""
         `
         */
 
-        window.mathadata.affichage_chart(`${id}-chart`, data, with_selection)
+        window.mathadata.affichage_chart(`${id}-chart`, data, with_selection, true)
         if (with_selection) {
         /*
             const input = document.getElementById(`${id}-input`)
@@ -783,17 +855,17 @@ run_js("""
             d2 = JSON.parse(d2)
         }
         
-        window.mathadata.affichage_chart(`${id}-1-chart`, d1)
+        window.mathadata.affichage_chart(`${id}-1-chart`, d1,false, true)
         //window.mathadata.affichage_histogramme(`${id}-1-histo`, d1)
-        window.mathadata.affichage_chart(`${id}-2-chart`, d2)
+        window.mathadata.affichage_chart(`${id}-2-chart`, d2,false, true)
         //window.mathadata.affichage_histogramme(`${id}-2-histo`, d2)
         window.mathadata.exercice_classification_order = random_order
     }
 
     window.mathadata.animation_battement = (id, values) => {
         values = JSON.parse(values);
-        window.mathadata.affichage_chart(`${id}-chart`, values);
-        const chart = window.mathadata.charts[`${id}-chart`];
+        window.mathadata.affichage_chart(`${id}-chart`, values, false, true); // 1er false pour ne pas afficher la sélection, 2ème true pour zoomer par défaut
+        const chart = window.mathadata.charts[`${id}-chart`];   
         
         const intervals = [];
         let remaining_frac = 1;
@@ -838,7 +910,8 @@ run_js("""
 
             const second = Math.floor(time_ms / 1000)
             time.innerHTML = `${second}`
-            freq.innerHTML = `${values[second]}`
+            freq.innerHTML = `${Math.round(values[second])}`
+
 
             clearTimeout(next_beat_to)
             let time_sum = 0
@@ -891,8 +964,8 @@ run_js("""
                 
                 const second = Math.floor(time_ms / 1000);
                 time.innerHTML = `${second}`;
-                freq.innerHTML = `${values[second]}`;
-                
+                freq.innerHTML = `${Math.round(values[second])}`;
+
                 //updateChartScale();
             }
         }, 100);
@@ -900,36 +973,24 @@ run_js("""
         const heart = document.getElementById(`${id}-heart`);
         const animationTime = 200;
         const audio = new Audio(`${mathadata.files_url}/heartbeat-loop-96879.mp3`);
-        
+        audio.addEventListener('error', () => {
+            console.error('[audio] ERREUR : Impossible de charger l’audio.');
+            alert("⚠️ ATTENTION: Le fichier audio du battement de coeur n’a pas pu être chargé. Continuez l'exercice sans audio ou réexécutez la cellule pour réessayer.");
+            return;
+        });
         const beat = () => {
             if (!play) return;
-
-            // Schedule the next heartbeat if there is one
             if (index < intervals.length) {
                 next_beat_to = setTimeout(beat, intervals[index++]);
             } else {
                 next_beat_to = null;
             }
-
-            // Instead of:
-            //   audio.pause();
-            //   audio.currentTime = 0;
-            //   audio.play();
-            //
-            // Just rewind to 0 and then play. No immediate .pause() to interrupt the previous play promise:
+            audio.pause();
             audio.currentTime = 0;
-            audio.play().catch(err => {
-                // If autoplay is still blocked for some reason, catch & ignore the rejection
-                console.warn("Audio play() was blocked or interrupted:", err);
-            });
-
-            // Trigger the CSS animation on the heart element
-            heart.classList.add("heart-animate");
-            setTimeout(() => {
-                heart.classList.remove("heart-animate");
-            }, animationTime);
+            audio.play();
+            heart.classList.add('heart-animate');
+            setTimeout(() => heart.classList.remove('heart-animate'), animationTime);
         };
-
         
         document.getElementById(`${id}-pause`).addEventListener('click', () => {
             play = false;
@@ -1027,6 +1088,13 @@ NORMAL = "Normal"
 ALARMANT = "ALARMANT"
 alarmant = "ALARMANT"
 Alarmant = "ALARMANT"
+chat = "0"
+CHAT = "0"
+Chat = "0"
+chaton = "0"
+CHATON = "0"
+
+
 
 def validate_etendue(errors, answers):
     return answers['etendue'] - (max(random_frequencies) - min(random_frequencies)) < 1e-3
@@ -1052,20 +1120,26 @@ def validate_exercice(errors, answers):
         errors.append("Terminez l'exercice ci-dessus avant de continuer.")
         return False
     return True
-
+validation_animation_battement = common.MathadataValidate(success="")
 validation_execution_affichage = common.MathadataValidate(success="")
 validation_execution_affichage_tableau = common.MathadataValidate(success="")
+def validate_question_frequence(errors, answers):
+    f = answers['frequence']
+    if not isinstance(f, (int, float)):
+        errors.append("La fréquence doit être un nombre. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','")
+        return False
+    if f==Ellipsis:
+        errors.append("Tu n'as pas remplacé les ...")
+        return False
+    if f!= d[3].round(2):
+        errors.append("Ce n'est pas la bonne valeur. Reprends le tableau et vérifie la valeur de la fréquence cardiaque après 3 secondes d'enregistrement.")
+        return False 
+    return True
+
 validation_question_frequence = common.MathadataValidateVariables({
-    'frequence': {
-        'value': d[2].round(2),
-        'errors': [
-            {
-                'value': d[3].round(2),
-                'if': "Ce n'est pas la bonne réponse. Attention, les indices du tableaux commencent à 0."
-            },
-        ]
-    }
-})
+    'frequence':None
+}, function_validation=validate_question_frequence, success="Bravo ! La fréquence cardiaque est "+ str(d[3].round(2)))
+
 validation_exercice_classification = common.MathadataValidate(
     success="Bravo ! La classification est correcte.",
     function_validation= validate_exercice
@@ -1125,6 +1199,16 @@ def get_names_and_values_hist_3():
         f'nombre_{classes[1]}_inf_6': count_class_1,
     }
 
-validation_question_hist_2 = MathadataValidateVariables(get_names_and_values=get_names_and_values_hist_2)
+validation_question_hist_2 = MathadataValidateVariables(get_names_and_values=get_names_and_values_hist_2, tips=[
+    {
+      'seconds': 30,
+      'tip': 'En passant la souris sur les barres de l\'histogramme, tu peux voir le nombre d\'enregistrements qui ont une caractéristique dans l\'intervalle correspondant.'
+    }
+  ])
 
-validation_question_hist_3 = MathadataValidateVariables(get_names_and_values=get_names_and_values_hist_3)
+validation_question_hist_3 = MathadataValidateVariables(get_names_and_values=get_names_and_values_hist_3,tips=[
+    {
+      'seconds': 30,
+      'tip': 'As-tu bien tenu compte du mot \" inférieure\" ?'
+    }
+  ])
