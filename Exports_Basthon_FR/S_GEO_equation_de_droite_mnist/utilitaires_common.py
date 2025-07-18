@@ -315,6 +315,139 @@ def http_request(url, method='GET', body=None, files=None, fields=None, headers=
 
 challengedata_token = 'yjQTYDk8d51Uq8WcDCPUBK1GPEuEDi6W/3e736TV7qGAmmqn7CCyefkdL+vvjOFY'
 
+def animation_tapis_algo(index=None):
+    """Affiche une animation de type tapis roulant pour données 1D ou 2D."""
+
+    if index is None:
+        import random
+        index = random.randint(0, len(challenge.d_train) - 1)
+
+    data = challenge.d_train[index]
+    label = challenge.r_train[index]
+
+    id = uuid.uuid4().hex
+
+    # Génère une image base64 en fonction du type de données
+    import base64
+    import io
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(1.5, 1.5))
+    if data.ndim == 1:
+        ax.plot(data, color='black', linewidth=1)
+        ax.set_ylim(np.nanmin(data) - 10, np.nanmax(data) + 10)
+    elif data.ndim == 2:
+        ax.imshow(data, cmap='gray')
+    else:
+        raise ValueError("Format de donnée non pris en charge.")
+    ax.axis('off')
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0.05)
+    plt.close(fig)
+    base64_img = base64.b64encode(buf.getvalue()).decode('utf-8')
+
+    # Affichage HTML/JS
+    display(HTML(f'''
+    <div id="{id}" class="tapis-container" style="position: relative; width: 600px; height: 150px; background-color: #222; border: 2px solid #ccc; border-radius: 10px; overflow: hidden; margin: 20px auto;">
+        <!-- Tapis roulant stylisé -->
+        <div class="tapis-track" style="position: absolute; bottom: 0; left: 0; width: 100%; height: 50px; background: repeating-linear-gradient(90deg, #555 0px, #555 20px, #333 20px, #333 40px); background-size: 40px 50px; animation: move-tapis 1s linear infinite; box-shadow: inset 0 4px 4px rgba(0,0,0,0.5); z-index: 0;"></div>
+        <style>
+            @keyframes move-tapis {{
+                from {{ background-position: 0 0; }}
+                to {{ background-position: 40px 0; }}
+            }}
+            @keyframes rotateGears {{
+                from {{ transform: rotate(0deg); }}
+                to {{ transform: rotate(360deg); }}
+            }}
+        </style>
+
+        <!-- Boîte Algo -->
+        <div id="{id}-algo-box" style="position: absolute; top: 20px; left: 260px; width: 80px; height: 80px; background: #333; color: white; border-radius: 10px; text-align: center; line-height: 80px; font-weight: bold; z-index: 2;">Algo</div>
+
+        <!-- Canvas pour image/signal -->
+        <canvas id="{id}-canvas" width="600" height="150" style="position: absolute; left: 0; top: 0; z-index: 1;"></canvas>
+
+        <!-- Sortie -->
+        <div id="{id}-output-label" style="position: absolute; right: 20px; top: 100px; font-size: 18px; font-weight: bold; color: white;"></div>
+    </div>
+    '''))
+
+    # JavaScript pour animer l’image ou le signal
+    run_js(f"""
+    (function() {{
+        const canvas = document.getElementById("{id}-canvas");
+        const ctx = canvas.getContext("2d");
+        const img = new Image();
+        img.src = "data:image/png;base64,{base64_img}";
+
+        const boxX = 260;
+        const totalFrames = 60;
+        const duration = 1700;
+        const frameDelay = duration / totalFrames;
+        let frame = 0;
+        let animateEnded = false;
+
+        img.onload = function() {{
+            const animate = () => {{
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                let x = Math.min(boxX, frame * (boxX / totalFrames));
+                ctx.drawImage(img, x, 25, 50, 50);
+
+                if (frame === Math.floor(totalFrames * 0.8)) {{
+                    const algoBox = document.getElementById("{id}-algo-box");
+
+                    // Inject rotating gears
+                    algoBox.innerHTML = `
+                        <div id="{id}-gear-anim" style="
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            height: 100%;
+                            animation: rotateGears 2s linear;
+                        ">
+                            <div style="font-size: 16px; line-height: 1;">⚙️</div>
+                            <div style="display: flex; gap: 4px; margin-top: -2px;">
+                                <div style="font-size: 16px; line-height: 1;">⚙️</div>
+                                <div style="font-size: 16px; line-height: 1;">⚙️</div>
+                            </div>
+                        </div>
+                    `;
+
+                    setTimeout(() => {{
+                        algoBox.innerText = "Algo";
+                        animateEnded = true;
+                    }}, 2000);
+                }}
+
+                if (frame === Math.floor(totalFrames * 0.8)) {{
+                    if (animateEnded) {{
+                        document.getElementById("{id}-output-label").innerText = "Résultat : {label}";
+                    }} else {{
+                        // Re-vérifie un peu plus tard jusqu'à ce que animateEnded soit true
+                        const waitForAnim = setInterval(() => {{
+                            if (animateEnded) {{
+                                clearInterval(waitForAnim);
+                                document.getElementById("{id}-output-label").innerText = "Résultat : {label}";
+                            }}
+                        }}, 50); // vérifie toutes les 50 ms
+                    }}
+                }}
+
+
+
+                frame++;
+                if (frame <= totalFrames) {{
+                    setTimeout(animate, frameDelay);
+                }}
+            }};
+            animate();
+        }};
+    }})();
+    """)
+
+
 def http_request_cd(endpoint, method='GET', body=None, files=None, fields=None, cb=None):
     headers = {
         'Authorization': f'Bearer {challengedata_token}'
@@ -452,8 +585,8 @@ def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=
         score = np.mean(r_prediction_train != challenge.r_train)
         set_score(score)
 
-        print(f"Voici les prédictions r^ de ton algorithme pour chaque {challenge.strings['dataname']}")
         if banque:
+            print(f"Voici les prédictions r^ de ton algorithme pour chaque {challenge.strings['dataname']}")
             affichage_banque(carac=caracteristique, showPredictions=True, estimations=r_prediction_train)
         
         if cb is not None:
@@ -464,23 +597,6 @@ def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=
         if debug:
             raise(e)
         
-def calculer_score_2(algorithme, method=None, parameters=None, cb=None, a=None, b=None, caracteristique=None):
-    try:
-        print("Calcul du pourcentage d'erreur en cours...")
-
-        r_prediction_train = get_estimations(challenge.d_train, algorithme=algorithme)
-        score = np.mean(r_prediction_train != challenge.r_train)
-        set_score(score)
-
-        
-        if cb is not None:
-            cb(score)
-
-    except Exception as e:
-        print_error("Il y a eu un problème lors du calcul de l'erreur. Vérifie ta réponse.")
-        if debug:
-            raise(e)        
-
 # Fonctions trame notebook générique
 
 def calculer_score_etape_1():
@@ -556,6 +672,53 @@ def calculer_score_code_eleve():
             print_error("Essaie de trouver une zone qui fait moins de 5% d'erreur.")
     
     calculer_score(algorithme, method="code eleve", caracteristique=get_variable('caracteristique'))
+
+
+def calculer_score_code_free():
+    if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable('r_grande_caracteristique'):
+        print_error('Remplacez tous les ... par vos paramètres.')
+        return
+    
+    t = get_variable('t')
+    r_petite_caracteristique = get_variable('r_petite_caracteristique')
+    r_grande_caracteristique = get_variable('r_grande_caracteristique')
+    
+    def algorithme(d):
+        x = get_variable('caracteristique')(d)
+
+        if x <= t:
+            return r_petite_caracteristique
+        else:
+            return r_grande_caracteristique
+        
+   
+    validation_code_free()
+       
+    calculer_score(algorithme, method="code free", caracteristique=get_variable('caracteristique'))
+
+
+
+def calculer_score_code_etendue():
+    if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable('r_grande_caracteristique'):
+        print_error('Remplacez tous les ... par vos paramètres.')
+        return
+    
+    t = get_variable('t')
+    r_petite_caracteristique = get_variable('r_petite_caracteristique')
+    r_grande_caracteristique = get_variable('r_grande_caracteristique')
+    
+    def algorithme(d):
+        x = get_variable('caracteristique')(d)
+
+        if x <= t:
+            return r_petite_caracteristique
+        else:
+            return r_grande_caracteristique
+        
+    validation_code_etendue()
+    
+    calculer_score(algorithme, method="code etendue", caracteristique=get_variable('caracteristique'))
+
 
 def get_erreur_plot(func_carac=None):
     (t_values, scores_array) = compute_erreur(func_carac)
@@ -786,6 +949,7 @@ styles = """
     display: flex;
     gap: 3px;
     align-items: center;
+    text-align: center;
 }
 
 .sidebox-section {
@@ -793,7 +957,8 @@ styles = """
     flex-direction: column;
     gap: 1rem;
     align-items: center;
-
+    justify-content: space-between;
+    flex: 1;
 }
 
 .score {
@@ -1153,6 +1318,7 @@ run_js("""
                 wrapper.style.justifyContent = 'center';
                 wrapper.style.alignItems = 'center';
                 wrapper.style.backgroundColor = 'white';
+                wrapper.style.position = 'relative';
 
                 // move inside wrapper
                 const canvas = document.getElementById(div_id)
@@ -1537,7 +1703,7 @@ run_js("""
                         }
                         chart.update()
                     } else {
-                        setStatusMessage(`${mathadata.data('le', {uppercase: true})} ne va pas ici sur la droite. Tu as placé un point à l'abscisse ${dataX.toFixed(2)} alors que ${mathadata.data('le')} a une caractéristique x = ${c_train[i_exercice_droite_carac].toFixed(2)}`)
+                        setStatusMessage(`${mathadata.data('le', {uppercase: true})} n'est pas à la bonne position sur la droite. Tu as placé un point à l'abscisse ${dataX.toFixed(2)} alors que ${mathadata.data('le')} a une caractéristique x = ${c_train[i_exercice_droite_carac].toFixed(2)}`)
                     }
                 }
             } else {
@@ -1557,14 +1723,14 @@ run_js("""
                 data: {
                     datasets: [
                     {
-                        label: `${mathadata.data('', {plural: true, uppercase: true})} de ${mathadata.challenge.classes[0]}`,
+                        label: `${mathadata.data('', {plural: true, uppercase: true})} ${mathadata.challenge.classes[0]}`,
                         data: [],
                         pointRadius: 4,
                         pointHoverRadius: 8,
                         pointBackgroundColor: window.mathadata.classColors[0],
                     },
                     {
-                        label: `${mathadata.data('', {plural: true, uppercase: true})} de ${mathadata.challenge.classes[1]}`,
+                        label: `${mathadata.data('', {plural: true, uppercase: true})} ${mathadata.challenge.classes[1]}`,
                         data: [],
                         pointRadius: 4,
                         pointHoverRadius: 8,
@@ -1783,7 +1949,7 @@ run_js("""
         // variables in mathadata object
         charts: {},
         exercises: {},
-        classColors: ['rgba(80,80,255,0.5)', 'rgba(255, 165, 0, 0.5)'],
+        classColors: ['rgba(80,80,255,0.5)', 'rgba(255, 150, 0, 0.8)'],
         classColorCodes: ['80,80,255', '255, 165, 0'],
         centroidColorCodes: ['0,0,100', '255,100,0'],
     }
@@ -1815,18 +1981,22 @@ def create_sidebox():
     sidebox.innerHTML = `
         <div class="sidebox-main">
             <div class="sidebox-header">
-                <h3>Erreur</h3>
+                <h3>Calcul du taux d'erreur de l'algorithme</h3>
             </div>
             <div style="display: flex; flex-wrap: wrap; justify-content: space-around; width: 100%; margin-top: 2rem">
                 <div class="sidebox-section">
-                    <h4>Meilleur</h4>
-                    <svg xmlns="http://www.w3.org/2000/svg" width=40 height=40 viewBox="0 0 512 512"><!--!Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path fill="#B197FC" d="M4.1 38.2C1.4 34.2 0 29.4 0 24.6C0 11 11 0 24.6 0H133.9c11.2 0 21.7 5.9 27.4 15.5l68.5 114.1c-48.2 6.1-91.3 28.6-123.4 61.9L4.1 38.2zm503.7 0L405.6 191.5c-32.1-33.3-75.2-55.8-123.4-61.9L350.7 15.5C356.5 5.9 366.9 0 378.1 0H487.4C501 0 512 11 512 24.6c0 4.8-1.4 9.6-4.1 13.6zM80 336a176 176 0 1 1 352 0A176 176 0 1 1 80 336zm184.4-94.9c-3.4-7-13.3-7-16.8 0l-22.4 45.4c-1.4 2.8-4 4.7-7 5.1L168 298.9c-7.7 1.1-10.7 10.5-5.2 16l36.3 35.4c2.2 2.2 3.2 5.2 2.7 8.3l-8.6 49.9c-1.3 7.6 6.7 13.5 13.6 9.9l44.8-23.6c2.7-1.4 6-1.4 8.7 0l44.8 23.6c6.9 3.6 14.9-2.2 13.6-9.9l-8.6-49.9c-.5-3 .5-6.1 2.7-8.3l36.3-35.4c5.6-5.4 2.5-14.8-5.2-16l-50.1-7.3c-3-.4-5.7-2.4-7-5.1l-22.4-45.4z"/></svg>
-                    <span id="highscore" class="score">{score_str(highscore) if highscore is not None else "..."}</span>
+                    <h4 style="text-align: center;">Meilleur score:</h4>
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width=40 height=40 viewBox="0 0 512 512"><!--!Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path fill="#B197FC" d="M4.1 38.2C1.4 34.2 0 29.4 0 24.6C0 11 11 0 24.6 0H133.9c11.2 0 21.7 5.9 27.4 15.5l68.5 114.1c-48.2 6.1-91.3 28.6-123.4 61.9L4.1 38.2zm503.7 0L405.6 191.5c-32.1-33.3-75.2-55.8-123.4-61.9L350.7 15.5C356.5 5.9 366.9 0 378.1 0H487.4C501 0 512 11 512 24.6c0 4.8-1.4 9.6-4.1 13.6zM80 336a176 176 0 1 1 352 0A176 176 0 1 1 80 336zm184.4-94.9c-3.4-7-13.3-7-16.8 0l-22.4 45.4c-1.4 2.8-4 4.7-7 5.1L168 298.9c-7.7 1.1-10.7 10.5-5.2 16l36.3 35.4c2.2 2.2 3.2 5.2 2.7 8.3l-8.6 49.9c-1.3 7.6 6.7 13.5 13.6 9.9l44.8-23.6c2.7-1.4 6-1.4 8.7 0l44.8 23.6c6.9 3.6 14.9-2.2 13.6-9.9l-8.6-49.9c-.5-3 .5-6.1 2.7-8.3l36.3-35.4c5.6-5.4 2.5-14.8-5.2-16l-50.1-7.3c-3-.4-5.7-2.4-7-5.1l-22.4-45.4z"/></svg>
+                        <span id="highscore" class="score">{score_str(highscore) if highscore is not None else "..."}</span>
+                    </div>
                 </div>
                 <div class="sidebox-section">
-                    <h4>Session</h4>
-                    <svg xmlns="http://www.w3.org/2000/svg" width=40 height=40 viewBox="0 0 448 512"><!--!Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path fill="#63E6BE" d="M224 256A128 128 0 1 0 224 0a128 128 0 1 0 0 256zm-45.7 48C79.8 304 0 383.8 0 482.3C0 498.7 13.3 512 29.7 512H418.3c16.4 0 29.7-13.3 29.7-29.7C448 383.8 368.2 304 269.7 304H178.3z"/></svg>
-                    <span id="session-score" class="score">...</span>
+                    <h4 style="text-align: center;">Score actuel:</h4>
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width=40 height=40 viewBox="0 0 448 512"><!--!Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path fill="#63E6BE" d="M224 256A128 128 0 1 0 224 0a128 128 0 1 0 0 256zm-45.7 48C79.8 304 0 383.8 0 482.3C0 498.7 13.3 512 29.7 512H418.3c16.4 0 29.7-13.3 29.7-29.7C448 383.8 368.2 304 269.7 304H178.3z"/></svg>
+                        <span id="session-score" class="score">...</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2008,7 +2178,7 @@ class _MathadataValidate():
             }
             run_js(f'''
                 setTimeout(() => {{
-                    window.mathadata.setup_tips('{id}-tips', '{json.dumps(params, cls=NpEncoder)}');
+                    window.mathadata.setup_tips('{id}-tips', `{json.dumps(params, cls=NpEncoder)}`);
                 }}, 500);
             ''')
 
@@ -2375,9 +2545,18 @@ def get_validate_seuil_optimized():
 validation_execution_algo_fixe = MathadataValidate(success="")
 validation_execution = MathadataValidate(success="")
 validation_execution_calcul_score = MathadataValidate(success="")
+
 validation_question_score_fixe = MathadataValidateVariables({
     'erreur_10': None
-}, function_validation=validation_func_score_fixed, success="")
+}, function_validation=validation_func_score_fixed, 
+tips=[
+    { 
+      'seconds': 50,
+      'tip': 'Compte dans le tableau le nombre d\'erreurs commmises. Il restera une opération mathématique à faire pour obtenir le pourcentage d\'erreur.'
+    }, { 
+      'seconds': 100,
+      'tip': 'Il faut diviser par 10 pour otebnir la proportion d\'erreur parmi les 10 premières valeurs.'
+    }], success="")
 validation_score_fixe = MathadataValidate(success="")
 
 validation_execution_affichage_classif = MathadataValidate(success="")
@@ -2412,7 +2591,22 @@ validation_question_seuil = MathadataValidateVariables(
     success="Ton seuil est correct ! Il n'est pas forcément optimal, on verra dans la suite comment l'optimiser."
 )
 validation_execution_classif = MathadataValidate(success="")
+
+
+
+
+def affichage_seuil():
+    t = get_variable('t')
+    if t is None or t is Ellipsis:
+        print_error("Le seuil n'a pas été défini. Tu dois d'abord définir la variable t.")
+        return False
+    else:
+        print(f"Le seuil que tu as choisi est {t}. Tu peux maintenant calculer le score de ton algorithme sur les 10 premières lignes du tableau.")
+        return True
+
 validation_execution_affichage_score = MathadataValidate(success="")
+
+
 validation_question_score_seuil = ValidateScoreThresold()
 validation_score_carac = MathadataValidate(success="")
 validation_execution_graph_erreur = MathadataValidate(success="")
@@ -2436,13 +2630,26 @@ validation_question_nombre = MathadataValidateVariables(get_names_and_values=lam
 validation_question_nombre_total =MathadataValidateVariables(get_names_and_values=lambda: {
     f'nombre_total_{challenge.strings["dataname_plural"]}': {
         'value': len(challenge.d_train),
-        'errors': [
+        'errors': [ 
             {'value':len(challenge.d_train),
              'else': "Ce n'est pas la bonne réponse. Le tableau est intéractif."
             },
         ]
     }
-    }, on_success=lambda answers: set_step(0))
+    },tips=[
+    { 
+      'seconds': 30,
+      'tip': 'Après avoir cliqué dans le tableau intéractif tu peux utiliser les flêches du clavier pour naviguer dans les lignes du tableau. Tu peux aussi utiliser la molette de la souris pour faire défiler le tableau.'
+    },
+
+{
+      'seconds': 60,
+      'trials': 4,
+      
+      'print_solution': True, 
+      'validate': True 
+    }
+  ], on_success=lambda answers: set_step(0))
 
 # Defini pour éviter l'erreur python par defaut si l'élève mets reponse = chat
 chat = 0
@@ -2479,7 +2686,12 @@ validation_question_faineant = MathadataValidateVariables(get_names_and_values=l
 }, success="", on_success=lambda answers: print(f"Bravo, {ac_fem('quelle', 'quel')} que soit {data('le')} l'algorithme fainéant répond toujours {challenge.classes[0]} !"))
 
 validation_custom = MathadataValidate(success="Bravo, c'est un excellent taux d'erreur ! Tu peux passer à la suite pour essayer de faire encore mieux.")
-validation_code_eleve = MathadataValidate(success="Bravo, c'est un excellent taxu d'erreur ! Tu as fini ce notebook.")
+validation_code_eleve = MathadataValidate(success="Bravo, c'est un excellent taux d'erreur ! Tu as fini ce notebook.")
+
+validation_code_free = MathadataValidate(success="Bravo")
+
+validation_code_etendue = MathadataValidate(success="Bravo, tu as fini ce notebook ! Tu peux maintenant passer à la suite pour découvrir d'autres algorithmes de classification.")
+
 
 ### --- Config matplotlib ---
 
@@ -2753,7 +2965,8 @@ def generer_exercices_droites():
     })
 
 def pass_breakpoint():
-    Validate()()
+    if sequence:
+        Validate()()
 
 run_js('''
 /*
