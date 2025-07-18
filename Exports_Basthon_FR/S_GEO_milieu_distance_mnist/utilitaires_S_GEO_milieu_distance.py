@@ -4,7 +4,7 @@ import os
 import sys
 import numpy as np
 import time
-#import ipywidgets as widgets
+import ipywidgets as widgets
 # import mplcursors
 
 # Add parent directory to sys.path
@@ -202,28 +202,27 @@ def tracer_points_droite(id=None, input="range", carac=None, initial_hidden=Fals
     
     run_js(f"setTimeout(() => window.mathadata.tracer_points_droite('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
-def tracer_points_centroides(id=None, carac=None, droite=False, initial_hidden=False):
+def tracer_points_centroides(id=None, carac=None, droite=False):
     if id is None:
         id = uuid.uuid4().hex
     display(HTML(f'''
-            {droite and f'<div id="{id}-score-container" style="text-align: center; font-weight: bold; font-size: 2rem; {"display:none;" if initial_hidden else ""}">Erreur : <span id="{id}-score">...</span></div>'}
-            <canvas id="{id}-chart"></canvas>
+        {droite and f'<div style="text-align: center; font-weight: bold; font-size: 2rem;">Erreur : <span id="{id}-score">...</span></div>'}
+        <canvas id="{id}-chart"></canvas>
     '''))
     
-    if not initial_hidden:
-        if carac is None:
-            carac = common.challenge.deux_caracteristiques
-        
-        c_train_par_population = compute_c_train_by_class(fonction_caracteristique=carac)
+    if carac is None:
+        carac = common.challenge.deux_caracteristiques
+    
+    c_train_par_population = compute_c_train_by_class(fonction_caracteristique=carac)
 
-        params = {
-            'points': c_train_par_population,
-            'custom': carac == common.challenge.deux_caracteristiques_custom,
-            'hover': True,
-            'droite': droite,
-        }
-        
-        run_js(f"setTimeout(() => window.mathadata.tracer_points_centroides('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
+    params = {
+        'points': c_train_par_population,
+        'custom': carac == common.challenge.deux_caracteristiques_custom,
+        'hover': True,
+        'droite': droite,
+    }
+    
+    run_js(f"setTimeout(() => window.mathadata.tracer_points_centroides('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
 def create_graph(figsize=(figw_full, figw_full)):
     fig, ax = plt.subplots(figsize=figsize)
@@ -401,37 +400,6 @@ def afficher_customisation():
                     const bigBlock = document.getElementById('{id}-bigBlock');
                     if (bigBlock) {{
                         bigBlock.style.display = 'block';
-                    }}
-                }}, 100);
-            }})
-        }}
-    ''')
-
-def afficher_customisation_2():
-    id = uuid.uuid4().hex
-    display(HTML(f'''
-        <div id="{id}"></div>
-    '''))
-    common.challenge.display_custom_selection_2d(id)
-
-    tracer_points_centroides(id=id, carac=common.challenge.deux_caracteristiques_custom,droite=True, initial_hidden=True)
-
-    run_js(f'''
-        window.mathadata.on_custom_update = () => {{
-            window.mathadata.run_python('update_custom()', (points) => {{
-                const params = {{
-                    points,
-                    custom: true,
-                    hover: true,
-                    droite: true, 
-                }}
-                mathadata.tracer_points_centroides('{id}', params)
-
-                // AFFICHER LE GRAPH APRÈS LA SÉLECTION
-                setTimeout(() => {{
-                    const scoreContainer = document.getElementById('{id}-score-container');
-                    if (scoreContainer) {{
-                        scoreContainer.style.display = 'block';
                     }}
                 }}, 100);
             }})
