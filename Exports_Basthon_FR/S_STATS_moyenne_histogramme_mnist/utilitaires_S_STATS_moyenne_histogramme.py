@@ -21,6 +21,7 @@ if not sequence:
     spec.loader.exec_module(module)
     globals().update(vars(module))
 
+
 def compute_histogramme(caracteristique):
     c_train = compute_c_train(caracteristique, common.challenge.d_train)
     data = {}
@@ -28,8 +29,8 @@ def compute_histogramme(caracteristique):
         c = c_train[i]
         k = int(c / 2) * 2
         if k not in data:
-            data[k] = [0,0]
-        
+            data[k] = [0, 0]
+
         if common.challenge.r_train[i] == common.challenge.classes[0]:
             data[k][0] += 1
         else:
@@ -37,17 +38,28 @@ def compute_histogramme(caracteristique):
 
     return data
 
-def afficher_histogramme(div_id=None, seuil=None, caracteristique=None, legend=False):
+
+def afficher_histogramme(div_id=None, seuil=None, caracteristique=None, legend=False, aspect_ratio=None, max_y=None):
     if div_id is None:
         div_id = uuid.uuid4().hex
         display(HTML(f'<canvas id="{div_id}"></canvas>'))
-        
+
     if not caracteristique:
         caracteristique = common.challenge.caracteristique
-        
+
     data = compute_histogramme(caracteristique)
 
-    run_js(f"setTimeout(() => window.mathadata.displayHisto('{div_id}', '{json.dumps(data)}', {'true' if legend else 'false'}, {seuil if seuil is not None else 'undefined'}, true), 500)")
+    params = {
+        'with_legend': legend,
+        'with_axes_legend': True,
+        'seuil': seuil,
+        'aspect_ratio': aspect_ratio,
+        'max_y': max_y,
+    }
+
+    run_js(
+        f"setTimeout(() => window.mathadata.displayHisto('{div_id}', '{json.dumps(data)}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
+
 
 def animation_histogramme(id=None, carac=None):
     if id is None:
@@ -56,7 +68,7 @@ def animation_histogramme(id=None, carac=None):
             <div id="{id}" style="display: flex; gap: 2rem; height: 300px; width: 100%;">
                 <div id="{id}-data" style="width: 300px; height: 300px;"></div>
                 <div style="height: 300px; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: space-around; height: 100%; gap: 1rem;">
-                    <p style="text-align: center">Carcatéristique x&nbsp;=&nbsp;<span id="{id}-x">Calcul...</span></p>
+                    <p style="text-align: center">Caractéristique x&nbsp;=&nbsp;<span id="{id}-x">Calcul...</span></p>
                     <div style="flex: 1; width: 100%">
                         <canvas id="{id}-histo"></canvas>
                         <canvas id="{id}-chart"></canvas>
@@ -68,23 +80,28 @@ def animation_histogramme(id=None, carac=None):
     if carac is None:
         carac = common.challenge.caracteristique
 
-    set = common.challenge.d_train[:100]
-    c_train = compute_c_train(carac, set)
+    d_train = common.challenge.d_train
+    r_train = common.challenge.r_train
+    c_train = compute_c_train(carac, d_train)
+    labels = [0 if r == common.challenge.classes[0] else 1 for r in r_train]
+
     params = {
-        'data': set,
         'c_train': c_train,
-        'labels': [0 if r == common.challenge.classes[0] else 1 for r in common.challenge.r_train],
+        'labels': labels,
     }
-    run_js(f"setTimeout(() => window.mathadata.animation_histogramme('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
+
+    run_js(
+        f"setTimeout(() => window.mathadata.animation_histogramme('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
+
 
 def calculer_score_hist_seuil():
     if not has_variable('t'):
         return
-    
+
     t = get_variable('t')
     if t is Ellipsis:
         return
-    
+
     r_petite_caracteristique = common.challenge.r_petite_caracteristique
     r_grande_caracteristique = common.challenge.r_grande_caracteristique
     caracteristique = common.challenge.caracteristique
@@ -99,8 +116,8 @@ def calculer_score_hist_seuil():
     def cb(score):
         validation_score_seuil_optim()
         set_step(3)
-    
-    calculer_score(algorithme, method="moyenne ref hist", parameters=f"t={t}", cb=cb) 
+
+    calculer_score(algorithme, method="moyenne ref hist", parameters=f"t={t}", cb=cb)
 
 
 def afficher_customisation():
@@ -111,22 +128,33 @@ def afficher_customisation():
     '''))
     common.challenge.display_custom_selection(id)
 
+    params = {
+        'with_legend': True,
+        'with_axes_legend': True,
+    }
+
     run_js(f'''
         window.mathadata.on_custom_update = () => {{
             window.mathadata.run_python('update_custom()', (res) => {{
-                window.mathadata.displayHisto('{id}-histo', res, true, undefined, true)
+                window.mathadata.displayHisto('{id}-histo', res, '{json.dumps(params, cls=NpEncoder)}')
             }})
         }}
     ''')
+
 
 def update_custom():
     return json.dumps(compute_histogramme(common.challenge.caracteristique_custom), cls=NpEncoder)
 
 
 run_js('''
-window.mathadata.displayHisto = (div_id, data, with_legend, seuil, with_axes_legend) => {
+window.mathadata.displayHisto = (div_id, data, params) => {
     if (typeof data === 'string')
         data = JSON.parse(data)
+
+    if (typeof params === 'string')
+        params = JSON.parse(params)
+        
+    const {with_legend, with_axes_legend, seuil, aspect_ratio, max_y} = params
 
     const data_1 = Object.entries(data).map(([key, v]) => ({x: parseInt(key) + 1, y: v[0]}))
     const data_2 = Object.entries(data).map(([key, v]) => ({x: parseInt(key) + 1, y: v[1]}))
@@ -169,12 +197,14 @@ window.mathadata.displayHisto = (div_id, data, with_legend, seuil, with_axes_leg
                 }, 
                 y: {
                     suggestedMax: 5,
+                    max: max_y,
                     title: {
                         display: with_axes_legend,
                         text: `Nombre ${mathadata.data('de', {plural: true})}`
                     },
                 },
             },
+            aspectRatio: aspect_ratio,
             barPercentage: 0.9,  // Adjust bar width
             categoryPercentage: 1.0,  // Adjust bar spacing
             grouped: false,
@@ -198,7 +228,7 @@ window.mathadata.displayHisto = (div_id, data, with_legend, seuil, with_axes_leg
         },
     };
     
-    if (seuil !== undefined) {
+    if (seuil !== undefined && seuil !== null) {
         // Ensure the label for the vertical line is correctly formatted.
         config.data.datasets.push({
             type: 'scatter',
@@ -210,9 +240,9 @@ window.mathadata.displayHisto = (div_id, data, with_legend, seuil, with_axes_leg
     window.mathadata.create_chart(div_id, config)
 }
 
-window.mathadata.animation_histogramme = function(id, params) {
-    params = JSON.parse(params)
-    const {data, c_train, labels, t} = params
+window.mathadata.animation_histogramme = function(id, paramsJson) {
+    const params = JSON.parse(paramsJson)
+    const {c_train, labels, t} = params
 
     const max = Math.ceil(Math.max(...c_train) + 1)
     const min = Math.min(0, Math.floor(Math.min(...c_train) - 1))
@@ -231,7 +261,10 @@ window.mathadata.animation_histogramme = function(id, params) {
     chart.data.datasets[1].pointRadius = pointRadius(1)
     chart.update()
 
-    window.mathadata.displayHisto(`${id}-histo`, '{}', true, t)
+    window.mathadata.displayHisto(`${id}-histo`, '{}', {
+        with_legend: true,
+        seuil: t,
+    })
     const histo = window.mathadata.charts[`${id}-histo`]
 
     const getInitData = () => Array(max - min + 1).fill(0).map((_, i) => ({x: min + i, y: 0}))
@@ -244,7 +277,9 @@ window.mathadata.animation_histogramme = function(id, params) {
     const length = max - min + 1
     
     function updateImage() {
-        window.mathadata.affichage(`${id}-data`, data[i])
+        mathadata.run_python(`get_data(${i})`, (data) => {
+            window.mathadata.affichage(`${id}-data`, data)
+        })
         clearCarac()
         setTimeout(() => {
             updateCarac()
@@ -265,68 +300,53 @@ window.mathadata.animation_histogramme = function(id, params) {
     function clearCarac() {
         setCarac('Calcul...')
     }
+
+    let blockSize = 1
     
     function updateChart() {
-        const datasetIndex = labels[i]
-        chart.data.datasets[datasetIndex].data.push({x: c_train[i], y: 0})
-        chart.update()
+        let j = i
+        while (j < c_train.length && j < i + blockSize) {
+            const datasetIndex = labels[j]
+            chart.data.datasets[datasetIndex].data.push({x: c_train[j], y: 0})
     
-        const histoIndex = Math.floor(c_train[i]) - min
-        histo.data.datasets[labels[i]].data[histoIndex].y++
+            const histoIndex = Math.floor(c_train[j]) - min
+            histo.data.datasets[labels[j]].data[histoIndex].y++
+            j++
+        }
+        
+        chart.update()
         histo.update()
 
-        i++
-        if (i < data.length) {
+        i = j
+        if (i < c_train.length) {
             if (delay > 0.1) {
-                delay = delay *= 0.8 // decrease the delay progressively
-                setTimeout(() => {
-                    updateImage()
-                }, delay)
+                // On commence par diminuer le delay progressivement
+                delay = delay *= 0.8
             } else {
-                endAnimation()
+                // A partir d'un certain point, on ajoute plusieurs points à la fois
+                blockSize += 1
+                
+                // Remplace la fonction qui affiche le dernier point en plus gros par une valeur fixe pour faire moins de calculs
+                chart.data.datasets[0].pointRadius = 4
+                chart.data.datasets[1].pointRadius = 4
             }
+
+            setTimeout(() => {
+                updateImage()
+            }, delay)
+
         } else {
+            // affiche la dernière image
+            mathadata.run_python(`get_data(${i} - 1)`, (data) => {
+                window.mathadata.affichage(`${id}-data`, data)
+                setCarac(c_train[i - 1].toFixed(2))
+            })
+        
             // to set all points to normal size
             setTimeout(() => chart.update(), delay)
         }
     }
 
-    function endAnimation() {
-        // speed up to display all points
-        chart.data.datasets[0].pointRadius = 4
-        chart.data.datasets[1].pointRadius = 4
-        function updateDisplay() {
-            // step 10 by 10 then 100 by 100 until the end
-            let end_i
-            if (i < 100) {
-                end_i = i + 10
-            } else {
-                end_i = i + 100
-            }
-            end_i = Math.min(end_i, data.length)
-
-            // update data
-            for (i; i < end_i; i++) {
-                const datasetIndex = labels[i]
-                chart.data.datasets[datasetIndex].data.push({x: c_train[i], y: 0})
-                const histoIndex = Math.floor(c_train[i]) - min;
-                histo.data.datasets[labels[i]].data[histoIndex].y++;
-            }
-        
-            // update display
-            window.mathadata.affichage(`${id}-data`, data[end_i - 1]);
-            setCarac(c_train[end_i - 1].toFixed(2));
-            chart.update('none');
-            histo.update('none');
-
-            if (i < data.length) {
-                requestAnimationFrame(updateDisplay);
-            }
-        }
-
-        requestAnimationFrame(updateDisplay);
-    }
-        
     let delay = 2000  // Initial delay
     updateImage()
 }
@@ -343,11 +363,13 @@ validation_execution_caracteristique_custom = MathadataValidate(success="")
 validation_score_zone_custom = MathadataValidate(success="")
 validation_execution_afficher_customisation = MathadataValidate(success="")
 
+
 def on_success_question_hist_1(answers):
     if common.challenge.carac_explanation:
         print(common.challenge.carac_explanation)
     else:
         print("Bravo, c'est la bonne réponse !")
+
 
 validation_question_hist_1 = MathadataValidateVariables({
     'r_histogramme_orange': {
@@ -372,27 +394,29 @@ validation_question_hist_1 = MathadataValidateVariables({
             }
         ]
     }
-}, success="", on_success=on_success_question_hist_1)
+}, 
+ success="", on_success=on_success_question_hist_1)
+
 
 def get_names_and_values_question_hist_seuil():
     data = compute_histogramme(common.challenge.caracteristique)
     # Find the intersection point where the histograms cross
     # data is a dictionary with keys like '0', '2', '4' and values like [10, 20]
     # We need to find where the order between first and second number changes
-    
+
     # Convert keys to integers and sort them
     sorted_keys = sorted(data.keys())
-    
+
     # Find where the histograms cross (where the sign of the difference changes)
     intersection_point = None
     for i in range(len(sorted_keys) - 1):
         current_key = sorted_keys[i]
         next_key = sorted_keys[i + 1]
-        
+
         # Check if the sign of the difference changes
         current_diff = data[current_key][0] - data[current_key][1]
         next_diff = data[next_key][0] - data[next_key][1]
-        
+
         if (current_diff > 0 and next_diff <= 0) or (current_diff < 0 and next_diff >= 0):
             # Found the intersection between these two points
             intersection_point = sorted_keys[i + 1]
@@ -423,9 +447,11 @@ def get_names_and_values_question_hist_seuil():
                     },
                     'if': f'Tu te rapproches mais ce n\'est pas le meilleur seuil. Il doit y avoir plus de {common.challenge.r_petite_caracteristique} que de {common.challenge.r_grande_caracteristique} qui ont une caractéristique x inférieure ou égale à t et inversement pour x supérieur à t.'
                 },
-                
+
             ]
         }
     }
 
-validation_question_hist_seuil = MathadataValidateVariables(get_names_and_values=get_names_and_values_question_hist_seuil, success="Bravo, ton seuil est maintenant optimal !")
+
+validation_question_hist_seuil = MathadataValidateVariables(
+    get_names_and_values=get_names_and_values_question_hist_seuil, success="Bravo, ton seuil est maintenant optimal !")
