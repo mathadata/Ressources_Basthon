@@ -22,7 +22,11 @@ strings = {
     "feminin": True,
     "contraction": True,
     "classes": [2, 7],
-    "train_size": "6 000"
+    "r_petite_caracteristique": 7,
+    "r_grande_caracteristique": 2,
+    "train_size": "6 000",
+    "objectif_score_droite": 8,
+    "pt_retourprobleme": "(40; 20)"
 }
 
 try:
@@ -110,14 +114,35 @@ class Mnist(common.Challenge):
         self.d = d
         self.d2 = d2
         self.classes = chiffres
-        self.r_petite_caracteristique = 7
-        self.r_grande_caracteristique = 2
+        self.r_petite_caracteristique = strings['r_petite_caracteristique']
+        self.r_grande_caracteristique = strings['r_grande_caracteristique']
         self.custom_zone = None
         self.custom_zones = None
 
         # STATS
         # Moyenne histogramme
         self.carac_explanation = f"C'est la bonne réponse ! Les images de 7 ont souvent moins de pixels blancs que les images de 2. C'est pourquoi leur caractéristique, leur moyenne, est souvent plus petite."
+
+        # GEO
+        # Tracer 10 points
+        self.dataset_10_points = d_train[20:30]
+        self.labels_10_points = r_train[20:30]
+        self.droite_10_points = {
+            'm': 0.5,
+            'p': 20,
+        }
+
+        # Droite produit scalaire
+        # Pour les versions question_normal
+        self.M_retourprobleme=(40,20)
+
+        # Objectif de score avec les 2 caracs de référence pour passer à la suite
+        self.objectif_score_droite = strings['objectif_score_droite']
+
+        # Centroides
+        self.dataset_10_centroides = d_train[30:40]
+        self.labels_10_centroides = r_train[30:40]
+        
         
     def affichage_dix(self, d=d_train, a=None, b=None, zones=[], y = r_train, n=10, axes=False):
         global r_train
@@ -156,7 +181,7 @@ class Mnist(common.Challenge):
                 gif.style = 'width: 25%; height: auto; margin-inline: auto;'
                 const container = document.getElementById('{id}-selection')
                 container.appendChild(gif)
-            }}, 100)
+            }}, 500)
         ''')
 
     def display_custom_selection_2d(self, id):
@@ -170,7 +195,7 @@ class Mnist(common.Challenge):
                 gif.style = 'width: 25%; height: auto; margin-inline: auto;'
                 const container = document.getElementById('{id}')
                 container.appendChild(gif)
-            }}, 100)
+            }}, 500)
         ''')
             
 
@@ -988,7 +1013,12 @@ validation_question_hist_3 = MathadataValidateVariables({
             }
         ]
     },
-})
+}, tips=[
+    {
+      'seconds': 30,
+      'tip': 'En passant la souris sur les barres de l\'histogramme, tu peux voir le nombre d\'images qui ont une caractéristique dans l\'intervalle correspondant.'
+    }
+  ])
 
 
 
