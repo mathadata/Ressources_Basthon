@@ -27,14 +27,15 @@ def compute_histogramme(caracteristique):
     data = {}
     for i in range(len(c_train)):
         c = c_train[i]
-        k = int(c / 2) * 2
-        if k not in data:
-            data[k] = [0, 0]
+        if not np.isnan(c):
+            k = int(c / 2) * 2
+            if k not in data:
+                data[k] = [0, 0]
 
-        if common.challenge.r_train[i] == common.challenge.classes[0]:
-            data[k][0] += 1
-        else:
-            data[k][1] += 1
+            if common.challenge.r_train[i] == common.challenge.classes[0]:
+                data[k][0] += 1
+            else:
+                data[k][1] += 1
 
     return data
 

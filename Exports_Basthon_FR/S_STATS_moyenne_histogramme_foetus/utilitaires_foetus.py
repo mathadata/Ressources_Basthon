@@ -121,6 +121,7 @@ except Exception as e:
 import utilitaires_common as common
 from utilitaires_common import *
 
+
 #Nouvelle variable pour checker la validation de l'exercice de classification
 exercice_classification_ok = False
 
@@ -176,18 +177,27 @@ class Foetus(common.Challenge):
         # Objectif de score avec les 2 caracs de référence pour passer à la suite
         self.objectif_score_droite = strings['objectif_score_droite']
 
+    def remplacer_d_train_sans_nan(self):
+        global d_train, d
+        d_train = d_train_no_nan.copy()
+        d = d_train_no_nan[0].copy()
+        self.d_train = d_train_no_nan.copy()
+        self.d = d
+        print()
+        print("--- Nettoyage des données ---")
+
     def affichage_dix(self):
-        for d in d_train[:10]:
+        for d in self.d_train[:10]:
             affichage(d)
 
 
     def display_custom_selection(self, id):
-        d_sain = d_train[np.where(r_train == classes[0])][:2]
-        d_malade = d_train[np.where(r_train == classes[1])][:2]
-        
+        d_sain = self.d_train[np.where(self.r_train == self.classes[0])][:2]
+        d_malade = self.d_train[np.where(self.r_train == self.classes[1])][:2]
+
         data = np.concatenate([d_sain, d_malade])
-        labels = [classes[0]] * len(d_sain) + [classes[1]] * len(d_malade)
-        
+        labels = [self.classes[0]] * len(d_sain) + [self.classes[1]] * len(d_malade)
+
         run_js(f"setTimeout(() => window.mathadata.setup_zone_selection('{id}', '{json.dumps(data, cls=NpEncoder)}', '{json.dumps(labels, cls=NpEncoder)}'), 500)")
 
     def display_custom_selection_2d(self, id):
@@ -260,6 +270,8 @@ class Foetus(common.Challenge):
 
     def cb_custom_score(self, score):
         if score < 0.2:
+            # Avant de passer au bac à sable, on retire les NaN de d_train
+            self.remplacer_d_train_sans_nan()
             return True
         else:
             print_error("Modifie vmin et vmax pour faire moins de 20% d'erreur et passer à la suite. Cherche les valeurs qui sont plus fréquentes pour les foetus malades.")
@@ -294,6 +306,9 @@ class Foetus(common.Challenge):
         """)    
 
 init_challenge(Foetus())
+
+# Créer une version de la liste d_train sans les NaN
+d_train_no_nan = [d[~np.isnan(d)] for d in d_train]
 
 def affichage(d, start_minut:float = -60, duration_in_minuts: float = 30, display_mean: bool = True, interpolate_missing_values:bool = True, min_y_value: int = None, max_y_value: int = None):
     # fhr_full = loadmat(id_to_path[id])['fhr'].ravel()
@@ -519,43 +534,58 @@ def animation_battement():
         <canvas id="{id}-chart"></canvas>
         <div>Temps : <span id="{id}-time">0</span>  -  Fréquence : <span id="{id}-freq">120</span></div>
         <div style="display: flex; gap: 1rem;">
-            <svg id="{id}-play" height="32" style="cursor: pointer; display: none;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" onclick="togglePlayPause('{id}')">
-                <path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80L0 432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/>
-            </svg>
-            <svg id="{id}-pause" height="32" style="cursor: pointer;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" onclick="togglePlayPause('{id}')">
-                <path d="M48 64C21.5 64 0 85.5 0 112L0 400c0 26.5 21.5 48 48 48l32 0c26.5 0 48-21.5 48-48l0-288c0-26.5-21.5-48-48-48L48 64zm192 0c-26.5 0-48 21.5-48 48l0 288c0 26.5 21.5 48 48 48l32 0c26.5 0 48-21.5 48-48l0-288c0-26.5-21.5-48-48-48l-32 0z"/>
-            </svg>
+            <button id="{id}-play" style="display: none; background: none; border: none; padding: 0; cursor: pointer; width: 32px; height: 32px;" onclick="togglePlayPause('{id}')">
+                ▶️
+            </button>
+            <button id="{id}-pause" style="background: none; border: none; padding: 0; cursor: pointer; width: 32px; height: 32px;" onclick="togglePlayPause('{id}')">
+                ⏸️
+            </button>
         </div>
         <div class="heart" id="{id}-heart" style="display: flex; justify-content: center; align-items: center;">
             <img id="{id}-heart-img" src="{files_url}/heart-illustration.png" />
         </div>
     <script>
+        window.animationState = window.animationState || {{}};
+        window.animationState['{id}'] = {{ isPlaying: true }};
+
         function togglePlayPause(id) {{
-            let playBtn = document.getElementById(id + '-play');
-            let pauseBtn = document.getElementById(id + '-pause');
-            if (playBtn.style.display === 'none') {{
-                playBtn.style.display = 'inline';
-                pauseBtn.style.display = 'none';
-            }} else {{
+            window.animationState[id].isPlaying = !window.animationState[id].isPlaying;
+            const playBtn = document.getElementById(id + '-play');
+            const pauseBtn = document.getElementById(id + '-pause');
+
+            if (window.animationState[id].isPlaying) {{
                 playBtn.style.display = 'none';
-                pauseBtn.style.display = 'inline';
+                pauseBtn.style.display = 'block';
+            }} else {{
+                playBtn.style.display = 'block';
+                pauseBtn.style.display = 'none';
             }}
+
+            const event = new CustomEvent('animation-state-change', {{ 
+                detail: {{ 
+                    id: id, 
+                    isPlaying: window.animationState[id].isPlaying 
+                }} 
+            }});
+            window.dispatchEvent(event);
         }}
+
         (function() {{
             const testImg = document.getElementById('{id}-heart-img');
             testImg.onload = function() {{
-                // Image chargée avec succès, ne rien faire
+                // Image chargée avec succès
             }};
             testImg.onerror = function() {{
                 const heartDiv = document.getElementById('{id}-heart');
                 if (heartDiv) {{
-                    heartDiv.innerHTML = '<div style="font-size: 4rem; color: red;">🔴</div>';
+                    heartDiv.innerHTML = '<div style="font-size: 4rem; color: red;"></div>';
                 }}
             }};
         }})();
     </script>
     '''))
-    run_js(f"setTimeout(() => window.mathadata.animation_battement('{id}', '{json.dumps(d_animation, cls=NpEncoder)}'), 500)")
+    run_js(
+        f"setTimeout(() => window.mathadata.animation_battement('{id}', '{json.dumps(d_animation, cls=NpEncoder)}'), 500)")
 
 def set_v_limits(vmin, vmax):
     common.challenge.vmin = vmin
@@ -910,8 +940,7 @@ run_js("""
 
             const second = Math.floor(time_ms / 1000)
             time.innerHTML = `${second}`
-            freq.innerHTML = `${Math.round(values[second])}`
-
+            freq.innerHTML = `${values[second]}`
 
             clearTimeout(next_beat_to)
             let time_sum = 0
@@ -964,8 +993,8 @@ run_js("""
                 
                 const second = Math.floor(time_ms / 1000);
                 time.innerHTML = `${second}`;
-                freq.innerHTML = `${Math.round(values[second])}`;
-
+                freq.innerHTML = `${values[second]}`;
+                
                 //updateChartScale();
             }
         }, 100);
@@ -1212,3 +1241,46 @@ validation_question_hist_3 = MathadataValidateVariables(get_names_and_values=get
       'tip': 'As-tu bien tenu compte du mot \" inférieure\" ?'
     }
   ])
+
+def caracteristique_etendue_correction(d):
+    """
+    Calcule la caractéristique étendue pour une séquence de battements de coeur.
+    La caractéristique étendue est le pourcentage de valeurs avec une fréquence cardiaque inférieure à v.
+    """
+    minimum = min(d)
+    maximum = max(d)
+    etendue = maximum-minimum
+    return etendue
+
+def on_success_etendue(answers):
+    if has_variable('afficher_histogramme'):
+
+        get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
+def on_success_histogramme(answers):
+    if has_variable('afficher_histogramme'):
+
+        get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
+
+validation_caracteristique_etendue_et_affichage=MathadataValidateFunction(
+    'caracteristique',
+    test_set=lambda: common.challenge.d_train[0:100],
+    expected=lambda: [caracteristique_etendue_correction(d) for d in common.challenge.d_train[0:100]],
+    on_success=on_success_etendue
+)
+
+
+def validate_caracteristique_libre(errors, answers):
+    """
+    Validation de la caractéristique libre.
+    La caractéristique doit être un nombre entre 0 et 100.
+    """
+    caracteristique = answers['caracteristique'] 
+    for d in common.challenge.d_train[0:5]:
+            if not isinstance(caracteristique(d), float) and not isinstance(caracteristique(d), int):
+                errors.append("La caractéristique doit être un nombre. Ta fonction ne semble pas renvoyer un nombre.")
+                return False
+    return True
+
+validation_caracteristique_libre_et_affichage=MathadataValidateVariables(name_and_values={'caracteristique': None}, function_validation=validate_caracteristique_libre,success="Ta fonction renvoie bien un nombre. Testons ta proposition",on_success=on_success_histogramme)
+
+
