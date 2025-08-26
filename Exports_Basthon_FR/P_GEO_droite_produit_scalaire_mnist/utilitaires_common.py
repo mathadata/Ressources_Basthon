@@ -315,17 +315,30 @@ def http_request(url, method='GET', body=None, files=None, fields=None, headers=
 
 challengedata_token = 'yjQTYDk8d51Uq8WcDCPUBK1GPEuEDi6W/3e736TV7qGAmmqn7CCyefkdL+vvjOFY'
 
-def animation_tapis_algo(index=None):
+def animation_tapis_algo(id=None, index=None, dessin=None, carac=None):
     """Affiche une animation de type tapis roulant pour données 1D ou 2D."""
 
-    if index is None:
-        import random
-        index = random.randint(0, len(challenge.d_train) - 1)
+    if dessin is not None:
+        # On force en array pour éviter les soucis
+        data = np.array(dessin)
+        # Calcul de la caractéristique (identique à process_generated_data)
+        if carac is None:
+            carac = np.mean(data)
+        else:
+            carac = carac(data)
+        # Décision binaire selon le même seuil
+        prediction = 7 if carac < 25 else 2
+        label = f"{prediction}"
+    else:
+        if index is None:
+            import random
+            index = random.randint(0, len(challenge.d_train) - 1)
 
-    data = challenge.d_train[index]
-    label = challenge.r_train[index]
-
-    id = uuid.uuid4().hex
+        data = challenge.d_train[index]
+        label = challenge.r_train[index]
+    
+    if id is None:
+        id = uuid.uuid4().hex
 
     # Génère une image base64 en fonction du type de données
     import base64
@@ -446,6 +459,7 @@ def animation_tapis_algo(index=None):
         }};
     }})();
     """)
+
 
 
 def http_request_cd(endpoint, method='GET', body=None, files=None, fields=None, cb=None):

@@ -13,8 +13,9 @@ from io import BytesIO, StringIO
 import matplotlib.patches as mpatches
 #from scipy.spatial import Voronoi, voronoi_plot_2d
 import pandas as pd
-from IPython.display import display # Pour afficher des DataFrames avec display(df)
+from IPython.display import display,HTML # Pour afficher des DataFrames avec display(df)
 import importlib.util
+import ipywidgets as widgets
 
 strings = {
     "dataname": "image",
@@ -108,6 +109,7 @@ cat = 'cat'
 class Mnist(common.Challenge):
     def __init__(self):
         super().__init__()
+        self.id = 'mnist'
         self.strings = strings
         self.d_train = d_train
         self.r_train = r_train
@@ -275,6 +277,41 @@ class Mnist(common.Challenge):
 
 init_challenge(Mnist())
 
+class DrawingManager:
+    last_dessin = None
+    last_known_dessin = None
+
+def simple_drawing_environment():
+    button = widgets.Button(
+        description="Exécuter l'animation", 
+        style={'button_color': '#4CAF50'},
+        layout=widgets.Layout(width='200px')
+    )
+    output = widgets.Output()
+
+    # Variable LOCALE pour comparer
+    dernier_envoye = None
+
+    def rerun(b):
+        nonlocal dernier_envoye
+
+        output.clear_output()
+        with output:
+            if DrawingManager.last_dessin is not None:
+                # Compare les références directement (sans copie)
+                if dernier_envoye is DrawingManager.last_dessin:
+                    print("⚠️Attention : Le dessin n'a pas changé ou n'a pas été revalidé depuis la dernière exécution.")
+                else:
+                    dernier_envoye = DrawingManager.last_dessin
+                animation_tapis_algo(dessin=DrawingManager.last_dessin)
+            else:
+                print("⚠️ Aucun dessin détecté.")
+                print("Dessinez et validez dans l'interface")
+                
+    
+    button.on_click(rerun)
+    display(widgets.VBox([button, output]))
+
 def imshow(ax, image, **kwargs):
     ax.imshow(image, cmap='gray', vmin=0, vmax=255, extent=[0, 28, 28, 0], **kwargs)
 
@@ -410,6 +447,30 @@ pd.set_option('display.max_columns', 28)
 pd.set_option('display.float_format', '{:.2f}'.format)
 pd.set_option('colheader_justify', 'center')
 
+def process_generated_data(dessin_str):
+    import json
+    import numpy as np
+
+    # Convertit la chaîne JSON reçue depuis le JS en tableau numpy
+    dessin = np.array(json.loads(dessin_str))
+    
+    # Calcul de la caractéristique (moyenne des pixels)
+    carac = np.mean(dessin)
+
+    # Décision binaire selon un seuil empirique, par exemple 25
+    if carac < 25:
+        prediction = 7 
+    else:
+        prediction = 2
+
+    result = {
+        'caracteristique': f"{carac:.2f}",
+        'resultat': f"Je pense que c est un {prediction}"
+    }
+
+    return json.dumps(result)
+
+
 def affichage_tableau(image, a=None, b=None):
     """Fonction qui affiche une image sous forme de tableau avec un rectangle rouge délimité par les points a et b
         a : tuple (ligne, colonne) représentant le coin en haut à gauche du rectangle
@@ -461,7 +522,14 @@ def moyenne_zone(arr, a, b):
     numero_colonne_fin = max(a[1], b[1])
     return np.mean(arr[numero_ligne_debut:numero_ligne_fin+1, numero_colonne_debut:numero_colonne_fin+1])
 
- 
+def affichage_dessin(id=None):
+    if id is None:
+        id = uuid.uuid4().hex
+    display(
+        HTML(f'<div id="{id}" style="min-height: 300px; min-width: 300px;"></div>')
+        )
+    run_js(f"setTimeout(() => window.mathadata.affichage_dessin('{id}'), 500)")
+
 def check_pixel_coordinates(coords, errors):
     if not isinstance(coords, tuple) or len(coords) != 2:
         errors.append("Les coordonnées du pixel doivent être entre parenthèses séparées par une virgule. Exemple :")
@@ -870,6 +938,215 @@ window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
 
     selectCells(); // To show zones if reexecute
 }
+       
+const toggleGomme = document.createElement('input');
+const validationButton = document.createElement('button');
+const resetButton = document.createElement('button');
+
+// Fonction pour réinitialiser la couleur de toutes les cellules
+function resetColor(id) {
+    const cells = document.getElementById(id).querySelectorAll('td');
+    cells.forEach(cell => cell.style.backgroundColor = 'rgb(0, 0, 0)');
+}
+
+// Fonction pour vérifier si le tableau est entièrement noir (tout effacé)
+function isBoardBlack(board) {
+    let boardBlack = true;
+    for (let i = 0; i < board.length; i++) {
+        for (let j = 0; j < board[i].length; j++) {
+            if (board[i][j] !== 0) {
+                boardBlack = false;
+            }
+        }
+        if (!boardBlack) break;
+    }
+    return boardBlack;
+};
+// Fonction pour afficher le dessin (fonction principale)
+window.mathadata.affichage_dessin = (id) => {
+    const container = document.getElementById(id);
+    container.innerHTML = '';
+
+    const table_id = id + '-table';
+    const table = document.createElement('table');
+    table.id = table_id;
+    table.classList.add('image-table');
+    table.innerHTML = '';
+
+    const bigDiv1 = document.createElement('div');
+    container.appendChild(bigDiv1);
+
+    const bigDiv2 = document.createElement('div');
+    container.appendChild(bigDiv2);
+
+    validationButton.innerHTML = "Valider";
+    validationButton.style = "height: 50px; width: 100px; display: flex; justify-content: center; align-items: center; background-color:#007979; border: none; border-radius: 5px; cursor: pointer; margin: 10px 0";
+
+    bigDiv1.appendChild(table);
+    bigDiv2.appendChild(validationButton);
+
+    const smallDiv1 = document.createElement('div');
+    toggleGomme.type = 'checkbox';
+    toggleGomme.class = 'toggle';
+    toggleGomme.id = 'gomme';
+    const textGomme = document.createElement('label');
+    textGomme.innerHTML = 'Gomme';
+    textGomme.style = 'margin-right: 10px';
+    textGomme.for = 'gomme';
+    smallDiv1.appendChild(textGomme);
+    smallDiv1.appendChild(toggleGomme);
+
+    resetButton.innerHTML = "Tout effacer";
+    resetButton.style = "height: 50px; width: 100px; display: flex; justify-content: center; align-items: center; background-color: #B20F0F; border: none; border-radius: 5px; cursor: pointer; margin: 10px 0";
+
+    const smallDiv2 = document.createElement('div');
+    const paragraphCarac = document.createElement('p');
+    paragraphCarac.innerHTML = "Caractéristique: ";
+    //const paragraphResult = document.createElement('p');
+    //paragraphResult.innerHTML = "Résultat:";
+    //const spanResultat = document.createElement('span');
+    const spanCarac = document.createElement('span');
+    //paragraphResult.appendChild(spanResultat);
+    paragraphCarac.appendChild(spanCarac);
+    smallDiv2.appendChild(paragraphCarac);
+    //smallDiv2.appendChild(paragraphResult);
+    bigDiv2.appendChild(smallDiv2);
+    bigDiv2.appendChild(smallDiv1);
+    bigDiv2.appendChild(resetButton);
+
+    container.style = 'display:flex; justify-content: space-around; border: 1px solid black; border-radius: 5px; padding: 10px; margin: 10px 0';
+
+    // Création de la table avec des cellules initialement noires
+    for (let row = 0; row < 28; row++) {
+        const tr = document.createElement('tr');
+        for (let col = 0; col < 28; col++) {
+            const td = document.createElement('td');
+            td.style.backgroundColor = 'rgb(0, 0, 0)';
+            tr.appendChild(td);
+        }
+        table.appendChild(tr);
+    }
+
+    let isSelecting = false; // Variable pour savoir si on est en train de sélectionner avec la souris
+
+    // Fonction pour changer la couleur d'une cellule et de ses voisins
+    function changerCouleur(cell) {
+        // Fonction pour obtenir la couleur de fond actuelle d'une cellule
+        function getCellBackgroundColor(cell) {
+            return window.getComputedStyle(cell).backgroundColor;
+        }
+
+        // Fonction pour éclaircir une couleur (ajouter une nuance de blanc)
+        function lightenColor(color, increment) {
+            const rgb = color.match(/\d+/g).map(Number); // Récupérer les valeurs RGB
+            const maxWhite = 255;
+            // Appliquer l'incrément pour éclaircir la couleur sans dépasser 255
+            let newColor = rgb.map(value => Math.min(value + increment, maxWhite)); 
+            return `rgb(${newColor[0]}, ${newColor[1]}, ${newColor[2]})`;
+        }
+
+        // Vérifier si la gomme est activée
+        const isGommeActive = toggleGomme.checked;
+
+        // Si la gomme est activée, on réinitialise la couleur à blanc pour la cellule
+        if (isGommeActive) {
+            cell.style.backgroundColor = 'rgb(0, 0, 0)'; // Effacer la cellule en blanc
+        } else {
+            cell.style.backgroundColor = 'rgb(255, 255, 255)'; // Colorier la cellule en blanc total
+       // Récupérer l'index de la ligne et de la colonne de la cellule cible
+        const rowIndex = cell.parentNode.rowIndex;
+        const colIndex = cell.cellIndex;
+
+        // Définir les voisins (haut, bas, gauche, droite, et diagonales)
+        const voisins = [
+            [-1, 0], [1, 0], [0, -1], [0, 1], // Voisins directs
+            [-1, -1], [-1, 1], [1, -1], [1, 1] // Voisins diagonaux
+        ];
+
+        // Parcourir les voisins et appliquer la nuance de blanc
+        voisins.forEach(([dx, dy]) => {
+            const voisinRow = rowIndex + dx;
+            const voisinCol = colIndex + dy;
+
+            // Vérifier si les indices des voisins sont valides
+            if (voisinRow >= 0 && voisinRow < cell.parentNode.parentNode.rows.length &&
+                voisinCol >= 0 && voisinCol < cell.parentNode.children.length) {
+                
+                const voisinCell = cell.parentNode.parentNode.rows[voisinRow].cells[voisinCol];
+
+                // Récupérer la couleur de fond actuelle du voisin
+                let voisinColor = getCellBackgroundColor(voisinCell);
+
+                // Éclaircir la couleur du voisin si nécessaire
+                voisinCell.style.backgroundColor = lightenColor(voisinColor, 40); // Éclaircir de 40 (ajuster si nécessaire)
+            }
+        });
+        }
+
+        
+    }
+
+    // Attacher les événements à la table
+    table.addEventListener('mousedown', (event) => {
+        const target = event.target;
+        if (target.tagName === 'TD') {
+            isSelecting = true;
+            changerCouleur(target);
+        }
+    });
+
+    table.addEventListener('mouseover', (event) => {
+        if (isSelecting) {
+            const target = event.target;
+            if (target.tagName === 'TD') {
+                changerCouleur(target);
+            }
+        }
+    });
+
+    table.addEventListener('mouseup', () => {
+        isSelecting = false; // Arrêter de dessiner
+    });
+
+    validationButton.addEventListener('click', () => {
+        let dessin = [];
+        //console.log(table.rows);
+
+        for (let i = 0; i < 28; i++) {
+            let row = [];
+            for (let j = 0; j < 28; j++) {
+                const cell = table.rows[i].cells[j];
+                const cellBackgroundColor = cell.style.backgroundColor.match(/\d+/g).map(Number)[0];
+                row.push(cellBackgroundColor);
+            }
+            dessin.push(row);
+        }
+        //console.log(dessin);
+        if (isBoardBlack(dessin) !== true) {
+            // Stocke le dessin dans une variable Python
+            mathadata.run_python(`DrawingManager.last_dessin = ${JSON.stringify(dessin)}`);
+            
+            mathadata.run_python(`process_generated_data('${JSON.stringify(dessin)}')`, (res) => {
+                //spanResultat.innerHTML = res.resultat;
+                spanCarac.innerHTML = res.caracteristique;
+            });
+            
+            //mathadata.run_python(`animation_tapis_algo(dessin=${JSON.stringify(dessin)})`);
+        } else {
+            //spanResultat.innerHTML = '';
+            spanCarac.innerHTML = '';
+            alert("Vous n'avez pas dessiné de modèle !");
+        }
+    });
+
+    resetButton.addEventListener('click', () => {
+        resetColor(id); // Réinitialiser toutes les couleurs
+        //spanResultat.innerHTML = '';
+        spanCarac.innerHTML = '';        
+    });
+
+    return table;
+};
 """)
     
 ### Validation cellules ###
@@ -1032,4 +1309,33 @@ B_1 = (23, 10)     # <- coordonnées du point B2
 
 def affichage_zones_custom_2_cara(A1, B1, A2, B2):
     common.challenge.affichage_2_cara(A1, B1, A2, B2, True)
+
+
+
+
+def caracteristique_ligne_correction(d):
+    """
+    Calcule la caractéristique moyenne d'un ligne donnée.
+    """
+    ligne=d[2,:]
+    sommepixel=0
+    nbpixel=0
+    for pixel in ligne:
+        nbpixel+=1
+        sommepixel+=pixel
+    moyenne_ligne= sommepixel / nbpixel
     
+    return moyenne_ligne
+
+def on_success_affichage_histograme(answers):
+    if has_variable('afficher_histogramme'):
+
+        get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
+
+
+validation_caracteristique_ligne_et_affichage=MathadataValidateFunction(
+    'caracteristique',
+    test_set=lambda: common.challenge.d_train[0:100],
+    expected=lambda: [caracteristique_ligne_correction(d) for d in common.challenge.d_train[0:100]],
+    on_success=on_success_affichage_histograme
+)
