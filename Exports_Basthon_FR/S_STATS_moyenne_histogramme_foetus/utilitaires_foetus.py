@@ -19,7 +19,7 @@ import requests
 from typing import Tuple
 import builtins # to use builtins.RAW, just for dev test
 
-DATASET = getattr(builtins, 'DATASET', 'relabelled_douteux') # 'original', 'relabelled_std', 'relabelled_std_10s'
+DATASET = getattr(builtins, 'DATASET', 'artificiel_rebiased_2_cheated') # 'original', 'relabelled_std', 'relabelled_std_10s'
 
 LOCAL = getattr(builtins, 'LOCAL', False)  # Pour utiliser les données locales (travail hors ligne)
 
@@ -40,8 +40,9 @@ directory = os.path.dirname(__file__)
 
 def load_data(source=DATASET, local=LOCAL):
     if local:
-        d_train_path = f'd_train_{source}.pickle'
-        r_train_path = f'r_train_{source}.pickle'
+        root = parent_dir+"/challenges/foetus/Data/"
+        d_train_path = f'{root}d_train_{source}.pickle'
+        r_train_path = f'{root}r_train_{source}.pickle'
         with open(d_train_path, 'rb') as f:
             d_train = pickle.load(f)
 
@@ -62,7 +63,7 @@ def load_data(source=DATASET, local=LOCAL):
 
         with open(r_train_path, 'rb') as f:
             r_train = pickle.load(f)
-        print(f"données chargées")
+        print(f"données {source} chargées")
 
     d_animation = d_train[10].copy()
     
@@ -76,7 +77,7 @@ def load_data(source=DATASET, local=LOCAL):
         d_train = d_train_new.copy()
         r_train = r_train_new.copy()
 
-    if source == 'relabelled_douteux':
+    if source == 'relabelled_balanced':
         # reordonner les données : on veut que les 10 premières données soient [11, 0, 1, 6, 9, 19, 20, 22, 17, 12]
         indices_debut = [11, 0, 1, 6, 46, 19, 20, 22, 17, 12]
         indexes = indices_debut + [i for i in range(0, len(d_train)) if i not in indices_debut]
@@ -349,7 +350,7 @@ def affichage(d, start_minut:float = -60, duration_in_minuts: float = 30, displa
 
     # Add labels and title
     plt.xlabel('Temps (minutes)', fontsize=15)
-    plt.ylabel('Battements de coeur par minutes', fontsize=15)
+    plt.ylabel('Rythme cardiaques', fontsize=15)
     #plt.title(f"Electrocardiogramme pour un {comment} ({id})", fontsize=15)
     plt.xlim(0, max(time_in_minuts))
     plt.ylim(min_y_value or 60, max_y_value or len(d))
@@ -673,7 +674,7 @@ run_js("""
             data: {
                 labels: data.map((_, i) => i),
                 datasets: [{
-                    label: 'Battements de coeur par minute',
+                    label: 'Rythme cardiaque',
                     data: data,
                     backgroundColor: 'rgba(75, 192, 192, 0.2)',
                     borderColor: 'rgba(75, 192, 192, 1)',
@@ -695,7 +696,7 @@ run_js("""
                     y: {
                         title: {
                             display: true,
-                            text: 'Battements de coeur par minute'
+                            text: 'Rythme cardiaque'
                         },
                         min,
                         max,
@@ -795,7 +796,7 @@ run_js("""
                     y: {
                         title: {
                             display: true,
-                            text: 'Battements de coeur par minute'
+                            text: 'Rythme cardiaque'
                         },
                     }
                 }
@@ -1245,7 +1246,7 @@ validation_question_hist_3 = MathadataValidateVariables(get_names_and_values=get
 def caracteristique_etendue_correction(d):
     """
     Calcule la caractéristique étendue pour une séquence de battements de coeur.
-    La caractéristique étendue est le pourcentage de valeurs avec une fréquence cardiaque inférieure à v.
+
     """
     minimum = min(d)
     maximum = max(d)
@@ -1256,10 +1257,7 @@ def on_success_etendue(answers):
     if has_variable('afficher_histogramme'):
 
         get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
-def on_success_histogramme(answers):
-    if has_variable('afficher_histogramme'):
 
-        get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
 
 validation_caracteristique_etendue_et_affichage=MathadataValidateFunction(
     'caracteristique',
@@ -1280,6 +1278,11 @@ def validate_caracteristique_libre(errors, answers):
                 errors.append("La caractéristique doit être un nombre. Ta fonction ne semble pas renvoyer un nombre.")
                 return False
     return True
+
+def on_success_histogramme(answers):
+    if has_variable('afficher_histogramme'):
+
+        get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
 
 validation_caracteristique_libre_et_affichage=MathadataValidateVariables(name_and_values={'caracteristique': None}, function_validation=validate_caracteristique_libre,success="Ta fonction renvoie bien un nombre. Testons ta proposition",on_success=on_success_histogramme)
 
