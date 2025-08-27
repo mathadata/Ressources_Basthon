@@ -451,7 +451,7 @@ validation_question_score_droite = MathadataValidateVariables({
         ]
     }
 },
-    success="C'est la bonne réponse. Un point bleu est plus proche du point moyen des 7 que de celui des 2 : il va donc être classé \"7\". De même pour un point orange. On a donc deux erreurs, ce qui fait 20%.",
+    success="C'est la bonne réponse. 2 points bleus sont plus proches du point moyen des 7 que de celui des 2 : il vont donc être classés \"7\". On a donc deux erreurs sur 10 points, ce qui fait 20%.",
     on_success=lambda answers: set_step(2)
 )
 
@@ -570,3 +570,6 @@ validation_recherche_mediatrice = MathadataValidateVariables({
     'point_3': None
 }, function_validation=function_validation_recherche_mediatrice)
 
+validation_execution_tracer_6000_points = MathadataValidate(success="")
+validation_execution_afficher_manip_points_moyens = MathadataValidate(success="")
+validation_execution_afficher_manip_distance_2 = MathadataValidate(success="")

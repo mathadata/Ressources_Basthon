@@ -15,7 +15,6 @@ import matplotlib.patches as mpatches
 import pandas as pd
 from IPython.display import display,HTML # Pour afficher des DataFrames avec display(df)
 import importlib.util
-import ipywidgets as widgets
 
 strings = {
     "dataname": "image",
@@ -104,7 +103,10 @@ d2 = d_train[2,:,:].copy()
 
 # Noms de variables pour la question 'fainéant
 chat = 'chat'
+Chat= 'chat'
 cat = 'cat'
+
+print("données chargées")
 
 class Mnist(common.Challenge):
     def __init__(self):
@@ -1314,18 +1316,23 @@ def affichage_zones_custom_2_cara(A1, B1, A2, B2):
 
 
 def caracteristique_ligne_correction(d):
-    """
-    Calcule la caractéristique moyenne d'un ligne donnée.
-    """
-    ligne=d[2,:]
-    sommepixel=0
-    nbpixel=0
-    for pixel in ligne:
-        nbpixel+=1
-        sommepixel+=pixel
-    moyenne_ligne= sommepixel / nbpixel
-    
-    return moyenne_ligne
+
+    # Sélection de la ligne 12 et 14 
+    ligne1 = d[11,:]
+    ligne2 = d[13,:]
+    # Calcul de la somme des pixels de cette ligne
+    somme_pixels = 0
+    nombre_pixels = 0
+    for pixel in ligne1:
+            somme_pixels += pixel
+            nombre_pixels += 1
+    for pixel in ligne2:
+            somme_pixels += pixel
+            nombre_pixels += 1
+    # Calcul de la moyenne
+    moyenne = somme_pixels / nombre_pixels
+
+    return moyenne_des_pixels
 
 def on_success_affichage_histograme(answers):
     if has_variable('afficher_histogramme'):

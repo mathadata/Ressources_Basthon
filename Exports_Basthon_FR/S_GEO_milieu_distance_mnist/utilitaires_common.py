@@ -734,6 +734,29 @@ def calculer_score_code_etendue():
     calculer_score(algorithme, method="code etendue", caracteristique=get_variable('caracteristique'))
 
 
+
+def calculer_score_code_moyenne_ligne():
+    if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable('r_grande_caracteristique'):
+        print_error('Remplacez tous les ... par vos paramètres.')
+        return
+    
+    t = get_variable('t')
+    r_petite_caracteristique = get_variable('r_petite_caracteristique')
+    r_grande_caracteristique = get_variable('r_grande_caracteristique')
+    
+    def algorithme(d):
+        x = get_variable('caracteristique')(d)
+
+        if x <= t:
+            return r_petite_caracteristique
+        else:
+            return r_grande_caracteristique
+        
+    validation_code_moyenne_ligne()
+    
+    calculer_score(algorithme, method="code moyenne ligne", caracteristique=get_variable('caracteristique'))
+
+
 def get_erreur_plot(func_carac=None):
     (t_values, scores_array) = compute_erreur(func_carac)
 
@@ -2706,6 +2729,7 @@ validation_code_free = MathadataValidate(success="Bravo")
 
 validation_code_etendue = MathadataValidate(success="Bravo, tu as fini ce notebook ! Tu peux maintenant passer à la suite pour découvrir d'autres algorithmes de classification.")
 
+validation_code_moyenne_ligne = MathadataValidate(success="Bravo, tu as fini ce notebook ! Tu peux maintenant passer à la suite pour découvrir d'autres algorithmes de classification.")
 
 ### --- Config matplotlib ---
 
@@ -3065,3 +3089,46 @@ def qcm_test():
         'choices': ['1', '2', '3'],
         'answer': '3',
     })
+
+
+
+custom_carac_free_exemple_code = """
+    # Ajouter votre code ici
+    
+    
+    
+    return ...
+"""
+
+
+etendue_carac_exemple_code = """
+    # Exemple pour utiliser l'étendue comme caractéristique.
+    # Complètez le code en remplaçant les ... et en utilisant les fonction min et max
+    
+    minimum = min(d)
+    maximum = ...
+    etendue = ...
+    
+    
+    return etendue
+"""
+
+
+def validate_caracteristique_libre(errors, answers):
+    """
+    Validation de la caractéristique libre.
+    La caractéristique doit être un nombre.
+    """
+    caracteristique = answers['caracteristique'] 
+    for d in common.challenge.d_train[0:5]:
+            if not isinstance(caracteristique(d), float) and not isinstance(caracteristique(d), int):
+                errors.append("La caractéristique doit être un nombre. Ta fonction ne semble pas renvoyer un nombre.")
+                return False
+    return True
+
+def on_success_histogramme(answers):
+    if has_variable('afficher_histogramme'):
+
+        get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
+
+validation_caracteristique_libre_et_affichage=MathadataValidateVariables(name_and_values={'caracteristique': None}, function_validation=validate_caracteristique_libre,success="Ta fonction renvoie bien un nombre. Testons ta proposition",on_success=on_success_histogramme)
