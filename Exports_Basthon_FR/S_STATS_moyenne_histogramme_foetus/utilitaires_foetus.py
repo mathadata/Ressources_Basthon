@@ -63,7 +63,8 @@ def load_data(source=DATASET, local=LOCAL):
 
         with open(r_train_path, 'rb') as f:
             r_train = pickle.load(f)
-        print(f"données {source} chargées")
+        # Suppresion du mot surce pour ne pas afficher le nom du dataset dans le notebook    
+        print(f"données chargées")
 
     d_animation = d_train[10].copy()
     
@@ -1239,7 +1240,7 @@ validation_question_hist_2 = MathadataValidateVariables(get_names_and_values=get
 validation_question_hist_3 = MathadataValidateVariables(get_names_and_values=get_names_and_values_hist_3,tips=[
     {
       'seconds': 30,
-      'tip': 'As-tu bien tenu compte du mot \" inférieure\" ?'
+      'tip': 'As-tu bien tenu compte du mot inférieur ?'
     }
   ])
 
@@ -1255,7 +1256,7 @@ def caracteristique_etendue_correction(d):
 
 def on_success_etendue(answers):
     if has_variable('afficher_histogramme'):
-
+        print("Voici l'histogramme des fréquences cardiaques pour l'ensemble des données d'entraînement avec cette caractéristique. Comme tu vas le voir elle n'est pas très discriminante et peu utile pour classer les enregistrements.")
         get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
 
 
@@ -1270,7 +1271,7 @@ validation_caracteristique_etendue_et_affichage=MathadataValidateFunction(
 def validate_caracteristique_libre(errors, answers):
     """
     Validation de la caractéristique libre.
-    La caractéristique doit être un nombre entre 0 et 100.
+    La caractéristique doit être un nombre.
     """
     caracteristique = answers['caracteristique'] 
     for d in common.challenge.d_train[0:5]:
