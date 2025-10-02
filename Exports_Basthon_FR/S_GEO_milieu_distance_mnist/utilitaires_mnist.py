@@ -16,6 +16,10 @@ import pandas as pd
 from IPython.display import display,HTML # Pour afficher des DataFrames avec display(df)
 import importlib.util
 
+from utilitaires_common import *
+import utilitaires_common as common
+
+
 strings = {
     "dataname": "image",
     "dataname_plural": "images",
@@ -29,20 +33,6 @@ strings = {
     "objectif_score_droite_custom": 8,
     "pt_retourprobleme": "(40; 20)"
 }
-
-try:
-    # For dev environment - Import des strings - A FAIRE AVANT IMPORT utilitaires_common
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    spec = importlib.util.spec_from_file_location("strings", os.path.join(current_dir, "strings.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    globals().update(vars(module))
-except Exception as e:
-    pass
-
-from utilitaires_common import *
-import utilitaires_common as common
-
 
 ### --- IMPORT DES DONNÉES ---
 # Téléchargement et extraction des inputs contenus dans l'archive zip
@@ -256,7 +246,7 @@ class Mnist(common.Challenge):
         if score < 0.1:
             return True
         elif score < 0.3:
-            print("Bravo, ta zone choisie pour calculer la moyenne est meilleure que faire la moyenne de toute l'image. Améliore encore ta zone pour faire moins de 10% d'erreur et passer à la suite.")
+            pretty_print_success("Bravo, ta zone choisie pour calculer la moyenne est meilleure que faire la moyenne de toute l'image. Améliore encore ta zone pour faire moins de 10% d'erreur et passer à la suite.")
         else:
             print_error("Modifie ta zone pour faire moins de 10% d'erreur et passer à la suite. Cherche une zone où l'image est différente si c'est un 2 ou un 7")
         

@@ -19,14 +19,6 @@ if not sequence:
 else:
     from utilitaires_geo import *
 
-if not sequence:
-    # For dev environment
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    spec = importlib.util.spec_from_file_location("strings", os.path.join(current_dir, "strings.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    globals().update(vars(module))
-
 
 def tracer_6000_points():
     id = uuid.uuid4().hex
@@ -94,9 +86,10 @@ def tracer_10_points_centroides():
 def tracer_points_centroides(id=None, carac=None, droite=False, initial_hidden=False):
     if id is None:
         id = uuid.uuid4().hex
+    score_div = f'<div id="{id}-score-container" style="text-align: center; font-weight: bold; font-size: 2rem;">Pourcentage d\'erreur : <span id="{id}-score">...</span></div>'
     display(HTML(f'''
         <div id="{id}-container" style="{'visibility:hidden;' if initial_hidden else ''}">
-            {droite and f'<div id="{id}-score-container" style="text-align: center; font-weight: bold; font-size: 2rem;">Erreur : <span id="{id}-score">...</span></div>'}
+            {droite and score_div}
             <canvas id="{id}-chart"></canvas>
         </div>
     '''))
@@ -452,7 +445,6 @@ validation_question_score_droite = MathadataValidateVariables({
     }
 },
     success="C'est la bonne réponse. 2 points bleus sont plus proches du point moyen des 7 que de celui des 2 : il vont donc être classés \"7\". On a donc deux erreurs sur 10 points, ce qui fait 20%.",
-    on_success=lambda answers: set_step(2)
 )
 
 validation_execution_caracteristiques_custom = MathadataValidate(success="")
@@ -463,8 +455,8 @@ validation_question_classes = MathadataValidateVariables({
     'classe_point_C': 2
 }, 
     function_validation=function_validation_classes,
-    success="Bien joué ! Ce n'était pas facile de voir que le point C est un 2. Il aurait très bien pu être un 7.",
-    on_success=lambda answers: set_step(2))
+    success="Bien joué ! Ce n'était pas facile de voir que le point C est un 2. Il aurait très bien pu être un 7.")
+
 # Exécuter la validation
 validation_execution_classes = MathadataValidate(success="Les classes des points sont correctes; vous pouvez passer à la suite.")
 validation_deplacement_horizontal = MathadataValidateVariables(
@@ -573,3 +565,4 @@ validation_recherche_mediatrice = MathadataValidateVariables({
 validation_execution_tracer_6000_points = MathadataValidate(success="")
 validation_execution_afficher_manip_points_moyens = MathadataValidate(success="")
 validation_execution_afficher_manip_distance_2 = MathadataValidate(success="")
+validation_execution_tracer_points_centroides = MathadataValidate(success="")

@@ -37,19 +37,6 @@ except ModuleNotFoundError:
     except ModuleNotFoundError:
         pass
 
-# Import des strings pour lire l'export dans jupyter
-try:
-    # For dev environment
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    spec = importlib.util.spec_from_file_location("strings", os.path.join(current_dir, "strings.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    globals().update(vars(module))
-except Exception as e: 
-    if not sequence:
-        print(f"Error loading strings: {e}")
-    pass
-
 ## Pour valider l'exécution d'une cellule de code, dans le cas du notebook sequencé :
 if sequence:
     validation_execution = Validate()
@@ -207,7 +194,8 @@ def import_js_scripts():
             paths: {
                 'ag-grid-community': 'https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min',
                 'chartjs': 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min',
-                'drag-data-plugin': 'https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@latest/dist/chartjs-plugin-dragdata.min'
+                'drag-data-plugin': 'https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@latest/dist/chartjs-plugin-dragdata.min',
+                'confetti': 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min',
             },
            map: {
                     'drag-data-plugin': {
@@ -222,7 +210,7 @@ def import_js_scripts():
                 }
         });
 
-        require(['ag-grid-community', 'chartjs','drag-data-plugin'], function(agGrid) {
+        require(['ag-grid-community', 'chartjs','drag-data-plugin', 'confetti'], function(agGrid) {
             window.agGrid = agGrid;
         });
     """)
@@ -578,14 +566,12 @@ def calculer_score_etape_1():
     
     def cb(score):
         validation_score_fixe()
-        set_step('carac')
 
     calculer_score(algorithme, method="fixed", cb=cb)  
 
 def calculer_score_carac():
     def cb(score):
         validation_score_carac()
-        set_step('optim')
 
     calculer_score(algo_carac, method="carac ref", cb=cb, caracteristique=caracteristique) 
 
@@ -758,10 +744,7 @@ def calculer_score_seuil_optimise():
         x = caracteristique(d)
         return classification(x, t)
 
-    def cb(score):
-        set_step('custom')
-    
-    calculer_score(algorithme, method="carac ref seuil optim", parameters=f"t={t}", cb=cb) 
+    calculer_score(algorithme, method="carac ref seuil optim", parameters=f"t={t}") 
 
 ### Analytics ###
 
@@ -1119,16 +1102,102 @@ styles = """
     padding: 5px;
     border-radius: 3px;
 }
+
+.mathadata-stepbar__container {
+  position: fixed;
+  top: 40%;
+  transform: translateY(-50%);
+  right: var(--stepbar-right, 16px);
+  width: 240px; /* élargi pour accueillir labels + cercles */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 9999;
+  align-items: center;
+}
+.mathadata-stepbar__backdrop {
+  width: 240px; /* match container width */
+  background: #fff;
+  border-top-left-radius: 20px;
+  border-bottom-left-radius: 20px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch; /* laisser les lignes prendre toute la largeur */
+  padding: 20px 0; /* increased vertical padding around items for greater height */
+}
+.mathadata-stepbar__items {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch; /* chaque ligne sur toute la largeur */
+  gap: 14px; /* increased spacing between boxes */
+  width: 100%;
+}
+.mathadata-stepbar__itemRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; 
+  gap: 8px;
+  width: 100%;
+  padding: 0 12px; /* marge intérieure pour coller le label à gauche sans toucher les bords */
+}
+
+.mathadata-stepbar__labelHard {
+  font-size: 16px;
+  color: #909090;
+  user-select: none;
+  white-space: normal; 
+  text-overflow: clip;
+  text-align: left; /* aligne le texte à gauche */
+  flex: 1 1 auto; /* prend toute la place restante */
+  max-width: unset; /* pas de limite artificielle, géré par flex */
+  line-height: 1.2;
+}
+
+.mathadata-stepbar__itemRow--active .mathadata-stepbar__labelHard {
+  font-weight: bold;   /* étape active: gras */
+}
+
+.mathadata-stepbar__itemRow--unlocked .mathadata-stepbar__labelHard {
+  color: black; /* étape déverrouillée */
+}
+
+.mathadata-stepbar__item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px; /* fixe la largeur dans le layout flex */
+  aspect-ratio: 1 / 1; /* garantit la forme circulaire */
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #fff;
+  color: #222;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+  user-select: none;
+}
+.mathadata-stepbar__item:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+.mathadata-stepbar__item--active {
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.35), 0 6px 16px rgba(0,0,0,0.12);
+}
+
+.mathadata-stepbar__item--disabled { cursor: not-allowed; }
+.mathadata-stepbar__item--disabled:hover { transform: none; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 """
 
 run_js(f"""
     let style = document.getElementById('mathadata-style');
-    if (style === null) {{
-        const style = document.createElement('style');
-        style.id = 'mathadata-style';
-        style.innerHTML = `{styles}`;
-        document.head.appendChild(style);
+    if (style) {{
+        style.remove();
     }}
+    style = document.createElement('style');
+    style.id = 'mathadata-style';
+    style.innerHTML = `{styles}`;
+    document.head.appendChild(style);
 """)
 
 # Fonctions utilitaires JS
@@ -2180,63 +2249,57 @@ def update_score():
     run_js(js_code)
 
 
+steps = {
+    'bdd': {
+        'name': 'Présentation des données',
+        'color': 'rgb(250,181,29)',
+    },
+    'depart': {
+        'name': 'Algorithme de départ',
+        'color': 'rgb(62,178,136)',
+    },
+    'data': {
+        'name': "La donnée pour l'ordinateur",
+        'color': 'rgb(244,167,198)',
+    },
+    'carac': {
+        'name': 'Calcul de la caractéristique',
+        'color': 'rgb(241,132,18)',
+    },
+    'classif': {
+        'name': 'Classification',
+        'color': 'rgb(230,29,73)',
+    },
+    # 'optim': {
+    #     'name': 'Optimisation',
+    #     'color': 'rgb(244,167,198)',
+    # },
+    'custom': {
+        'name': 'Votre propre caractéristique',
+        'color': 'rgb(20,129,173)',
+    },
+}
 
-def set_step(name):
-    steps = {
-        'bdd': {
-            'name': 'Présentation des données',
-            'color': 'rgb(250,181,29)',
-        },
-        'depart': {
-            'name': 'Point de départ',
-            'color': 'rgb(62,178,136)',
-        },
-        'carac': {
-            'name': 'Calcul et caractéristique',
-            'color': 'rgb(241,132,18)',
-        },
-        'classif': {
-            'name': 'Classification',
-            'color': 'rgb(230,29,73)',
-        },
-        'optim': {
-            'name': 'Optimisation',
-            'color': 'rgb(244,167,198)',
-        },
-        'custom': {
-            'name': 'Votre caractéristique',
-            'color': 'rgb(20,129,173)',
-        },
-    }
 
-    if not isinstance(name, str) or name not in steps:
-        return
+### PRETTY PRINT FUNCTIONS ###
+import html
+_BASE_STYLE = (
+    "padding:12px 14px;"
+    "border-radius:8px;"
+    "border:1px solid;"
+    "margin:8px 0;"
+    "font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;"
+)
 
-    step_number = list(steps.keys()).index(name)
-    
-    run_js(f"""
-        const pageElement = document.getElementById('notebook');
-        pageElement.style.transition = 'background-color 0.5s ease';
-        pageElement.style.backgroundColor = '{steps[name]['color']}';
-        pageElement.style.position = 'relative';
+def pretty_print_error(error_message):
+    msg = error_message
+    style = _BASE_STYLE + "background:#fde8e8;border-color:#f5b5b5;color:#7a1c1c;"
+    display(HTML(f'<div style="{style}">❌ {msg}</div>'))
 
-        //let card = document.getElementById('step-card');
-        //if (!card) {{
-        //    card = document.createElement('div');
-        //    card.id = 'step-card';
-        //    card.innerHTML = `
-        //        <h3>Étape <span id="step-number"></span></h3>
-        //        <p id="step-name" style="font-size: 1.5rem;"></p>
-        //    `
-        //}}
-
-        //document.getElementById('step-number').innerText = '{step_number + 1} / {len(steps)}';
-        //document.getElementById('step-name').innerText = '{steps[name]['name']}';
-    """)
-
-# Change la couleur au démarage
-set_step('bdd')
-
+def pretty_print_success(success_message):
+    msg = success_message
+    style = _BASE_STYLE + "background:#e8f9f1;border-color:#a6e7c9;color:#14532d;"
+    display(HTML(f'<div style="{style}">✅ {msg}</div>'))
 
 ### VALIDATION CLASSES ###
 
@@ -2250,6 +2313,7 @@ class _MathadataValidate():
         self.function_validation = function_validation
         self.child_on_success = on_success
         self.tips = tips
+
 
     def __call__(self):
         self.last_call_time = time.time()
@@ -2279,9 +2343,7 @@ class _MathadataValidate():
 
         if len(errors) > 0:
             for error in errors:
-               display(HTML(f'''<div id="errors" style="background-color:#C26961; padding: 15px; border-radius: 5px; border-left: 5px solid #F23431; margin-bottom: 10px">
-                            <p style="color: white;font-weight:bold">{error}</p>
-                            </div>'''))
+               pretty_print_error(error)
 
         if not res and self.tips is not None:
             id = uuid.uuid4().hex
@@ -2328,13 +2390,9 @@ class _MathadataValidate():
     def on_success(self, answers):
         if self.success is not None:
             if self.success:
-                display(HTML(f'''<div id="custom-success" style="background-color:lightgreen; padding: 15px; border-radius: 5px; border: 5px solid #43DF91; margin-bottom: 10px">
-                                <p>{self.success}</p>
-                                </div>'''))
+                pretty_print_success(self.success)
         else:
-            display(HTML(f'''<div id="default-success" style="background-color:lightgreen; padding: 15px; border-radius: 5px; border: 5px solid #43DF91; margin-bottom: 10px">
-                            <p>Bravo, c'est la bonne réponse !</p>
-                            </div>'''))
+            pretty_print_success("Bravo, c'est la bonne réponse !")
         if self.child_on_success is not None:
             self.child_on_success(answers)
 
@@ -2518,7 +2576,7 @@ class MathadataValidateFunction(MathadataValidate):
         else:
             expected = self.expected
         
-        for i in range(len(test_set)):
+        for i in range(len(test_set)):  
             try:
                 if not isinstance(test_set[i], tuple):
                     res = func(test_set[i])
@@ -2571,7 +2629,7 @@ class ValidateScoreThresold(MathadataValidate):
         e_train_10 = get_variable('erreur_10')
         nb_errors = np.count_nonzero(np.array([algorithme(d) for d in challenge.d_train[0:10]]) != challenge.r_train[0:10]) 
         if nb_errors * 10 == e_train_10:
-            print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {e_train_10}% d'erreur")
+            pretty_print_success(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {e_train_10}% d'erreur")
             return True
         else:
             if e_train_10 == nb_errors:
@@ -2607,14 +2665,14 @@ def validation_func_score_fixed(errors, answers):
     
     if not isinstance(score_10, int):
         if score_10 == float(nb_errors*10):
-            print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {score_10}% d'erreur")
+            pretty_print_success(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {score_10}% d'erreur")
             return True
         else:
             errors.append("La variable erreur_10 doit être un entier. Attention, écrivez uniquement le nombre sans le %.")
             return False
 
     if score_10 == nb_errors * 10:
-        print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {score_10}% d'erreur")
+        pretty_print_success(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {score_10}% d'erreur")
         return True
     
     if score_10 == nb_errors:
@@ -2689,7 +2747,7 @@ tips=[
     }], success="")
 validation_score_fixe = MathadataValidate(success="")
 
-validation_execution_affichage_classif = MathadataValidate(success="", on_success=lambda a: set_step('classif'))
+validation_execution_affichage_classif = MathadataValidate(success="")
 validation_exercice_droite_carac = MathadataValidate(function_validation=validate_exercice_droite_carac)
 validation_question_ordre_caracteristique = MathadataValidateVariables(get_names_and_values=lambda: {
     'r_petite_caracteristique': {
@@ -2731,7 +2789,7 @@ def affichage_seuil():
         print_error("Le seuil n'a pas été défini. Tu dois d'abord définir la variable t.")
         return False
     else:
-        print(f"Le seuil que tu as choisi est {t}. Tu peux maintenant calculer le score de ton algorithme sur les 10 premières lignes du tableau.")
+        pretty_print_success(f"Le seuil que tu as choisi est {t}. Tu peux maintenant calculer le score de ton algorithme sur les 10 premières lignes du tableau.")
         return True
 
 validation_execution_affichage_score = MathadataValidate(success="")
@@ -2779,7 +2837,7 @@ validation_question_nombre_total =MathadataValidateVariables(get_names_and_value
       'print_solution': True, 
       'validate': True 
     }
-  ], on_success=lambda answers: set_step('depart'))
+  ])
 
 # Defini pour éviter l'erreur python par defaut si l'élève mets reponse = chat
 chat = 0
@@ -2813,7 +2871,7 @@ validation_question_faineant = MathadataValidateVariables(get_names_and_values=l
             },
         ]
     }
-}, success="", on_success=lambda answers: print(f"Bravo, {ac_fem('quelle', 'quel')} que soit {data('le')} l'algorithme fainéant répond toujours {challenge.classes[0]} !"))
+}, success="", on_success=lambda answers: pretty_print_success(f"Bravo, {ac_fem('quelle', 'quel')} que soit {data('le')} l'algorithme fainéant répond toujours {challenge.classes[0]} !"))
 
 validation_custom = MathadataValidate(success="Bravo, c'est un excellent taux d'erreur ! Tu peux passer à la suite pour essayer de faire encore mieux.")
 validation_code_eleve = MathadataValidate(success="Bravo, c'est un excellent taux d'erreur ! Tu as fini ce notebook.")
@@ -2841,7 +2899,9 @@ plt.rcParams["figure.figsize"] = [figw_full, figw_full * 3 / 4] # par défaut to
 ### --- Common util functions ---
 
 def print_error(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
+    for msg in args:
+        pretty_print_error(msg)
+
 
 def has_variable(name):
     return hasattr(__main__, name) and get_variable(name) is not None and get_variable(name) is not Ellipsis
@@ -3230,266 +3290,148 @@ validation_caracteristique_libre_et_affichage=MathadataValidateVariables(name_an
 
 # Stepbar (barre d'étapes)
 
-def init_stepbar(steps, current_step_index=1, position_right_px=16):
-    """
-    Initialise une barre latérale verticale d'étapes (fixée à droite).
-
-    - steps: liste de labels d'étapes (ex: ["Étape 1", "Étape 2", ...])
-    - current_step_index: 1-indexé, étape active au chargement
-    - position_right_px: marge droite (px)
-    """
-    sid = uuid.uuid4().hex
-    display(HTML(f'''<div id="{sid}-stepbar-root"></div>'''))
-
-    params = {
-        'steps': steps,
-        'current': int(current_step_index),
-        'position_right_px': int(position_right_px), 
-    }
-    run_js(f"window.mathadata && window.mathadata.init_stepbar && window.mathadata.init_stepbar('{sid}', '{json.dumps(params)}')")
-
-
-def create_step_anchor(step_index):
-    """
-    À placer dans une cellule à l'emplacement de l'étape correspondante (1-indexée).
-    Crée une ancre que la barre peut cibler pour le défilement.
-    """
-    anchor_id = f"step-anchor-{int(step_index)}"
-    display(HTML(f'''<div id="{anchor_id}" style="position: relative;"></div>'''))
-    # Active visuellement et rend cliquable la step correspondante
-    run_js(f"window.mathadata && window.mathadata.stepbar && window.mathadata.stepbar.activate && window.mathadata.stepbar.activate({int(step_index)})")
-    # Sélectionne automatiquement cette étape comme courante
-    run_js(f"window.mathadata && window.mathadata.stepbar && window.mathadata.stepbar.setCurrent && window.mathadata.stepbar.setCurrent({int(step_index)})")
-    # Déclenche une animation de confettis (side cannons) pour récompenser l'élève
-    run_js('''(function(){
-      function loadConfetti(cb){
-        if (window.confetti) { cb(); return; }
-        var s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js';
-        s.onload = cb;
-        document.head.appendChild(s);
-      }
-
-      function fireSideCannons(){
-        var end = Date.now() + 4000; // 4 seconds
-        var colors = ["#a786ff", "#fd8bbc", "#eca184", "#f8deb1"];
-        (function frame(){
-          if (Date.now() > end) return;
-          window.confetti({
-            particleCount: 2,
-            angle: 60,
-            spread: 55,
-            startVelocity: 60,
-            origin: { x: 0, y: 0.5 },
-            colors: colors,
-          });
-          window.confetti({
-            particleCount: 2,
-            angle: 120,
-            spread: 55,
-            startVelocity: 60,
-            origin: { x: 1, y: 0.5 },
-            colors: colors,
-          });
-          requestAnimationFrame(frame);
-        })();
-      }
-
-      loadConfetti(fireSideCannons);
-    })();''')
-
-
-def set_current_step(step_index):
-    """Met en surbrillance l'étape (1-indexée) sans scroller."""
-    run_js(f"window.mathadata && window.mathadata.stepbar && window.mathadata.stepbar.setCurrent({int(step_index)})")
-
-
-def goto_step(step_index):
-    """Fait défiler jusqu'à l'ancre de l'étape (1-indexée) et met à jour l'état actif."""
-    run_js(f"window.mathadata && window.mathadata.stepbar && window.mathadata.stepbar.goto({int(step_index)})")
-
-
 run_js('''
- const stepColors= ['rgb(250,181,29)', 'rgb(62,178,136)', 'rgb(241,132,18)', 'rgb(230,29,73)', 'rgb(244,167,198)', 'rgb(20,129,173)'];
-(function(){
-  if (!window.mathadata) { window.mathadata = {}; }
-
-  const ensureStyles = () => {
-    if (document.getElementById('mathadata-stepbar-style')) return;
-    const style = document.createElement('style');
-    style.id = 'mathadata-stepbar-style';
-    style.textContent = `
-      .mathadata-stepbar__container {
-        position: fixed;
-        top: 40%;
-        transform: translateY(-50%);
-        right: var(--stepbar-right, 16px);
-        width: 240px; /* élargi pour accueillir labels + cercles */
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        z-index: 9999;
-        align-items: center;
-      }
-      .mathadata-stepbar__backdrop {
-        width: 240px; /* match container width */
-        background: #fff;
-        border-radius: 20px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-        display: flex;
-        flex-direction: column;
-        align-items: stretch; /* laisser les lignes prendre toute la largeur */
-        padding: 20px 0; /* increased vertical padding around items for greater height */
-      }
-      .mathadata-stepbar__items {
-        display: flex;
-        flex-direction: column;
-        align-items: stretch; /* chaque ligne sur toute la largeur */
-        gap: 14px; /* increased spacing between boxes */
-        width: 100%;
-      }
-      .mathadata-stepbar__itemRow {
-        display: flex;
-        align-items: center;
-        justify-content: space-between; 
-        gap: 8px;
-        width: 100%;
-        padding: 0 12px; /* marge intérieure pour coller le label à gauche sans toucher les bords */
-      }
-      .mathadata-stepbar__labelHard {
-        font-size: 16px;
-        color: #333;
-        user-select: none;
-        white-space: normal; 
-        overflow: visible;
-        text-overflow: clip;
-        text-align: left; /* aligne le texte à gauche */
-        flex: 1 1 auto; /* prend toute la place restante */
-        max-width: unset; /* pas de limite artificielle, géré par flex */
-        line-height: 1.2;
-        font-style: italic; 
-        font-weight: 400;
-      }
-      .mathadata-stepbar__itemRow--active .mathadata-stepbar__labelHard {
-        font-style: normal; /* étape active: non italique */
-        font-weight: 1200;   /* étape active: gras */
-      }
-      .mathadata-stepbar__item {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 56px;
-        height: 56px;
-        flex: 0 0 56px; /* fixe la largeur dans le layout flex */
-        aspect-ratio: 1 / 1; /* garantit la forme circulaire */
-        box-sizing: border-box;
-        border-radius: 50%;
-        background: #fff;
-        color: #222;
-        border: 1px solid rgba(0,0,0,0.08);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
-        user-select: none;
-      }
-      .mathadata-stepbar__item:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
-      .mathadata-stepbar__item--active {
-        box-shadow: 0 0 0 2px rgba(0,0,0,0.35), 0 6px 16px rgba(0,0,0,0.12);
-        border-color: transparent;
-      }
-      .mathadata-stepbar__item--disabled { cursor: not-allowed; }
-      .mathadata-stepbar__item--disabled:hover { transform: none; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-      .mathadata-stepbar__tooltip {
-        position: absolute;
-        right: 64px;
-        background: stepColors[Number(idx) - 1];
-        color: #fff;
-        padding: 6px 10px;
-        border-radius: 6px;
-        font-size: 12px;
-        white-space: nowrap;
-        opacity: 0;
-        pointer-events: none;
-        transform: translateY(4px);
-        transition: opacity .12s ease, transform .12s ease;
-      }
-      .mathadata-stepbar__item:hover .mathadata-stepbar__tooltip {
-        opacity: 1; transform: translateY(0);
-      }
-    `;
-    document.head.appendChild(style);
-  };
-
-  const createItem = (idx, label, onClick, active, activated) => {
-    const btn = document.createElement('div');
-    btn.className = 'mathadata-stepbar__item' + (active ? ' mathadata-stepbar__item--active' : '');
-    btn.setAttribute('data-step-index', String(idx));
-    btn.textContent = String(idx);
-
-    // Style selon activation
-    if (activated && Array.isArray(stepColors) && stepColors[idx - 1]) {
-      btn.style.background = stepColors[idx - 1];
-      btn.style.color = '#fff';
-      btn.style.borderColor = 'transparent';
-    } else {
-      // Grisé si non activé
-      btn.style.background = '#d9d9d9';
-      btn.style.color = '#777';
-      btn.style.borderColor = 'rgba(0,0,0,0.12)';
-      btn.classList.add('mathadata-stepbar__item--disabled');
-    }
-
-    // Tooltip hover removed per request
-
-    btn.addEventListener('click', () => {
-      // Bloque la navigation si la step n'est pas activée
-      const isActivated = Array.isArray(window.mathadata?.stepbar?.activated) && window.mathadata.stepbar.activated.includes(idx);
-      if (!isActivated) return;
-      onClick(idx);
-    });
-    // Conteneur ligne: label (gauche) + cercle (droite)
-    const row = document.createElement('div');
-    row.className = 'mathadata-stepbar__itemRow';
-    const hardLabel = document.createElement('div');
-    hardLabel.className = 'mathadata-stepbar__labelHard';
-    hardLabel.textContent = label;
-    // Couleur du label selon activation
-    hardLabel.style.color = activated ? '#333' : '#999';
-    row.appendChild(hardLabel);
-    row.appendChild(btn);
-    return row;
-  };
-
-  const scrollToAnchor = (idx) => {
-    const anchor = document.getElementById(`step-anchor-${idx}`);
-    if (anchor) {
-      anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  };
+  const anchorPrefix = 'debut-etape-';
 
   window.mathadata.stepbar = {
     rootId: null,
     steps: [],
+    stepNames: [],
+    colors: [],
     current: 1,
     container: null,
     activated: [],
+    observer: null,
+    mutationObserver: null,
+    // Convertit un nom d'étape en index (1-indexé)
+    nameToIndex(name) {
+      const idx = this.stepNames.indexOf(name);
+      return idx >= 0 ? idx + 1 : null;
+    },
+    // Convertit un index (1-indexé) en nom d'étape
+    indexToName(idx) {
+      return this.stepNames[idx - 1] || null;
+    },
     // Active visuellement l'étape idx si pas encore activée (appelé depuis create_step_anchor)
     activate(idx){
       if (!this.container) return;
       if (this.activated.includes(idx)) return;
       const el = this.container.querySelector(`.mathadata-stepbar__item[data-step-index="${idx}"]`);
-      const color = Array.isArray(stepColors) ? stepColors[idx - 1] : null;
+      const color = Array.isArray(this.colors) && this.colors[idx - 1] ? this.colors[idx - 1] : null;
       if (el && color) {
         el.style.background = color;
         el.style.color = '#fff';
         el.style.borderColor = 'transparent';
         el.classList.remove('mathadata-stepbar__item--disabled');
+        el.parentElement.classList.add('mathadata-stepbar__itemRow--unlocked');
         this.activated.push(idx);
+
+        // Changer le fond de la page
+        const pageElement = document.getElementById('notebook');
+        if (pageElement) {
+          pageElement.style.transition = 'background-color 0.5s ease';
+          pageElement.style.backgroundColor = color;
+          pageElement.style.position = 'relative';
+        }
       }
     },
+    // Initialise l'observateur pour les divs invisibles
+    initObserver(){
+      console.log('[Stepbar] Initializing observers');
+
+      // IntersectionObserver pour détecter la visibilité
+      if (this.observer) {
+        this.observer.disconnect();
+      }
+
+      this.observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const stepName = entry.target.id.replace(anchorPrefix, '');
+            const stepIndex = this.nameToIndex(stepName);
+            console.log('[Stepbar] Trigger visible:', stepName, '(index:', stepIndex + ')');
+            if (stepIndex) {
+              // Première fois qu'on passe cette étape : on l'active (débloque)
+              if (!this.activated.includes(stepIndex)) {
+                console.log('[Stepbar] First time seeing step', stepName, '- activating');
+                this.activate(stepIndex);
+                // Animation confettis (sauf première étape)
+                if (stepIndex > 1 && typeof window.mathadata.fireSideCannons === 'function') {
+                  window.mathadata.fireSideCannons();
+                }
+              }
+              // Toujours mettre à jour le current
+              this.setCurrent(stepIndex);
+            }
+          }
+        });
+      }, {
+        threshold: 0.1,
+        rootMargin: '0px'
+      });
+
+      // MutationObserver pour détecter les nouvelles divs ajoutées au DOM
+      if (this.mutationObserver) {
+        this.mutationObserver.disconnect();
+      }
+
+      this.mutationObserver = new MutationObserver((mutations) => {
+        mutations.forEach(mutation => {
+          mutation.addedNodes.forEach(node => {
+            if (node.nodeType === 1) { // ELEMENT_NODE
+              // Vérifier le noeud lui-même
+              if (node.id && node.id.startsWith(anchorPrefix)) {
+                const stepName = node.id.replace(anchorPrefix, '');
+                console.log('[Stepbar] New anchor detected:', stepName, '- adding to observer');
+                this.observeElement(node);
+              }
+              // Vérifier dans les enfants
+              if (node.querySelectorAll) {
+                const anchors = node.querySelectorAll(`[id^="${anchorPrefix}"]`);
+                if (anchors.length > 0) {
+                  console.log('[Stepbar] Found', anchors.length, 'anchor(s) in children');
+                  anchors.forEach(el => {
+                    const stepName = el.id.replace(anchorPrefix, '');
+                    console.log('[Stepbar] New anchor detected (child):', stepName, '- adding to observer');
+                    this.observeElement(el);
+                  });
+                }
+              }
+            }
+          });
+        });
+      });
+
+      // Observer le body pour détecter les nouvelles cellules markdown
+      this.mutationObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+
+      // Observer les éléments existants
+      this.observeExistingElements();
+    },
+
+    // Observe un élément spécifique
+    observeElement(el){
+        this.observer.observe(el);
+    },
+    // Observer tous les éléments existants
+    observeExistingElements(){
+      const anchors = document.querySelectorAll(`[id^="${anchorPrefix}"]`);
+      console.log('[Stepbar] Found', anchors.length, 'existing anchor(s)');
+      anchors.forEach(el => {
+        const stepName = el.id.replace(anchorPrefix, '');
+        console.log('[Stepbar] Observing existing anchor:', stepName);
+        this.observeElement(el);
+      });
+    },
+    // Rafraîchit l'observateur (utile si de nouvelles divs sont ajoutées)
+    refreshObserver(){
+      this.initObserver();
+    },
     setCurrent(idx){
-    this.current = idx;
+      this.current = idx;
       if (!this.container) return;
       // Toggle classe active sur le cercle
       this.container.querySelectorAll('.mathadata-stepbar__item').forEach(el => {
@@ -3502,24 +3444,77 @@ run_js('''
         const stepIndex = Number(item.getAttribute('data-step-index'));
         row.classList.toggle('mathadata-stepbar__itemRow--active', stepIndex === idx);
       });
-      // Ne pas activer automatiquement ici; l'activation vient des ancres
     },
     goto(idx){
-      this.setCurrent(idx);
-      scrollToAnchor(idx);
+      const stepName = this.indexToName(idx);
+      if (!stepName) return;
+      const anchor = document.getElementById(`${anchorPrefix}${stepName}`);
+      if (anchor) {
+        anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    },
+    toggle(){
+      if (!this.container) return;
+      const computedRight = window.getComputedStyle(this.container).right;
+      const isCollapsed = parseInt(computedRight) < 0;
+      this.container.style.right = isCollapsed ? '0px' : '-240px';
+
+      // Faire pivoter l'icône du bouton
+      if (this.collapseButton) {
+        const icon = this.collapseButton.querySelector('svg');
+        if (icon) {
+          icon.style.transform = isCollapsed ? '' : 'rotate(180deg)';
+        }
+      }
+    },
+    createItem(idx, label){
+      const btn = document.createElement('div');
+      btn.className = 'mathadata-stepbar__item';
+      btn.setAttribute('data-step-index', String(idx));
+      btn.textContent = String(idx);
+
+      // Toujours grisé par défaut (sera coloré lors de l'activation)
+      btn.style.backgroundColor = '#d9d9d9';
+      btn.style.color = '#777';
+      btn.classList.add('mathadata-stepbar__item--disabled');
+
+      btn.addEventListener('click', () => {
+        // Bloque la navigation si la step n'est pas activée
+        if (!this.activated.includes(idx)) return;
+        this.goto(idx);
+      });
+
+      // Conteneur ligne: label (gauche) + cercle (droite)
+      const row = document.createElement('div');
+      row.className = 'mathadata-stepbar__itemRow';
+      const hardLabel = document.createElement('div');
+      hardLabel.className = 'mathadata-stepbar__labelHard';
+      hardLabel.textContent = label;
+      row.appendChild(hardLabel);
+      row.appendChild(btn);
+      return row;
     }
   };
 
-  window.mathadata.init_stepbar = (sid, config) => {
-    ensureStyles();
+  window.mathadata.init_stepbar = (config) => {
+    console.log(config)
     if (typeof config === 'string') { config = JSON.parse(config); }
 
-    const root = document.getElementById(`${sid}-stepbar-root`);
-    if (!root) return;
+    // Stocker les données avant de créer le DOM
+    const steps = Array.isArray(config.steps) ? config.steps : [];
+    const stepNames = Array.isArray(config.stepNames) ? config.stepNames : [];
+    const colors = Array.isArray(config.colors) ? config.colors : [];
+    const current = Number(config.current || 1);
 
-    const container = document.createElement('div');
-    container.className = 'mathadata-stepbar__container';
-    container.style.setProperty('--stepbar-right', `${config.position_right_px || 16}px`);
+    // Nettoyer l'ancienne stepbar si elle existe
+    const oldStepbar = document.getElementById('stepbar');
+    if (oldStepbar) oldStepbar.remove();
+
+    // Créer le container
+    const stepbar = document.createElement('div');
+    stepbar.id = 'stepbar';
+    stepbar.className = 'mathadata-stepbar__container';
+    stepbar.style.setProperty('--stepbar-right', `${config.position_right_px || 16}px`);
 
     const backdrop = document.createElement('div');
     backdrop.className = 'mathadata-stepbar__backdrop';
@@ -3527,28 +3522,131 @@ run_js('''
     itemsWrap.className = 'mathadata-stepbar__items';
     backdrop.appendChild(itemsWrap);
 
-    const steps = Array.isArray(config.steps) ? config.steps : [];
-    const current = Number(config.current || 1);
+    // Stocker les données dans stepbar (doit être fait avant createItem)
+    window.mathadata.stepbar.steps = steps;
+    window.mathadata.stepbar.stepNames = stepNames;
+    window.mathadata.stepbar.colors = colors;
+    window.mathadata.stepbar.current = current;
+    window.mathadata.stepbar.container = stepbar;
+    window.mathadata.stepbar.rootId = 'stepbar';
 
-    const onClick = (idx) => window.mathadata.stepbar.goto(idx);
+    // Créer les items
     steps.forEach((label, i) => {
       const idx = i + 1;
-      // Ne pas activer par défaut; seules les ancres exécutées activent visuellement
-      const item = createItem(idx, label, onClick, idx === current, /*activated*/ false);
+      const item = window.mathadata.stepbar.createItem(idx, label);
       itemsWrap.appendChild(item);
     });
 
-    // Mount
-    root.innerHTML = '';
-    container.appendChild(backdrop);
-    root.appendChild(container);
+    // Créer le bouton de collapse
+    const collapseButton = document.createElement('div');
+    collapseButton.className = 'mathadata-stepbar__collapseButton';
+    collapseButton.style.cssText = `
+      position: absolute;
+      left: -30px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 60px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 8px 0 0 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+      transition: background 0.2s;
+    `;
 
-    // Persist
-    window.mathadata.stepbar.rootId = sid;
-    window.mathadata.stepbar.steps = steps;
-    window.mathadata.stepbar.current = current;
-    window.mathadata.stepbar.container = container;
-    
+    const buttonIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    buttonIcon.setAttribute('width', '12');
+    buttonIcon.setAttribute('height', '12');
+    buttonIcon.setAttribute('viewBox', '0 0 320 512');
+    buttonIcon.setAttribute('fill', '#666');
+    buttonIcon.style.transition = 'transform 0.3s ease';
+    buttonIcon.innerHTML = '<path d="M310.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-192 192c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L242.7 256 73.4 86.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l192 192z"/>';
+
+    collapseButton.appendChild(buttonIcon);
+    collapseButton.addEventListener('click', () => window.mathadata.stepbar.toggle());
+
+    collapseButton.addEventListener('mouseenter', () => {
+      collapseButton.style.background = 'rgba(255, 255, 255, 1)';
+    });
+    collapseButton.addEventListener('mouseleave', () => {
+      collapseButton.style.background = 'rgba(255, 255, 255, 0.9)';
+    });
+
+    backdrop.appendChild(collapseButton);
+    stepbar.appendChild(backdrop);
+    document.body.appendChild(stepbar);
+
+    // Ajouter la transition au container
+    stepbar.style.transition = 'right 0.3s ease';
+    stepbar.style.right = '0px';
+
+    // Stocker la référence au bouton
+    window.mathadata.stepbar.collapseButton = collapseButton;
+
+    // Initialiser l'observateur pour les divs invisibles
+    window.mathadata.stepbar.initObserver();
   };
-})();
+
+  mathadata.fireSideCannons = function() {
+    var end = Date.now() + 2000; // 2 seconds
+    var colors = ["#a786ff", "#fd8bbc", "#eca184", "#f8deb1"];
+    function frame() {
+        if (Date.now() > end) return;
+        window.confetti({
+            particleCount: 2,
+            angle: 60,
+            spread: 55,
+            startVelocity: 60,
+            origin: { x: 0, y: 0.5 },
+            colors: colors,
+        });
+        window.confetti({
+            particleCount: 2,
+            angle: 120,
+            spread: 55,
+            startVelocity: 60,
+            origin: { x: 1, y: 0.5 },
+            colors: colors,
+        });
+        requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
 ''')
+
+def init_stepbar():
+    """
+    Initialise une barre latérale verticale d'étapes (fixée à droite).
+
+    - steps: liste de labels d'étapes (ex: ["Étape 1", "Étape 2", ...])
+    - current_step_index: 1-indexé, étape active au chargement
+    - position_right_px: marge droite (px)
+    """
+    steps_labels = []
+    steps_keys = []
+    steps_colors = []
+    for key, step in steps.items():
+        steps_labels.append(step['name'])
+        steps_keys.append(key)
+        steps_colors.append(step['color'])
+
+    params = {
+        'steps': steps_labels,
+        'stepNames': steps_keys,
+        'colors': steps_colors,
+        'current': 1,
+        'position_right_px': 24,
+    }
+    run_js(f"window.mathadata.init_stepbar(`{json.dumps(params, cls=NpEncoder)}`)")
+
+
+def toggle_stepbar():
+    """Affiche ou cache la stepbar."""
+    run_js("window.mathadata && window.mathadata.stepbar && window.mathadata.stepbar.toggle()")
+
+
+init_stepbar()
+# Change la couleur au démarage

@@ -19,15 +19,6 @@ if parent_dir not in sys.path:
 from utilitaires_common import *
 import utilitaires_common as common
 
-if not sequence:
-    # For dev environment
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    spec = importlib.util.spec_from_file_location("strings", os.path.join(current_dir, "strings.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    globals().update(vars(module))
-
-
 A_true = None
 B_true = None
 
@@ -1335,7 +1326,7 @@ def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banqu
     def cb(score):
         if validate is not None and score * 100 <= validate:
             if success_msg is None:
-                print("Bravo, vous pouvez passer à la suite.")
+                pretty_print_success("Bravo, vous pouvez passer à la suite.")
             else:
                 print(success_msg)
             pass_breakpoint()
@@ -1452,10 +1443,10 @@ def function_validation_score_droite(errors, answers):
     # Vérification de la réponse correcte
     if user_answer == pourcentage_erreur:
         if nb_erreurs == 0:
-            print("Bravo, c'est la bonne réponse. Il n'y a aucune erreur de classification sur ce schéma.")
+            pretty_print_success("Bravo, c'est la bonne réponse. Il n'y a aucune erreur de classification sur ce schéma.")
         else:
             # Détails sur les erreurs pour le message
-            print(f"Bravo, c'est la bonne réponse. Il y a {nb_erreurs_par_classe[0] == 1 and 'un' or nb_erreurs_par_classe[0]} {common.challenge.classes[0]} {'au dessus' if common.challenge.classes[0] == common.challenge.r_petite_caracteristique else 'en dessous'} de la droite et {nb_erreurs_par_classe[1] == 1 and 'un' or nb_erreurs_par_classe[1]} {common.challenge.classes[1]} {'au dessus' if common.challenge.classes[1] == common.challenge.r_petite_caracteristique else 'en dessous'}, donc {nb_erreurs} erreurs soit {pourcentage_erreur}%.")
+            pretty_print_success(f"Bravo, c'est la bonne réponse. Il y a {nb_erreurs_par_classe[0] == 1 and 'un' or nb_erreurs_par_classe[0]} {common.challenge.classes[0]} {'au dessus' if common.challenge.classes[0] == common.challenge.r_petite_caracteristique else 'en dessous'} de la droite et {nb_erreurs_par_classe[1] == 1 and 'un' or nb_erreurs_par_classe[1]} {common.challenge.classes[1]} {'au dessus' if common.challenge.classes[1] == common.challenge.r_petite_caracteristique else 'en dessous'}, donc {nb_erreurs} erreurs soit {pourcentage_erreur}%.")
         return True
     else:
         errors.append(f"Ce n'est pas la bonne réponse. Comptez le nombre d'erreurs c'est à dire le nombre de points du mauvais côté de la droite puis calculez le pourcentage d'erreur.")
@@ -1497,9 +1488,7 @@ validation_question_score_droite = MathadataValidateVariables({
     'erreur_10': None
 }, 
     function_validation=function_validation_score_droite,
-    success="",
-    on_success=lambda answers: set_step(2)
-)
+    success="")
 validation_execution_tracer_points_droite = MathadataValidate(success="")
 validation_score_droite = MathadataValidate(success="Bien joué, vous pouvez passer à la partie suivante.")
 validation_execution_point_droite = MathadataValidate(success="")
