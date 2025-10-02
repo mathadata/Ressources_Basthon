@@ -2,7 +2,6 @@ import os
 import sys
 import matplotlib.pyplot as plt
 import requests
-import secrets
 import __main__
 import json
 import time
@@ -107,7 +106,7 @@ class Challenge:
 
         run_js(f"setTimeout(() => window.mathadata.setup_test_bank('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
     
-    def get_data(self, index=None, dataClass=None):
+    def get_data_internal(self, index=None, dataClass=None, random=False):
         d = None
         if index is not None:
             if dataClass == None:
@@ -116,9 +115,30 @@ class Challenge:
                 class_index = self.classes.index(dataClass)
                 d = self.d_train_by_class[class_index][index]
         if d is None:
-            d = self.d
+            if random:
+                index = np.random.randint(0, len(self.d_train))
+                d = self.d_train[index]
+            else:
+                d = self.d
+        
+        return d
+    
+    def get_data(self, *args, **kwargs):
+        return json.dumps(self.get_data_internal(*args, **kwargs), cls=NpEncoder)
 
-        return json.dumps(d, cls=NpEncoder)
+    def get_data_and_label(self, *args, **kwargs):
+        if current_algo is None:
+            return {
+                'data': None,
+                'label': None
+            }
+        
+        d = self.get_data_internal(*args, **kwargs)
+        r = current_algo(d)
+        return json.dumps({
+            'data': d,
+            'label': r
+        }, cls=NpEncoder)
 
     def import_js_scripts(self):
         pass
@@ -171,6 +191,9 @@ def caracteristique(d):
 
 def get_data(*args, **kwargs):
     return challenge.get_data(*args, **kwargs)
+
+def get_data_and_label(*args, **kwargs):
+    return challenge.get_data_and_label(*args, **kwargs)
 
 def display_custom_selection(*args, **kwargs):
     challenge.display_custom_selection(*args, **kwargs)
@@ -314,152 +337,6 @@ def http_request(url, method='GET', body=None, files=None, fields=None, headers=
             print_error(e)
 
 challengedata_token = 'yjQTYDk8d51Uq8WcDCPUBK1GPEuEDi6W/3e736TV7qGAmmqn7CCyefkdL+vvjOFY'
-
-def animation_tapis_algo(id=None, index=None, dessin=None, carac=None):
-    """Affiche une animation de type tapis roulant pour données 1D ou 2D."""
-
-    if dessin is not None:
-        # On force en array pour éviter les soucis
-        data = np.array(dessin)
-        # Calcul de la caractéristique (identique à process_generated_data)
-        if carac is None:
-            carac = np.mean(data)
-        else:
-            carac = carac(data)
-        # Décision binaire selon le même seuil
-        prediction = 7 if carac < 25 else 2
-        label = f"{prediction}"
-    else:
-        if index is None:
-            import random
-            index = random.randint(0, len(challenge.d_train) - 1)
-
-        data = challenge.d_train[index]
-        label = challenge.r_train[index]
-    
-    if id is None:
-        id = uuid.uuid4().hex
-
-    # Génère une image base64 en fonction du type de données
-    import base64
-    import io
-    import matplotlib.pyplot as plt
-
-    fig, ax = plt.subplots(figsize=(1.5, 1.5))
-    if data.ndim == 1:
-        ax.plot(data, color='black', linewidth=1)
-        ax.set_ylim(np.nanmin(data) - 10, np.nanmax(data) + 10)
-    elif data.ndim == 2:
-        ax.imshow(data, cmap='gray')
-    else:
-        raise ValueError("Format de donnée non pris en charge.")
-    ax.axis('off')
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0.05)
-    plt.close(fig)
-    base64_img = base64.b64encode(buf.getvalue()).decode('utf-8')
-
-    # Affichage HTML/JS
-    display(HTML(f'''
-    <div id="{id}" class="tapis-container" style="position: relative; width: 600px; height: 150px; background-color: #222; border: 2px solid #ccc; border-radius: 10px; overflow: hidden; margin: 20px auto;">
-        <!-- Tapis roulant stylisé -->
-        <div class="tapis-track" style="position: absolute; bottom: 0; left: 0; width: 100%; height: 50px; background: repeating-linear-gradient(90deg, #555 0px, #555 20px, #333 20px, #333 40px); background-size: 40px 50px; animation: move-tapis 1s linear infinite; box-shadow: inset 0 4px 4px rgba(0,0,0,0.5); z-index: 0;"></div>
-        <style>
-            @keyframes move-tapis {{
-                from {{ background-position: 0 0; }}
-                to {{ background-position: 40px 0; }}
-            }}
-            @keyframes rotateGears {{
-                from {{ transform: rotate(0deg); }}
-                to {{ transform: rotate(360deg); }}
-            }}
-        </style>
-
-        <!-- Boîte Algo -->
-        <div id="{id}-algo-box" style="position: absolute; top: 20px; left: 260px; width: 80px; height: 80px; background: #333; color: white; border-radius: 10px; text-align: center; line-height: 80px; font-weight: bold; z-index: 2;">Algo</div>
-
-        <!-- Canvas pour image/signal -->
-        <canvas id="{id}-canvas" width="600" height="150" style="position: absolute; left: 0; top: 0; z-index: 1;"></canvas>
-
-        <!-- Sortie -->
-        <div id="{id}-output-label" style="position: absolute; right: 20px; top: 100px; font-size: 18px; font-weight: bold; color: white;"></div>
-    </div>
-    '''))
-
-    # JavaScript pour animer l’image ou le signal
-    run_js(f"""
-    (function() {{
-        const canvas = document.getElementById("{id}-canvas");
-        const ctx = canvas.getContext("2d");
-        const img = new Image();
-        img.src = "data:image/png;base64,{base64_img}";
-
-        const boxX = 260;
-        const totalFrames = 60;
-        const duration = 1700;
-        const frameDelay = duration / totalFrames;
-        let frame = 0;
-        let animateEnded = false;
-
-        img.onload = function() {{
-            const animate = () => {{
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                let x = Math.min(boxX, frame * (boxX / totalFrames));
-                ctx.drawImage(img, x, 25, 50, 50);
-
-                if (frame === Math.floor(totalFrames * 0.8)) {{
-                    const algoBox = document.getElementById("{id}-algo-box");
-
-                    // Inject rotating gears
-                    algoBox.innerHTML = `
-                        <div id="{id}-gear-anim" style="
-                            display: flex;
-                            flex-direction: column;
-                            align-items: center;
-                            justify-content: center;
-                            height: 100%;
-                            animation: rotateGears 2s linear;
-                        ">
-                            <div style="font-size: 16px; line-height: 1;">⚙️</div>
-                            <div style="display: flex; gap: 4px; margin-top: -2px;">
-                                <div style="font-size: 16px; line-height: 1;">⚙️</div>
-                                <div style="font-size: 16px; line-height: 1;">⚙️</div>
-                            </div>
-                        </div>
-                    `;
-
-                    setTimeout(() => {{
-                        algoBox.innerText = "Algo";
-                        animateEnded = true;
-                    }}, 2000);
-                }}
-
-                if (frame === Math.floor(totalFrames * 0.8)) {{
-                    if (animateEnded) {{
-                        document.getElementById("{id}-output-label").innerText = "Résultat : {label}";
-                    }} else {{
-                        // Re-vérifie un peu plus tard jusqu'à ce que animateEnded soit true
-                        const waitForAnim = setInterval(() => {{
-                            if (animateEnded) {{
-                                clearInterval(waitForAnim);
-                                document.getElementById("{id}-output-label").innerText = "Résultat : {label}";
-                            }}
-                        }}, 50); // vérifie toutes les 50 ms
-                    }}
-                }}
-
-
-
-                frame++;
-                if (frame <= totalFrames) {{
-                    setTimeout(animate, frameDelay);
-                }}
-            }};
-            animate();
-        }};
-    }})();
-    """)
-
 
 
 def http_request_cd(endpoint, method='GET', body=None, files=None, fields=None, cb=None):
@@ -610,8 +487,89 @@ def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=
         print_error("Il y a eu un problème lors du calcul de l'erreur. Vérifie ta réponse.")
         if debug:
             raise(e)
+
+current_algo = None
+
+def run_algorithme(d_json):
+    if current_algo is None:
+        return None
+    d = json.loads(d_json)
+    if type(d) == list:
+        d = np.array(d)
+    res = current_algo(d)
+    print(res)
+    return json.dumps({
+        'result': res
+    }, cls=NpEncoder)
+
+def test_algorithme():
+    """Affiche une animation de type tapis roulant pour données 1D ou 2D."""
+
+    if current_algo is None:
+        print_error("L'algorithme n'est pas encore complet et prêt à être utilisé.")
+        return
+
+    id = uuid.uuid4().hex
+
+    # Container HTML
+    display(HTML(f'''
+    <div id="{id}">
+        <div id="{id}-data-gen" style="margin-bottom: 2rem;"></div>
+    
+        <div style="display: flex; justify-content: center; align-items: center; gap: 3rem; margin: 2rem 0;">
+            <button id="{id}-button-random" style="padding: 0.5rem 1rem; font-size: 16px; cursor: pointer; flex: 1">Tester avec {data('un')} aléatoire</button>
+            <button id="{id}-button-generated" style="padding: 0.5rem 1rem; font-size: 16px; cursor: pointer; flex: 1">Tester avec votre {data('')}</button>
+        </div>
+        
+        <div style="position: relative; width: 600px; height: 150px; background-color: #222; border: 2px solid #ccc; border-radius: 10px; overflow: hidden; margin: auto">
+            <!-- Bande tapis roulant -->
+            <div style="position: absolute; bottom: 0; left: 0; width: 100%; height: 50px; background: repeating-linear-gradient(90deg, #555 0px, #555 20px, #333 20px, #333 40px); background-size: 40px 50px; animation: move-tapis 1s linear infinite; box-shadow: inset 0 4px 4px rgba(0,0,0,0.5); z-index: 0;"></div>
+
+            <style>
+                @keyframes move-tapis {{
+                    from {{ background-position: 0 0; }}
+                    to {{ background-position: 40px 0; }}
+                }}
+                @keyframes rotateGears {{
+                    from {{ transform: rotate(0deg); }}
+                    to {{ transform: rotate(360deg); }}
+                }}
+            </style>
+
+            <!-- Boîte Algo -->
+            <div id="{id}-algo-box" style="position: absolute; bottom: 50px; left: 260px; width: 80px; height: 80px; background: #333; color: white; border-radius: 10px; text-align: center; line-height: 80px; font-weight: bold; z-index: 3;">Algo</div>
+
+            <!-- Zone affichage mini data -->
+            <div style="position: absolute; left: 0px; width: 260px; height: 100%; overflow: hidden; z-index: 1;">
+                <div id="{id}-data" style="position: absolute; left: 0px; bottom: 50px; height: 80px; z-index: 2;"></div>
+            </div>
+
+            <!-- Label sortie -->
+            <div id="{id}-output-label" style="position: absolute; right: 20px; top: 100px; font-size: 18px; font-weight: bold; color: white;"></div>
+        </div>
+    </div>
+    ''')) 
+
+    run_js(f"setTimeout(() => window.mathadata.test_algorithme('{id}'), 500)")
         
 # Fonctions trame notebook générique
+
+def algo_faineant(d):
+    return challenge.classes[0]
+
+def algo_carac(d):
+    caracteristique = challenge.caracteristique
+    t = get_variable('t')
+    classification = get_variable('classification')
+    x = caracteristique(d)
+    return classification(x, t)
+
+def algo_carac_custom(d):
+    caracteristique = challenge.caracteristique_custom
+    t = get_variable('t')
+    classification = get_variable('classification')
+    x = caracteristique(d)
+    return classification(x, t)
 
 def calculer_score_etape_1():
     algorithme = get_algorithme_func()
@@ -620,47 +578,30 @@ def calculer_score_etape_1():
     
     def cb(score):
         validation_score_fixe()
-        set_step(1)
+        set_step('carac')
 
     calculer_score(algorithme, method="fixed", cb=cb)  
 
 def calculer_score_carac():
-    t = get_variable('t')
-    caracteristique = get_variable('caracteristique')
-    classification = get_variable('classification')
-
-    def algorithme(d):
-        x = caracteristique(d)
-        return classification(x, t)
-    
     def cb(score):
         validation_score_carac()
-        set_step(2)
+        set_step('optim')
 
-    calculer_score(algorithme, method="carac ref", parameters=f"t={t}", cb=cb, caracteristique=caracteristique) 
+    calculer_score(algo_carac, method="carac ref", cb=cb, caracteristique=caracteristique) 
 
 def calculer_score_custom():
     if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable('r_grande_caracteristique'):
         print_error('Remplacez tous les ... par vos paramètres.')
         return
     
-    t = get_variable('t')
-    r_petite_caracteristique = get_variable('r_petite_caracteristique')
-    r_grande_caracteristique = get_variable('r_grande_caracteristique')
     
-    def algorithme(d):
-        x = challenge.caracteristique_custom(d)
-        if x <= t:
-            return r_petite_caracteristique
-        else:
-            return r_grande_caracteristique
-        
     def cb(score):
         res = challenge.cb_custom_score(score)
         if res:
+            set_step_algo_carac_custom(answers=None)
             validation_custom()
     
-    calculer_score(algorithme, method="carac custom", parameters=f"t={t}", caracteristique=challenge.caracteristique_custom, cb=cb)
+    calculer_score(algo_carac_custom, method="carac custom", caracteristique=challenge.caracteristique_custom, cb=cb)
 
 def calculer_score_code_eleve():
     if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable('r_grande_caracteristique'):
@@ -818,7 +759,7 @@ def calculer_score_seuil_optimise():
         return classification(x, t)
 
     def cb(score):
-        set_step(3)
+        set_step('custom')
     
     calculer_score(algorithme, method="carac ref seuil optim", parameters=f"t={t}", cb=cb) 
 
@@ -1137,6 +1078,14 @@ styles = """
     padding: 15px; /* Increased padding */
     border-radius: 5px;
     border-left: 5px solid #ffcc00; /* Yellow-orange left border */
+    margin-bottom: 10px; /* Margin at the bottom */
+}
+
+.error {
+    background-color: lightred; /* Light red background */
+    padding: 15px; /* Increased padding */
+    border-radius: 5px;
+    border-left: 5px solid #F23431; /*light-red left border */
     margin-bottom: 10px; /* Margin at the bottom */
 }
 
@@ -1644,6 +1593,101 @@ run_js("""
             setTimeout(() => select(0), 500)
         },
 
+
+        test_algorithme(id, params) {
+
+            let getGeneratedData
+            if (mathadata.interface_data_gen !== undefined) {
+                getGeneratedData = mathadata.interface_data_gen(`${id}-data-gen`)
+            }
+
+            const dataContainer = document.getElementById(`${id}-data`)
+
+            let frame = 0;
+            const totalFrames = 60;
+            const duration = 1700;
+            const delay = duration / totalFrames;
+            const move_limit = 260;
+            let animateEnded = false;
+            
+            let lastLabel;
+    
+            function animate() {
+                // Mouvement linéaire
+                
+                const x = Math.min(move_limit, frame * (move_limit / totalFrames));
+                dataContainer.style.left = x + "px";
+
+                if (frame === Math.floor(totalFrames * 0.8)) {
+                    const algoBox = document.getElementById(`${id}-algo-box`);
+                    algoBox.innerHTML = `
+                        <div id="${id}-gear-anim" style="
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            height: 100%;
+                            animation: rotateGears 2s linear;
+                        ">
+                            <div style="font-size: 16px; line-height: 1;">⚙️</div>
+                            <div style="display: flex; gap: 4px; margin-top: -2px;">
+                                <div style="font-size: 16px; line-height: 1;">⚙️</div>
+                                <div style="font-size: 16px; line-height: 1;">⚙️</div>
+                            </div>
+                        </div>
+                    `;
+                    setTimeout(() => {
+                        algoBox.innerText = "Algo";
+                        animateEnded = true;
+                    }, 2000);
+                }
+
+                if (frame === Math.floor(totalFrames * 0.8)) {
+                    if (animateEnded) {
+                        document.getElementById(`${id}-output-label`).innerText = `Réponse : ${lastLabel}`;
+                    } else {
+                        const waitForAnim = setInterval(() => {
+                            if (animateEnded) {
+                                clearInterval(waitForAnim);
+                                document.getElementById(`${id}-output-label`).innerText = `Réponse : ${lastLabel}`;
+                            }
+                        }, 50);
+                    }
+                }
+
+                frame++;
+                if (frame <= totalFrames) {
+                    setTimeout(animate, delay);
+                }
+            }
+
+            function run_test(params) {
+                const {data, label} = params
+                console.log(data)
+                lastLabel = label
+                window.mathadata.affichage(`${id}-data`, data);
+                frame = 0;
+                animateEnded = false;
+                document.getElementById(`${id}-output-label`).innerText = ``;
+                animate();
+            }
+            
+            document.getElementById(`${id}-button-random`).onclick = () => {
+                mathadata.run_python('get_data_and_label(random=True)', run_test);
+            }
+
+            if (getGeneratedData) {
+                document.getElementById(`${id}-button-generated`).onclick = () => {
+                    const data = getGeneratedData();
+                    mathadata.run_python(`run_algorithme('${JSON.stringify(data)}')`, ({result}) => {
+                        run_test({data, label: result})
+                    });
+                }
+            } else {
+                document.getElementById(`${id}-button-generated`).style.display = 'none'
+            }
+        },
+
         tracer_erreur(id, t_values, scores_array) {
             const config = {
                 type: 'scatter',
@@ -1675,7 +1719,7 @@ run_js("""
                         y: {
                             title: {
                                 display: true,
-                                text: 'Erreur f(t)',
+                                text: 'Pourcentage d\\'erreur f(t)',
                             },
                             min: 0,
                             max: 100,
@@ -2136,30 +2180,63 @@ def update_score():
     run_js(js_code)
 
 
-def set_step(number):
-    colors = ['#2E8B57', '#87CEEB', '#4169E1', '#DC143C']
-    names = ['Algorithme Fainéant', 'Algorithme Moyenne', 'Optimisation' , 'Faire mieux']
+
+def set_step(name):
+    steps = {
+        'bdd': {
+            'name': 'Présentation des données',
+            'color': 'rgb(250,181,29)',
+        },
+        'depart': {
+            'name': 'Point de départ',
+            'color': 'rgb(62,178,136)',
+        },
+        'carac': {
+            'name': 'Calcul et caractéristique',
+            'color': 'rgb(241,132,18)',
+        },
+        'classif': {
+            'name': 'Classification',
+            'color': 'rgb(230,29,73)',
+        },
+        'optim': {
+            'name': 'Optimisation',
+            'color': 'rgb(244,167,198)',
+        },
+        'custom': {
+            'name': 'Votre caractéristique',
+            'color': 'rgb(20,129,173)',
+        },
+    }
+
+    if not isinstance(name, str) or name not in steps:
+        return
+
+    step_number = list(steps.keys()).index(name)
     
     run_js(f"""
         const pageElement = document.getElementById('notebook');
         pageElement.style.transition = 'background-color 0.5s ease';
-        pageElement.style.backgroundColor = '{colors[number]}';
+        pageElement.style.backgroundColor = '{steps[name]['color']}';
         pageElement.style.position = 'relative';
 
-        let card = document.getElementById('step-card');
-        if (!card) {{
-            card = document.createElement('div');
-            card.id = 'step-card';
-            card.innerHTML = `
-                <h3>Étape <span id="step-number">{number + 1}</span> / 4</h3>
-                <p id="step-name" style="font-size: 1.5rem;">{names[number]}</p>
-            `
-            pageElement.appendChild(card);
-        }} else {{
-            document.getElementById('step-number').innerText = {number} + 1;
-            document.getElementById('step-name').innerText = '{names[number]}';
-        }}
+        //let card = document.getElementById('step-card');
+        //if (!card) {{
+        //    card = document.createElement('div');
+        //    card.id = 'step-card';
+        //    card.innerHTML = `
+        //        <h3>Étape <span id="step-number"></span></h3>
+        //        <p id="step-name" style="font-size: 1.5rem;"></p>
+        //    `
+        //}}
+
+        //document.getElementById('step-number').innerText = '{step_number + 1} / {len(steps)}';
+        //document.getElementById('step-name').innerText = '{steps[name]['name']}';
     """)
+
+# Change la couleur au démarage
+set_step('bdd')
+
 
 ### VALIDATION CLASSES ###
 
@@ -2202,8 +2279,10 @@ class _MathadataValidate():
 
         if len(errors) > 0:
             for error in errors:
-                print_error(error)
-                
+               display(HTML(f'''<div id="errors" style="background-color:#C26961; padding: 15px; border-radius: 5px; border-left: 5px solid #F23431; margin-bottom: 10px">
+                            <p style="color: white;font-weight:bold">{error}</p>
+                            </div>'''))
+
         if not res and self.tips is not None:
             id = uuid.uuid4().hex
             display(HTML(f'''<div id="{id}-tips"></div>'''))
@@ -2249,9 +2328,13 @@ class _MathadataValidate():
     def on_success(self, answers):
         if self.success is not None:
             if self.success:
-                print(self.success)
+                display(HTML(f'''<div id="custom-success" style="background-color:lightgreen; padding: 15px; border-radius: 5px; border: 5px solid #43DF91; margin-bottom: 10px">
+                                <p>{self.success}</p>
+                                </div>'''))
         else:
-            print("Bravo, c'est la bonne réponse !")
+            display(HTML(f'''<div id="default-success" style="background-color:lightgreen; padding: 15px; border-radius: 5px; border: 5px solid #43DF91; margin-bottom: 10px">
+                            <p>Bravo, c'est la bonne réponse !</p>
+                            </div>'''))
         if self.child_on_success is not None:
             self.child_on_success(answers)
 
@@ -2577,9 +2660,19 @@ def get_validate_seuil_optimized():
         't': best_t,
     }
 
+def set_step_algo_faineant(answers):
+    global current_algo
+    current_algo = algo_faineant
 
+def set_step_algo_carac(answers):
+    global current_algo
+    current_algo = algo_carac
 
-validation_execution_algo_fixe = MathadataValidate(success="")
+def set_step_algo_carac_custom(answers):
+    global current_algo
+    current_algo = algo_carac_custom
+
+validation_execution_algo_fixe = MathadataValidate(success="", on_success=set_step_algo_faineant)
 validation_execution = MathadataValidate(success="")
 validation_execution_calcul_score = MathadataValidate(success="")
 
@@ -2596,7 +2689,7 @@ tips=[
     }], success="")
 validation_score_fixe = MathadataValidate(success="")
 
-validation_execution_affichage_classif = MathadataValidate(success="")
+validation_execution_affichage_classif = MathadataValidate(success="", on_success=lambda a: set_step('classif'))
 validation_exercice_droite_carac = MathadataValidate(function_validation=validate_exercice_droite_carac)
 validation_question_ordre_caracteristique = MathadataValidateVariables(get_names_and_values=lambda: {
     'r_petite_caracteristique': {
@@ -2627,7 +2720,7 @@ validation_question_seuil = MathadataValidateVariables(
     get_names_and_values=get_validate_seuil,
     success="Ton seuil est correct ! Il n'est pas forcément optimal, on verra dans la suite comment l'optimiser."
 )
-validation_execution_classif = MathadataValidate(success="")
+validation_execution_classif = MathadataValidate(success="", on_success=set_step_algo_carac)
 
 
 
@@ -2686,7 +2779,7 @@ validation_question_nombre_total =MathadataValidateVariables(get_names_and_value
       'print_solution': True, 
       'validate': True 
     }
-  ], on_success=lambda answers: set_step(0))
+  ], on_success=lambda answers: set_step('depart'))
 
 # Defini pour éviter l'erreur python par defaut si l'élève mets reponse = chat
 chat = 0
@@ -3132,3 +3225,330 @@ def on_success_histogramme(answers):
         get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
 
 validation_caracteristique_libre_et_affichage=MathadataValidateVariables(name_and_values={'caracteristique': None}, function_validation=validate_caracteristique_libre,success="Ta fonction renvoie bien un nombre. Testons ta proposition",on_success=on_success_histogramme)
+
+
+
+# Stepbar (barre d'étapes)
+
+def init_stepbar(steps, current_step_index=1, position_right_px=16):
+    """
+    Initialise une barre latérale verticale d'étapes (fixée à droite).
+
+    - steps: liste de labels d'étapes (ex: ["Étape 1", "Étape 2", ...])
+    - current_step_index: 1-indexé, étape active au chargement
+    - position_right_px: marge droite (px)
+    """
+    sid = uuid.uuid4().hex
+    display(HTML(f'''<div id="{sid}-stepbar-root"></div>'''))
+
+    params = {
+        'steps': steps,
+        'current': int(current_step_index),
+        'position_right_px': int(position_right_px), 
+    }
+    run_js(f"window.mathadata && window.mathadata.init_stepbar && window.mathadata.init_stepbar('{sid}', '{json.dumps(params)}')")
+
+
+def create_step_anchor(step_index):
+    """
+    À placer dans une cellule à l'emplacement de l'étape correspondante (1-indexée).
+    Crée une ancre que la barre peut cibler pour le défilement.
+    """
+    anchor_id = f"step-anchor-{int(step_index)}"
+    display(HTML(f'''<div id="{anchor_id}" style="position: relative;"></div>'''))
+    # Active visuellement et rend cliquable la step correspondante
+    run_js(f"window.mathadata && window.mathadata.stepbar && window.mathadata.stepbar.activate && window.mathadata.stepbar.activate({int(step_index)})")
+    # Sélectionne automatiquement cette étape comme courante
+    run_js(f"window.mathadata && window.mathadata.stepbar && window.mathadata.stepbar.setCurrent && window.mathadata.stepbar.setCurrent({int(step_index)})")
+    # Déclenche une animation de confettis (side cannons) pour récompenser l'élève
+    run_js('''(function(){
+      function loadConfetti(cb){
+        if (window.confetti) { cb(); return; }
+        var s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js';
+        s.onload = cb;
+        document.head.appendChild(s);
+      }
+
+      function fireSideCannons(){
+        var end = Date.now() + 4000; // 4 seconds
+        var colors = ["#a786ff", "#fd8bbc", "#eca184", "#f8deb1"];
+        (function frame(){
+          if (Date.now() > end) return;
+          window.confetti({
+            particleCount: 2,
+            angle: 60,
+            spread: 55,
+            startVelocity: 60,
+            origin: { x: 0, y: 0.5 },
+            colors: colors,
+          });
+          window.confetti({
+            particleCount: 2,
+            angle: 120,
+            spread: 55,
+            startVelocity: 60,
+            origin: { x: 1, y: 0.5 },
+            colors: colors,
+          });
+          requestAnimationFrame(frame);
+        })();
+      }
+
+      loadConfetti(fireSideCannons);
+    })();''')
+
+
+def set_current_step(step_index):
+    """Met en surbrillance l'étape (1-indexée) sans scroller."""
+    run_js(f"window.mathadata && window.mathadata.stepbar && window.mathadata.stepbar.setCurrent({int(step_index)})")
+
+
+def goto_step(step_index):
+    """Fait défiler jusqu'à l'ancre de l'étape (1-indexée) et met à jour l'état actif."""
+    run_js(f"window.mathadata && window.mathadata.stepbar && window.mathadata.stepbar.goto({int(step_index)})")
+
+
+run_js('''
+ const stepColors= ['rgb(250,181,29)', 'rgb(62,178,136)', 'rgb(241,132,18)', 'rgb(230,29,73)', 'rgb(244,167,198)', 'rgb(20,129,173)'];
+(function(){
+  if (!window.mathadata) { window.mathadata = {}; }
+
+  const ensureStyles = () => {
+    if (document.getElementById('mathadata-stepbar-style')) return;
+    const style = document.createElement('style');
+    style.id = 'mathadata-stepbar-style';
+    style.textContent = `
+      .mathadata-stepbar__container {
+        position: fixed;
+        top: 40%;
+        transform: translateY(-50%);
+        right: var(--stepbar-right, 16px);
+        width: 240px; /* élargi pour accueillir labels + cercles */
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 9999;
+        align-items: center;
+      }
+      .mathadata-stepbar__backdrop {
+        width: 240px; /* match container width */
+        background: #fff;
+        border-radius: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        display: flex;
+        flex-direction: column;
+        align-items: stretch; /* laisser les lignes prendre toute la largeur */
+        padding: 20px 0; /* increased vertical padding around items for greater height */
+      }
+      .mathadata-stepbar__items {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch; /* chaque ligne sur toute la largeur */
+        gap: 14px; /* increased spacing between boxes */
+        width: 100%;
+      }
+      .mathadata-stepbar__itemRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between; 
+        gap: 8px;
+        width: 100%;
+        padding: 0 12px; /* marge intérieure pour coller le label à gauche sans toucher les bords */
+      }
+      .mathadata-stepbar__labelHard {
+        font-size: 16px;
+        color: #333;
+        user-select: none;
+        white-space: normal; 
+        overflow: visible;
+        text-overflow: clip;
+        text-align: left; /* aligne le texte à gauche */
+        flex: 1 1 auto; /* prend toute la place restante */
+        max-width: unset; /* pas de limite artificielle, géré par flex */
+        line-height: 1.2;
+        font-style: italic; 
+        font-weight: 400;
+      }
+      .mathadata-stepbar__itemRow--active .mathadata-stepbar__labelHard {
+        font-style: normal; /* étape active: non italique */
+        font-weight: 1200;   /* étape active: gras */
+      }
+      .mathadata-stepbar__item {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 56px;
+        height: 56px;
+        flex: 0 0 56px; /* fixe la largeur dans le layout flex */
+        aspect-ratio: 1 / 1; /* garantit la forme circulaire */
+        box-sizing: border-box;
+        border-radius: 50%;
+        background: #fff;
+        color: #222;
+        border: 1px solid rgba(0,0,0,0.08);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+        user-select: none;
+      }
+      .mathadata-stepbar__item:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+      .mathadata-stepbar__item--active {
+        box-shadow: 0 0 0 2px rgba(0,0,0,0.35), 0 6px 16px rgba(0,0,0,0.12);
+        border-color: transparent;
+      }
+      .mathadata-stepbar__item--disabled { cursor: not-allowed; }
+      .mathadata-stepbar__item--disabled:hover { transform: none; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+      .mathadata-stepbar__tooltip {
+        position: absolute;
+        right: 64px;
+        background: stepColors[Number(idx) - 1];
+        color: #fff;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(4px);
+        transition: opacity .12s ease, transform .12s ease;
+      }
+      .mathadata-stepbar__item:hover .mathadata-stepbar__tooltip {
+        opacity: 1; transform: translateY(0);
+      }
+    `;
+    document.head.appendChild(style);
+  };
+
+  const createItem = (idx, label, onClick, active, activated) => {
+    const btn = document.createElement('div');
+    btn.className = 'mathadata-stepbar__item' + (active ? ' mathadata-stepbar__item--active' : '');
+    btn.setAttribute('data-step-index', String(idx));
+    btn.textContent = String(idx);
+
+    // Style selon activation
+    if (activated && Array.isArray(stepColors) && stepColors[idx - 1]) {
+      btn.style.background = stepColors[idx - 1];
+      btn.style.color = '#fff';
+      btn.style.borderColor = 'transparent';
+    } else {
+      // Grisé si non activé
+      btn.style.background = '#d9d9d9';
+      btn.style.color = '#777';
+      btn.style.borderColor = 'rgba(0,0,0,0.12)';
+      btn.classList.add('mathadata-stepbar__item--disabled');
+    }
+
+    // Tooltip hover removed per request
+
+    btn.addEventListener('click', () => {
+      // Bloque la navigation si la step n'est pas activée
+      const isActivated = Array.isArray(window.mathadata?.stepbar?.activated) && window.mathadata.stepbar.activated.includes(idx);
+      if (!isActivated) return;
+      onClick(idx);
+    });
+    // Conteneur ligne: label (gauche) + cercle (droite)
+    const row = document.createElement('div');
+    row.className = 'mathadata-stepbar__itemRow';
+    const hardLabel = document.createElement('div');
+    hardLabel.className = 'mathadata-stepbar__labelHard';
+    hardLabel.textContent = label;
+    // Couleur du label selon activation
+    hardLabel.style.color = activated ? '#333' : '#999';
+    row.appendChild(hardLabel);
+    row.appendChild(btn);
+    return row;
+  };
+
+  const scrollToAnchor = (idx) => {
+    const anchor = document.getElementById(`step-anchor-${idx}`);
+    if (anchor) {
+      anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  window.mathadata.stepbar = {
+    rootId: null,
+    steps: [],
+    current: 1,
+    container: null,
+    activated: [],
+    // Active visuellement l'étape idx si pas encore activée (appelé depuis create_step_anchor)
+    activate(idx){
+      if (!this.container) return;
+      if (this.activated.includes(idx)) return;
+      const el = this.container.querySelector(`.mathadata-stepbar__item[data-step-index="${idx}"]`);
+      const color = Array.isArray(stepColors) ? stepColors[idx - 1] : null;
+      if (el && color) {
+        el.style.background = color;
+        el.style.color = '#fff';
+        el.style.borderColor = 'transparent';
+        el.classList.remove('mathadata-stepbar__item--disabled');
+        this.activated.push(idx);
+      }
+    },
+    setCurrent(idx){
+    this.current = idx;
+      if (!this.container) return;
+      // Toggle classe active sur le cercle
+      this.container.querySelectorAll('.mathadata-stepbar__item').forEach(el => {
+        el.classList.toggle('mathadata-stepbar__item--active', Number(el.getAttribute('data-step-index')) === idx);
+      });
+      // Toggle classe active sur la ligne (pour styliser le label)
+      this.container.querySelectorAll('.mathadata-stepbar__itemRow').forEach(row => {
+        const item = row.querySelector('.mathadata-stepbar__item');
+        if (!item) return;
+        const stepIndex = Number(item.getAttribute('data-step-index'));
+        row.classList.toggle('mathadata-stepbar__itemRow--active', stepIndex === idx);
+      });
+      // Ne pas activer automatiquement ici; l'activation vient des ancres
+    },
+    goto(idx){
+      this.setCurrent(idx);
+      scrollToAnchor(idx);
+    }
+  };
+
+  window.mathadata.init_stepbar = (sid, config) => {
+    ensureStyles();
+    if (typeof config === 'string') { config = JSON.parse(config); }
+
+    const root = document.getElementById(`${sid}-stepbar-root`);
+    if (!root) return;
+
+    const container = document.createElement('div');
+    container.className = 'mathadata-stepbar__container';
+    container.style.setProperty('--stepbar-right', `${config.position_right_px || 16}px`);
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'mathadata-stepbar__backdrop';
+    const itemsWrap = document.createElement('div');
+    itemsWrap.className = 'mathadata-stepbar__items';
+    backdrop.appendChild(itemsWrap);
+
+    const steps = Array.isArray(config.steps) ? config.steps : [];
+    const current = Number(config.current || 1);
+
+    const onClick = (idx) => window.mathadata.stepbar.goto(idx);
+    steps.forEach((label, i) => {
+      const idx = i + 1;
+      // Ne pas activer par défaut; seules les ancres exécutées activent visuellement
+      const item = createItem(idx, label, onClick, idx === current, /*activated*/ false);
+      itemsWrap.appendChild(item);
+    });
+
+    // Mount
+    root.innerHTML = '';
+    container.appendChild(backdrop);
+    root.appendChild(container);
+
+    // Persist
+    window.mathadata.stepbar.rootId = sid;
+    window.mathadata.stepbar.steps = steps;
+    window.mathadata.stepbar.current = current;
+    window.mathadata.stepbar.container = container;
+    
+  };
+})();
+''')
