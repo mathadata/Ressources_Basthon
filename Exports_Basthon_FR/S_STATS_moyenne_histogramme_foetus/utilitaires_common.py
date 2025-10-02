@@ -2,7 +2,6 @@ import os
 import sys
 import matplotlib.pyplot as plt
 import requests
-import secrets
 import __main__
 import json
 import time
@@ -37,19 +36,6 @@ except ModuleNotFoundError:
         sequence = True
     except ModuleNotFoundError:
         pass
-
-# Import des strings pour lire l'export dans jupyter
-try:
-    # For dev environment
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    spec = importlib.util.spec_from_file_location("strings", os.path.join(current_dir, "strings.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    globals().update(vars(module))
-except Exception as e: 
-    if not sequence:
-        print(f"Error loading strings: {e}")
-    pass
 
 ## Pour valider l'exécution d'une cellule de code, dans le cas du notebook sequencé :
 if sequence:
@@ -107,7 +93,7 @@ class Challenge:
 
         run_js(f"setTimeout(() => window.mathadata.setup_test_bank('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
     
-    def get_data(self, index=None, dataClass=None):
+    def get_data_internal(self, index=None, dataClass=None, random=False):
         d = None
         if index is not None:
             if dataClass == None:
@@ -116,9 +102,30 @@ class Challenge:
                 class_index = self.classes.index(dataClass)
                 d = self.d_train_by_class[class_index][index]
         if d is None:
-            d = self.d
+            if random:
+                index = np.random.randint(0, len(self.d_train))
+                d = self.d_train[index]
+            else:
+                d = self.d
+        
+        return d
+    
+    def get_data(self, *args, **kwargs):
+        return json.dumps(self.get_data_internal(*args, **kwargs), cls=NpEncoder)
 
-        return json.dumps(d, cls=NpEncoder)
+    def get_data_and_label(self, *args, **kwargs):
+        if current_algo is None:
+            return {
+                'data': None,
+                'label': None
+            }
+        
+        d = self.get_data_internal(*args, **kwargs)
+        r = current_algo(d)
+        return json.dumps({
+            'data': d,
+            'label': r
+        }, cls=NpEncoder)
 
     def import_js_scripts(self):
         pass
@@ -172,6 +179,9 @@ def caracteristique(d):
 def get_data(*args, **kwargs):
     return challenge.get_data(*args, **kwargs)
 
+def get_data_and_label(*args, **kwargs):
+    return challenge.get_data_and_label(*args, **kwargs)
+
 def display_custom_selection(*args, **kwargs):
     challenge.display_custom_selection(*args, **kwargs)
 
@@ -184,7 +194,8 @@ def import_js_scripts():
             paths: {
                 'ag-grid-community': 'https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min',
                 'chartjs': 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min',
-                'drag-data-plugin': 'https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@latest/dist/chartjs-plugin-dragdata.min'
+                'drag-data-plugin': 'https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@latest/dist/chartjs-plugin-dragdata.min',
+                'confetti': 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min',
             },
            map: {
                     'drag-data-plugin': {
@@ -199,7 +210,7 @@ def import_js_scripts():
                 }
         });
 
-        require(['ag-grid-community', 'chartjs','drag-data-plugin'], function(agGrid) {
+        require(['ag-grid-community', 'chartjs','drag-data-plugin', 'confetti'], function(agGrid) {
             window.agGrid = agGrid;
         });
     """)
@@ -314,152 +325,6 @@ def http_request(url, method='GET', body=None, files=None, fields=None, headers=
             print_error(e)
 
 challengedata_token = 'yjQTYDk8d51Uq8WcDCPUBK1GPEuEDi6W/3e736TV7qGAmmqn7CCyefkdL+vvjOFY'
-
-def animation_tapis_algo(id=None, index=None, dessin=None, carac=None):
-    """Affiche une animation de type tapis roulant pour données 1D ou 2D."""
-
-    if dessin is not None:
-        # On force en array pour éviter les soucis
-        data = np.array(dessin)
-        # Calcul de la caractéristique (identique à process_generated_data)
-        if carac is None:
-            carac = np.mean(data)
-        else:
-            carac = carac(data)
-        # Décision binaire selon le même seuil
-        prediction = 7 if carac < 25 else 2
-        label = f"{prediction}"
-    else:
-        if index is None:
-            import random
-            index = random.randint(0, len(challenge.d_train) - 1)
-
-        data = challenge.d_train[index]
-        label = challenge.r_train[index]
-    
-    if id is None:
-        id = uuid.uuid4().hex
-
-    # Génère une image base64 en fonction du type de données
-    import base64
-    import io
-    import matplotlib.pyplot as plt
-
-    fig, ax = plt.subplots(figsize=(1.5, 1.5))
-    if data.ndim == 1:
-        ax.plot(data, color='black', linewidth=1)
-        ax.set_ylim(np.nanmin(data) - 10, np.nanmax(data) + 10)
-    elif data.ndim == 2:
-        ax.imshow(data, cmap='gray')
-    else:
-        raise ValueError("Format de donnée non pris en charge.")
-    ax.axis('off')
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0.05)
-    plt.close(fig)
-    base64_img = base64.b64encode(buf.getvalue()).decode('utf-8')
-
-    # Affichage HTML/JS
-    display(HTML(f'''
-    <div id="{id}" class="tapis-container" style="position: relative; width: 600px; height: 150px; background-color: #222; border: 2px solid #ccc; border-radius: 10px; overflow: hidden; margin: 20px auto;">
-        <!-- Tapis roulant stylisé -->
-        <div class="tapis-track" style="position: absolute; bottom: 0; left: 0; width: 100%; height: 50px; background: repeating-linear-gradient(90deg, #555 0px, #555 20px, #333 20px, #333 40px); background-size: 40px 50px; animation: move-tapis 1s linear infinite; box-shadow: inset 0 4px 4px rgba(0,0,0,0.5); z-index: 0;"></div>
-        <style>
-            @keyframes move-tapis {{
-                from {{ background-position: 0 0; }}
-                to {{ background-position: 40px 0; }}
-            }}
-            @keyframes rotateGears {{
-                from {{ transform: rotate(0deg); }}
-                to {{ transform: rotate(360deg); }}
-            }}
-        </style>
-
-        <!-- Boîte Algo -->
-        <div id="{id}-algo-box" style="position: absolute; top: 20px; left: 260px; width: 80px; height: 80px; background: #333; color: white; border-radius: 10px; text-align: center; line-height: 80px; font-weight: bold; z-index: 2;">Algo</div>
-
-        <!-- Canvas pour image/signal -->
-        <canvas id="{id}-canvas" width="600" height="150" style="position: absolute; left: 0; top: 0; z-index: 1;"></canvas>
-
-        <!-- Sortie -->
-        <div id="{id}-output-label" style="position: absolute; right: 20px; top: 100px; font-size: 18px; font-weight: bold; color: white;"></div>
-    </div>
-    '''))
-
-    # JavaScript pour animer l’image ou le signal
-    run_js(f"""
-    (function() {{
-        const canvas = document.getElementById("{id}-canvas");
-        const ctx = canvas.getContext("2d");
-        const img = new Image();
-        img.src = "data:image/png;base64,{base64_img}";
-
-        const boxX = 260;
-        const totalFrames = 60;
-        const duration = 1700;
-        const frameDelay = duration / totalFrames;
-        let frame = 0;
-        let animateEnded = false;
-
-        img.onload = function() {{
-            const animate = () => {{
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                let x = Math.min(boxX, frame * (boxX / totalFrames));
-                ctx.drawImage(img, x, 25, 50, 50);
-
-                if (frame === Math.floor(totalFrames * 0.8)) {{
-                    const algoBox = document.getElementById("{id}-algo-box");
-
-                    // Inject rotating gears
-                    algoBox.innerHTML = `
-                        <div id="{id}-gear-anim" style="
-                            display: flex;
-                            flex-direction: column;
-                            align-items: center;
-                            justify-content: center;
-                            height: 100%;
-                            animation: rotateGears 2s linear;
-                        ">
-                            <div style="font-size: 16px; line-height: 1;">⚙️</div>
-                            <div style="display: flex; gap: 4px; margin-top: -2px;">
-                                <div style="font-size: 16px; line-height: 1;">⚙️</div>
-                                <div style="font-size: 16px; line-height: 1;">⚙️</div>
-                            </div>
-                        </div>
-                    `;
-
-                    setTimeout(() => {{
-                        algoBox.innerText = "Algo";
-                        animateEnded = true;
-                    }}, 2000);
-                }}
-
-                if (frame === Math.floor(totalFrames * 0.8)) {{
-                    if (animateEnded) {{
-                        document.getElementById("{id}-output-label").innerText = "Résultat : {label}";
-                    }} else {{
-                        // Re-vérifie un peu plus tard jusqu'à ce que animateEnded soit true
-                        const waitForAnim = setInterval(() => {{
-                            if (animateEnded) {{
-                                clearInterval(waitForAnim);
-                                document.getElementById("{id}-output-label").innerText = "Résultat : {label}";
-                            }}
-                        }}, 50); // vérifie toutes les 50 ms
-                    }}
-                }}
-
-
-
-                frame++;
-                if (frame <= totalFrames) {{
-                    setTimeout(animate, frameDelay);
-                }}
-            }};
-            animate();
-        }};
-    }})();
-    """)
-
 
 
 def http_request_cd(endpoint, method='GET', body=None, files=None, fields=None, cb=None):
@@ -610,8 +475,89 @@ def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=
         print_error("Il y a eu un problème lors du calcul de l'erreur. Vérifie ta réponse.")
         if debug:
             raise(e)
+
+current_algo = None
+
+def run_algorithme(d_json):
+    if current_algo is None:
+        return None
+    d = json.loads(d_json)
+    if type(d) == list:
+        d = np.array(d)
+    res = current_algo(d)
+    print(res)
+    return json.dumps({
+        'result': res
+    }, cls=NpEncoder)
+
+def test_algorithme():
+    """Affiche une animation de type tapis roulant pour données 1D ou 2D."""
+
+    if current_algo is None:
+        print_error("L'algorithme n'est pas encore complet et prêt à être utilisé.")
+        return
+
+    id = uuid.uuid4().hex
+
+    # Container HTML
+    display(HTML(f'''
+    <div id="{id}">
+        <div id="{id}-data-gen" style="margin-bottom: 2rem;"></div>
+    
+        <div style="display: flex; justify-content: center; align-items: center; gap: 3rem; margin: 2rem 0;">
+            <button id="{id}-button-random" style="padding: 0.5rem 1rem; font-size: 16px; cursor: pointer; flex: 1">Tester avec {data('un')} aléatoire</button>
+            <button id="{id}-button-generated" style="padding: 0.5rem 1rem; font-size: 16px; cursor: pointer; flex: 1">Tester avec votre {data('')}</button>
+        </div>
+        
+        <div style="position: relative; width: 600px; height: 150px; background-color: #222; border: 2px solid #ccc; border-radius: 10px; overflow: hidden; margin: auto">
+            <!-- Bande tapis roulant -->
+            <div style="position: absolute; bottom: 0; left: 0; width: 100%; height: 50px; background: repeating-linear-gradient(90deg, #555 0px, #555 20px, #333 20px, #333 40px); background-size: 40px 50px; animation: move-tapis 1s linear infinite; box-shadow: inset 0 4px 4px rgba(0,0,0,0.5); z-index: 0;"></div>
+
+            <style>
+                @keyframes move-tapis {{
+                    from {{ background-position: 0 0; }}
+                    to {{ background-position: 40px 0; }}
+                }}
+                @keyframes rotateGears {{
+                    from {{ transform: rotate(0deg); }}
+                    to {{ transform: rotate(360deg); }}
+                }}
+            </style>
+
+            <!-- Boîte Algo -->
+            <div id="{id}-algo-box" style="position: absolute; bottom: 50px; left: 260px; width: 80px; height: 80px; background: #333; color: white; border-radius: 10px; text-align: center; line-height: 80px; font-weight: bold; z-index: 3;">Algo</div>
+
+            <!-- Zone affichage mini data -->
+            <div style="position: absolute; left: 0px; width: 260px; height: 100%; overflow: hidden; z-index: 1;">
+                <div id="{id}-data" style="position: absolute; left: 0px; bottom: 50px; height: 80px; z-index: 2;"></div>
+            </div>
+
+            <!-- Label sortie -->
+            <div id="{id}-output-label" style="position: absolute; right: 20px; top: 100px; font-size: 18px; font-weight: bold; color: white;"></div>
+        </div>
+    </div>
+    ''')) 
+
+    run_js(f"setTimeout(() => window.mathadata.test_algorithme('{id}'), 500)")
         
 # Fonctions trame notebook générique
+
+def algo_faineant(d):
+    return challenge.classes[0]
+
+def algo_carac(d):
+    caracteristique = challenge.caracteristique
+    t = get_variable('t')
+    classification = get_variable('classification')
+    x = caracteristique(d)
+    return classification(x, t)
+
+def algo_carac_custom(d):
+    caracteristique = challenge.caracteristique_custom
+    t = get_variable('t')
+    classification = get_variable('classification')
+    x = caracteristique(d)
+    return classification(x, t)
 
 def calculer_score_etape_1():
     algorithme = get_algorithme_func()
@@ -620,47 +566,28 @@ def calculer_score_etape_1():
     
     def cb(score):
         validation_score_fixe()
-        set_step(1)
 
     calculer_score(algorithme, method="fixed", cb=cb)  
 
 def calculer_score_carac():
-    t = get_variable('t')
-    caracteristique = get_variable('caracteristique')
-    classification = get_variable('classification')
-
-    def algorithme(d):
-        x = caracteristique(d)
-        return classification(x, t)
-    
     def cb(score):
         validation_score_carac()
-        set_step(2)
 
-    calculer_score(algorithme, method="carac ref", parameters=f"t={t}", cb=cb, caracteristique=caracteristique) 
+    calculer_score(algo_carac, method="carac ref", cb=cb, caracteristique=caracteristique) 
 
 def calculer_score_custom():
     if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable('r_grande_caracteristique'):
         print_error('Remplacez tous les ... par vos paramètres.')
         return
     
-    t = get_variable('t')
-    r_petite_caracteristique = get_variable('r_petite_caracteristique')
-    r_grande_caracteristique = get_variable('r_grande_caracteristique')
     
-    def algorithme(d):
-        x = challenge.caracteristique_custom(d)
-        if x <= t:
-            return r_petite_caracteristique
-        else:
-            return r_grande_caracteristique
-        
     def cb(score):
         res = challenge.cb_custom_score(score)
         if res:
+            set_step_algo_carac_custom(answers=None)
             validation_custom()
     
-    calculer_score(algorithme, method="carac custom", parameters=f"t={t}", caracteristique=challenge.caracteristique_custom, cb=cb)
+    calculer_score(algo_carac_custom, method="carac custom", caracteristique=challenge.caracteristique_custom, cb=cb)
 
 def calculer_score_code_eleve():
     if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable('r_grande_caracteristique'):
@@ -817,10 +744,7 @@ def calculer_score_seuil_optimise():
         x = caracteristique(d)
         return classification(x, t)
 
-    def cb(score):
-        set_step(3)
-    
-    calculer_score(algorithme, method="carac ref seuil optim", parameters=f"t={t}", cb=cb) 
+    calculer_score(algorithme, method="carac ref seuil optim", parameters=f"t={t}") 
 
 ### Analytics ###
 
@@ -1140,6 +1064,14 @@ styles = """
     margin-bottom: 10px; /* Margin at the bottom */
 }
 
+.error {
+    background-color: lightred; /* Light red background */
+    padding: 15px; /* Increased padding */
+    border-radius: 5px;
+    border-left: 5px solid #F23431; /*light-red left border */
+    margin-bottom: 10px; /* Margin at the bottom */
+}
+
 .mcq-question {
     font-weight: bold;
     margin-bottom: 10px;
@@ -1170,16 +1102,102 @@ styles = """
     padding: 5px;
     border-radius: 3px;
 }
+
+.mathadata-stepbar__container {
+  position: fixed;
+  top: 40%;
+  transform: translateY(-50%);
+  right: var(--stepbar-right, 16px);
+  width: 240px; /* élargi pour accueillir labels + cercles */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 9999;
+  align-items: center;
+}
+.mathadata-stepbar__backdrop {
+  width: 240px; /* match container width */
+  background: #fff;
+  border-top-left-radius: 20px;
+  border-bottom-left-radius: 20px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch; /* laisser les lignes prendre toute la largeur */
+  padding: 20px 0; /* increased vertical padding around items for greater height */
+}
+.mathadata-stepbar__items {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch; /* chaque ligne sur toute la largeur */
+  gap: 14px; /* increased spacing between boxes */
+  width: 100%;
+}
+.mathadata-stepbar__itemRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; 
+  gap: 8px;
+  width: 100%;
+  padding: 0 12px; /* marge intérieure pour coller le label à gauche sans toucher les bords */
+}
+
+.mathadata-stepbar__labelHard {
+  font-size: 16px;
+  color: #909090;
+  user-select: none;
+  white-space: normal; 
+  text-overflow: clip;
+  text-align: left; /* aligne le texte à gauche */
+  flex: 1 1 auto; /* prend toute la place restante */
+  max-width: unset; /* pas de limite artificielle, géré par flex */
+  line-height: 1.2;
+}
+
+.mathadata-stepbar__itemRow--active .mathadata-stepbar__labelHard {
+  font-weight: bold;   /* étape active: gras */
+}
+
+.mathadata-stepbar__itemRow--unlocked .mathadata-stepbar__labelHard {
+  color: black; /* étape déverrouillée */
+}
+
+.mathadata-stepbar__item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px; /* fixe la largeur dans le layout flex */
+  aspect-ratio: 1 / 1; /* garantit la forme circulaire */
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #fff;
+  color: #222;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+  user-select: none;
+}
+.mathadata-stepbar__item:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+.mathadata-stepbar__item--active {
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.35), 0 6px 16px rgba(0,0,0,0.12);
+}
+
+.mathadata-stepbar__item--disabled { cursor: not-allowed; }
+.mathadata-stepbar__item--disabled:hover { transform: none; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 """
 
 run_js(f"""
     let style = document.getElementById('mathadata-style');
-    if (style === null) {{
-        const style = document.createElement('style');
-        style.id = 'mathadata-style';
-        style.innerHTML = `{styles}`;
-        document.head.appendChild(style);
+    if (style) {{
+        style.remove();
     }}
+    style = document.createElement('style');
+    style.id = 'mathadata-style';
+    style.innerHTML = `{styles}`;
+    document.head.appendChild(style);
 """)
 
 # Fonctions utilitaires JS
@@ -1644,6 +1662,101 @@ run_js("""
             setTimeout(() => select(0), 500)
         },
 
+
+        test_algorithme(id, params) {
+
+            let getGeneratedData
+            if (mathadata.interface_data_gen !== undefined) {
+                getGeneratedData = mathadata.interface_data_gen(`${id}-data-gen`)
+            }
+
+            const dataContainer = document.getElementById(`${id}-data`)
+
+            let frame = 0;
+            const totalFrames = 60;
+            const duration = 1700;
+            const delay = duration / totalFrames;
+            const move_limit = 260;
+            let animateEnded = false;
+            
+            let lastLabel;
+    
+            function animate() {
+                // Mouvement linéaire
+                
+                const x = Math.min(move_limit, frame * (move_limit / totalFrames));
+                dataContainer.style.left = x + "px";
+
+                if (frame === Math.floor(totalFrames * 0.8)) {
+                    const algoBox = document.getElementById(`${id}-algo-box`);
+                    algoBox.innerHTML = `
+                        <div id="${id}-gear-anim" style="
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            height: 100%;
+                            animation: rotateGears 2s linear;
+                        ">
+                            <div style="font-size: 16px; line-height: 1;">⚙️</div>
+                            <div style="display: flex; gap: 4px; margin-top: -2px;">
+                                <div style="font-size: 16px; line-height: 1;">⚙️</div>
+                                <div style="font-size: 16px; line-height: 1;">⚙️</div>
+                            </div>
+                        </div>
+                    `;
+                    setTimeout(() => {
+                        algoBox.innerText = "Algo";
+                        animateEnded = true;
+                    }, 2000);
+                }
+
+                if (frame === Math.floor(totalFrames * 0.8)) {
+                    if (animateEnded) {
+                        document.getElementById(`${id}-output-label`).innerText = `Réponse : ${lastLabel}`;
+                    } else {
+                        const waitForAnim = setInterval(() => {
+                            if (animateEnded) {
+                                clearInterval(waitForAnim);
+                                document.getElementById(`${id}-output-label`).innerText = `Réponse : ${lastLabel}`;
+                            }
+                        }, 50);
+                    }
+                }
+
+                frame++;
+                if (frame <= totalFrames) {
+                    setTimeout(animate, delay);
+                }
+            }
+
+            function run_test(params) {
+                const {data, label} = params
+                console.log(data)
+                lastLabel = label
+                window.mathadata.affichage(`${id}-data`, data);
+                frame = 0;
+                animateEnded = false;
+                document.getElementById(`${id}-output-label`).innerText = ``;
+                animate();
+            }
+            
+            document.getElementById(`${id}-button-random`).onclick = () => {
+                mathadata.run_python('get_data_and_label(random=True)', run_test);
+            }
+
+            if (getGeneratedData) {
+                document.getElementById(`${id}-button-generated`).onclick = () => {
+                    const data = getGeneratedData();
+                    mathadata.run_python(`run_algorithme('${JSON.stringify(data)}')`, ({result}) => {
+                        run_test({data, label: result})
+                    });
+                }
+            } else {
+                document.getElementById(`${id}-button-generated`).style.display = 'none'
+            }
+        },
+
         tracer_erreur(id, t_values, scores_array) {
             const config = {
                 type: 'scatter',
@@ -1675,7 +1788,7 @@ run_js("""
                         y: {
                             title: {
                                 display: true,
-                                text: 'Erreur f(t)',
+                                text: 'Pourcentage d\\'erreur f(t)',
                             },
                             min: 0,
                             max: 100,
@@ -2136,30 +2249,57 @@ def update_score():
     run_js(js_code)
 
 
-def set_step(number):
-    colors = ['#2E8B57', '#87CEEB', '#4169E1', '#DC143C']
-    names = ['Algorithme Fainéant', 'Algorithme Moyenne', 'Optimisation' , 'Faire mieux']
-    
-    run_js(f"""
-        const pageElement = document.getElementById('notebook');
-        pageElement.style.transition = 'background-color 0.5s ease';
-        pageElement.style.backgroundColor = '{colors[number]}';
-        pageElement.style.position = 'relative';
+steps = {
+    'bdd': {
+        'name': 'Présentation des données',
+        'color': 'rgb(250,181,29)',
+    },
+    'depart': {
+        'name': 'Algorithme de départ',
+        'color': 'rgb(62,178,136)',
+    },
+    'data': {
+        'name': "La donnée pour l'ordinateur",
+        'color': 'rgb(244,167,198)',
+    },
+    'carac': {
+        'name': 'Calcul de la caractéristique',
+        'color': 'rgb(241,132,18)',
+    },
+    'classif': {
+        'name': 'Classification',
+        'color': 'rgb(230,29,73)',
+    },
+    # 'optim': {
+    #     'name': 'Optimisation',
+    #     'color': 'rgb(244,167,198)',
+    # },
+    'custom': {
+        'name': 'Votre propre caractéristique',
+        'color': 'rgb(20,129,173)',
+    },
+}
 
-        let card = document.getElementById('step-card');
-        if (!card) {{
-            card = document.createElement('div');
-            card.id = 'step-card';
-            card.innerHTML = `
-                <h3>Étape <span id="step-number">{number + 1}</span> / 4</h3>
-                <p id="step-name" style="font-size: 1.5rem;">{names[number]}</p>
-            `
-            pageElement.appendChild(card);
-        }} else {{
-            document.getElementById('step-number').innerText = {number} + 1;
-            document.getElementById('step-name').innerText = '{names[number]}';
-        }}
-    """)
+
+### PRETTY PRINT FUNCTIONS ###
+import html
+_BASE_STYLE = (
+    "padding:12px 14px;"
+    "border-radius:8px;"
+    "border:1px solid;"
+    "margin:8px 0;"
+    "font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;"
+)
+
+def pretty_print_error(error_message):
+    msg = error_message
+    style = _BASE_STYLE + "background:#fde8e8;border-color:#f5b5b5;color:#7a1c1c;"
+    display(HTML(f'<div style="{style}">❌ {msg}</div>'))
+
+def pretty_print_success(success_message):
+    msg = success_message
+    style = _BASE_STYLE + "background:#e8f9f1;border-color:#a6e7c9;color:#14532d;"
+    display(HTML(f'<div style="{style}">✅ {msg}</div>'))
 
 ### VALIDATION CLASSES ###
 
@@ -2173,6 +2313,7 @@ class _MathadataValidate():
         self.function_validation = function_validation
         self.child_on_success = on_success
         self.tips = tips
+
 
     def __call__(self):
         self.last_call_time = time.time()
@@ -2202,8 +2343,8 @@ class _MathadataValidate():
 
         if len(errors) > 0:
             for error in errors:
-                print_error(error)
-                
+               pretty_print_error(error)
+
         if not res and self.tips is not None:
             id = uuid.uuid4().hex
             display(HTML(f'''<div id="{id}-tips"></div>'''))
@@ -2249,9 +2390,9 @@ class _MathadataValidate():
     def on_success(self, answers):
         if self.success is not None:
             if self.success:
-                print(self.success)
+                pretty_print_success(self.success)
         else:
-            print("Bravo, c'est la bonne réponse !")
+            pretty_print_success("Bravo, c'est la bonne réponse !")
         if self.child_on_success is not None:
             self.child_on_success(answers)
 
@@ -2435,7 +2576,7 @@ class MathadataValidateFunction(MathadataValidate):
         else:
             expected = self.expected
         
-        for i in range(len(test_set)):
+        for i in range(len(test_set)):  
             try:
                 if not isinstance(test_set[i], tuple):
                     res = func(test_set[i])
@@ -2488,7 +2629,7 @@ class ValidateScoreThresold(MathadataValidate):
         e_train_10 = get_variable('erreur_10')
         nb_errors = np.count_nonzero(np.array([algorithme(d) for d in challenge.d_train[0:10]]) != challenge.r_train[0:10]) 
         if nb_errors * 10 == e_train_10:
-            print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {e_train_10}% d'erreur")
+            pretty_print_success(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {e_train_10}% d'erreur")
             return True
         else:
             if e_train_10 == nb_errors:
@@ -2524,14 +2665,14 @@ def validation_func_score_fixed(errors, answers):
     
     if not isinstance(score_10, int):
         if score_10 == float(nb_errors*10):
-            print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {score_10}% d'erreur")
+            pretty_print_success(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {score_10}% d'erreur")
             return True
         else:
             errors.append("La variable erreur_10 doit être un entier. Attention, écrivez uniquement le nombre sans le %.")
             return False
 
     if score_10 == nb_errors * 10:
-        print(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {score_10}% d'erreur")
+        pretty_print_success(f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname_plural']}, soit {score_10}% d'erreur")
         return True
     
     if score_10 == nb_errors:
@@ -2577,9 +2718,19 @@ def get_validate_seuil_optimized():
         't': best_t,
     }
 
+def set_step_algo_faineant(answers):
+    global current_algo
+    current_algo = algo_faineant
 
+def set_step_algo_carac(answers):
+    global current_algo
+    current_algo = algo_carac
 
-validation_execution_algo_fixe = MathadataValidate(success="")
+def set_step_algo_carac_custom(answers):
+    global current_algo
+    current_algo = algo_carac_custom
+
+validation_execution_algo_fixe = MathadataValidate(success="", on_success=set_step_algo_faineant)
 validation_execution = MathadataValidate(success="")
 validation_execution_calcul_score = MathadataValidate(success="")
 
@@ -2627,7 +2778,7 @@ validation_question_seuil = MathadataValidateVariables(
     get_names_and_values=get_validate_seuil,
     success="Ton seuil est correct ! Il n'est pas forcément optimal, on verra dans la suite comment l'optimiser."
 )
-validation_execution_classif = MathadataValidate(success="")
+validation_execution_classif = MathadataValidate(success="", on_success=set_step_algo_carac)
 
 
 
@@ -2638,7 +2789,7 @@ def affichage_seuil():
         print_error("Le seuil n'a pas été défini. Tu dois d'abord définir la variable t.")
         return False
     else:
-        print(f"Le seuil que tu as choisi est {t}. Tu peux maintenant calculer le score de ton algorithme sur les 10 premières lignes du tableau.")
+        pretty_print_success(f"Le seuil que tu as choisi est {t}. Tu peux maintenant calculer le score de ton algorithme sur les 10 premières lignes du tableau.")
         return True
 
 validation_execution_affichage_score = MathadataValidate(success="")
@@ -2686,7 +2837,7 @@ validation_question_nombre_total =MathadataValidateVariables(get_names_and_value
       'print_solution': True, 
       'validate': True 
     }
-  ], on_success=lambda answers: set_step(0))
+  ])
 
 # Defini pour éviter l'erreur python par defaut si l'élève mets reponse = chat
 chat = 0
@@ -2720,7 +2871,7 @@ validation_question_faineant = MathadataValidateVariables(get_names_and_values=l
             },
         ]
     }
-}, success="", on_success=lambda answers: print(f"Bravo, {ac_fem('quelle', 'quel')} que soit {data('le')} l'algorithme fainéant répond toujours {challenge.classes[0]} !"))
+}, success="", on_success=lambda answers: pretty_print_success(f"Bravo, {ac_fem('quelle', 'quel')} que soit {data('le')} l'algorithme fainéant répond toujours {challenge.classes[0]} !"))
 
 validation_custom = MathadataValidate(success="Bravo, c'est un excellent taux d'erreur ! Tu peux passer à la suite pour essayer de faire encore mieux.")
 validation_code_eleve = MathadataValidate(success="Bravo, c'est un excellent taux d'erreur ! Tu as fini ce notebook.")
@@ -2748,7 +2899,9 @@ plt.rcParams["figure.figsize"] = [figw_full, figw_full * 3 / 4] # par défaut to
 ### --- Common util functions ---
 
 def print_error(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
+    for msg in args:
+        pretty_print_error(msg)
+
 
 def has_variable(name):
     return hasattr(__main__, name) and get_variable(name) is not None and get_variable(name) is not Ellipsis
@@ -3132,3 +3285,368 @@ def on_success_histogramme(answers):
         get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
 
 validation_caracteristique_libre_et_affichage=MathadataValidateVariables(name_and_values={'caracteristique': None}, function_validation=validate_caracteristique_libre,success="Ta fonction renvoie bien un nombre. Testons ta proposition",on_success=on_success_histogramme)
+
+
+
+# Stepbar (barre d'étapes)
+
+run_js('''
+  const anchorPrefix = 'debut-etape-';
+
+  window.mathadata.stepbar = {
+    rootId: null,
+    steps: [],
+    stepNames: [],
+    colors: [],
+    current: 1,
+    container: null,
+    activated: [],
+    observer: null,
+    mutationObserver: null,
+    // Convertit un nom d'étape en index (1-indexé)
+    nameToIndex(name) {
+      const idx = this.stepNames.indexOf(name);
+      return idx >= 0 ? idx + 1 : null;
+    },
+    // Convertit un index (1-indexé) en nom d'étape
+    indexToName(idx) {
+      return this.stepNames[idx - 1] || null;
+    },
+    // Active visuellement l'étape idx si pas encore activée (appelé depuis create_step_anchor)
+    activate(idx){
+      if (!this.container) return;
+      if (this.activated.includes(idx)) return;
+      const el = this.container.querySelector(`.mathadata-stepbar__item[data-step-index="${idx}"]`);
+      const color = Array.isArray(this.colors) && this.colors[idx - 1] ? this.colors[idx - 1] : null;
+      if (el && color) {
+        el.style.background = color;
+        el.style.color = '#fff';
+        el.style.borderColor = 'transparent';
+        el.classList.remove('mathadata-stepbar__item--disabled');
+        el.parentElement.classList.add('mathadata-stepbar__itemRow--unlocked');
+        this.activated.push(idx);
+
+        // Changer le fond de la page
+        const pageElement = document.getElementById('notebook');
+        if (pageElement) {
+          pageElement.style.transition = 'background-color 0.5s ease';
+          pageElement.style.backgroundColor = color;
+          pageElement.style.position = 'relative';
+        }
+      }
+    },
+    // Initialise l'observateur pour les divs invisibles
+    initObserver(){
+      console.log('[Stepbar] Initializing observers');
+
+      // IntersectionObserver pour détecter la visibilité
+      if (this.observer) {
+        this.observer.disconnect();
+      }
+
+      this.observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const stepName = entry.target.id.replace(anchorPrefix, '');
+            const stepIndex = this.nameToIndex(stepName);
+            console.log('[Stepbar] Trigger visible:', stepName, '(index:', stepIndex + ')');
+            if (stepIndex) {
+              // Première fois qu'on passe cette étape : on l'active (débloque)
+              if (!this.activated.includes(stepIndex)) {
+                console.log('[Stepbar] First time seeing step', stepName, '- activating');
+                this.activate(stepIndex);
+                // Animation confettis (sauf première étape)
+                if (stepIndex > 1 && typeof window.mathadata.fireSideCannons === 'function') {
+                  window.mathadata.fireSideCannons();
+                }
+              }
+              // Toujours mettre à jour le current
+              this.setCurrent(stepIndex);
+            }
+          }
+        });
+      }, {
+        threshold: 0.1,
+        rootMargin: '0px'
+      });
+
+      // MutationObserver pour détecter les nouvelles divs ajoutées au DOM
+      if (this.mutationObserver) {
+        this.mutationObserver.disconnect();
+      }
+
+      this.mutationObserver = new MutationObserver((mutations) => {
+        mutations.forEach(mutation => {
+          mutation.addedNodes.forEach(node => {
+            if (node.nodeType === 1) { // ELEMENT_NODE
+              // Vérifier le noeud lui-même
+              if (node.id && node.id.startsWith(anchorPrefix)) {
+                const stepName = node.id.replace(anchorPrefix, '');
+                console.log('[Stepbar] New anchor detected:', stepName, '- adding to observer');
+                this.observeElement(node);
+              }
+              // Vérifier dans les enfants
+              if (node.querySelectorAll) {
+                const anchors = node.querySelectorAll(`[id^="${anchorPrefix}"]`);
+                if (anchors.length > 0) {
+                  console.log('[Stepbar] Found', anchors.length, 'anchor(s) in children');
+                  anchors.forEach(el => {
+                    const stepName = el.id.replace(anchorPrefix, '');
+                    console.log('[Stepbar] New anchor detected (child):', stepName, '- adding to observer');
+                    this.observeElement(el);
+                  });
+                }
+              }
+            }
+          });
+        });
+      });
+
+      // Observer le body pour détecter les nouvelles cellules markdown
+      this.mutationObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+
+      // Observer les éléments existants
+      this.observeExistingElements();
+    },
+
+    // Observe un élément spécifique
+    observeElement(el){
+        this.observer.observe(el);
+    },
+    // Observer tous les éléments existants
+    observeExistingElements(){
+      const anchors = document.querySelectorAll(`[id^="${anchorPrefix}"]`);
+      console.log('[Stepbar] Found', anchors.length, 'existing anchor(s)');
+      anchors.forEach(el => {
+        const stepName = el.id.replace(anchorPrefix, '');
+        console.log('[Stepbar] Observing existing anchor:', stepName);
+        this.observeElement(el);
+      });
+    },
+    // Rafraîchit l'observateur (utile si de nouvelles divs sont ajoutées)
+    refreshObserver(){
+      this.initObserver();
+    },
+    setCurrent(idx){
+      this.current = idx;
+      if (!this.container) return;
+      // Toggle classe active sur le cercle
+      this.container.querySelectorAll('.mathadata-stepbar__item').forEach(el => {
+        el.classList.toggle('mathadata-stepbar__item--active', Number(el.getAttribute('data-step-index')) === idx);
+      });
+      // Toggle classe active sur la ligne (pour styliser le label)
+      this.container.querySelectorAll('.mathadata-stepbar__itemRow').forEach(row => {
+        const item = row.querySelector('.mathadata-stepbar__item');
+        if (!item) return;
+        const stepIndex = Number(item.getAttribute('data-step-index'));
+        row.classList.toggle('mathadata-stepbar__itemRow--active', stepIndex === idx);
+      });
+    },
+    goto(idx){
+      const stepName = this.indexToName(idx);
+      if (!stepName) return;
+      const anchor = document.getElementById(`${anchorPrefix}${stepName}`);
+      if (anchor) {
+        anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    },
+    toggle(){
+      if (!this.container) return;
+      const computedRight = window.getComputedStyle(this.container).right;
+      const isCollapsed = parseInt(computedRight) < 0;
+      this.container.style.right = isCollapsed ? '0px' : '-240px';
+
+      // Faire pivoter l'icône du bouton
+      if (this.collapseButton) {
+        const icon = this.collapseButton.querySelector('svg');
+        if (icon) {
+          icon.style.transform = isCollapsed ? '' : 'rotate(180deg)';
+        }
+      }
+    },
+    createItem(idx, label){
+      const btn = document.createElement('div');
+      btn.className = 'mathadata-stepbar__item';
+      btn.setAttribute('data-step-index', String(idx));
+      btn.textContent = String(idx);
+
+      // Toujours grisé par défaut (sera coloré lors de l'activation)
+      btn.style.backgroundColor = '#d9d9d9';
+      btn.style.color = '#777';
+      btn.classList.add('mathadata-stepbar__item--disabled');
+
+      btn.addEventListener('click', () => {
+        // Bloque la navigation si la step n'est pas activée
+        if (!this.activated.includes(idx)) return;
+        this.goto(idx);
+      });
+
+      // Conteneur ligne: label (gauche) + cercle (droite)
+      const row = document.createElement('div');
+      row.className = 'mathadata-stepbar__itemRow';
+      const hardLabel = document.createElement('div');
+      hardLabel.className = 'mathadata-stepbar__labelHard';
+      hardLabel.textContent = label;
+      row.appendChild(hardLabel);
+      row.appendChild(btn);
+      return row;
+    }
+  };
+
+  window.mathadata.init_stepbar = (config) => {
+    console.log(config)
+    if (typeof config === 'string') { config = JSON.parse(config); }
+
+    // Stocker les données avant de créer le DOM
+    const steps = Array.isArray(config.steps) ? config.steps : [];
+    const stepNames = Array.isArray(config.stepNames) ? config.stepNames : [];
+    const colors = Array.isArray(config.colors) ? config.colors : [];
+    const current = Number(config.current || 1);
+
+    // Nettoyer l'ancienne stepbar si elle existe
+    const oldStepbar = document.getElementById('stepbar');
+    if (oldStepbar) oldStepbar.remove();
+
+    // Créer le container
+    const stepbar = document.createElement('div');
+    stepbar.id = 'stepbar';
+    stepbar.className = 'mathadata-stepbar__container';
+    stepbar.style.setProperty('--stepbar-right', `${config.position_right_px || 16}px`);
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'mathadata-stepbar__backdrop';
+    const itemsWrap = document.createElement('div');
+    itemsWrap.className = 'mathadata-stepbar__items';
+    backdrop.appendChild(itemsWrap);
+
+    // Stocker les données dans stepbar (doit être fait avant createItem)
+    window.mathadata.stepbar.steps = steps;
+    window.mathadata.stepbar.stepNames = stepNames;
+    window.mathadata.stepbar.colors = colors;
+    window.mathadata.stepbar.current = current;
+    window.mathadata.stepbar.container = stepbar;
+    window.mathadata.stepbar.rootId = 'stepbar';
+
+    // Créer les items
+    steps.forEach((label, i) => {
+      const idx = i + 1;
+      const item = window.mathadata.stepbar.createItem(idx, label);
+      itemsWrap.appendChild(item);
+    });
+
+    // Créer le bouton de collapse
+    const collapseButton = document.createElement('div');
+    collapseButton.className = 'mathadata-stepbar__collapseButton';
+    collapseButton.style.cssText = `
+      position: absolute;
+      left: -30px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 60px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 8px 0 0 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+      transition: background 0.2s;
+    `;
+
+    const buttonIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    buttonIcon.setAttribute('width', '12');
+    buttonIcon.setAttribute('height', '12');
+    buttonIcon.setAttribute('viewBox', '0 0 320 512');
+    buttonIcon.setAttribute('fill', '#666');
+    buttonIcon.style.transition = 'transform 0.3s ease';
+    buttonIcon.innerHTML = '<path d="M310.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-192 192c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L242.7 256 73.4 86.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l192 192z"/>';
+
+    collapseButton.appendChild(buttonIcon);
+    collapseButton.addEventListener('click', () => window.mathadata.stepbar.toggle());
+
+    collapseButton.addEventListener('mouseenter', () => {
+      collapseButton.style.background = 'rgba(255, 255, 255, 1)';
+    });
+    collapseButton.addEventListener('mouseleave', () => {
+      collapseButton.style.background = 'rgba(255, 255, 255, 0.9)';
+    });
+
+    backdrop.appendChild(collapseButton);
+    stepbar.appendChild(backdrop);
+    document.body.appendChild(stepbar);
+
+    // Ajouter la transition au container
+    stepbar.style.transition = 'right 0.3s ease';
+    stepbar.style.right = '0px';
+
+    // Stocker la référence au bouton
+    window.mathadata.stepbar.collapseButton = collapseButton;
+
+    // Initialiser l'observateur pour les divs invisibles
+    window.mathadata.stepbar.initObserver();
+  };
+
+  mathadata.fireSideCannons = function() {
+    var end = Date.now() + 2000; // 2 seconds
+    var colors = ["#a786ff", "#fd8bbc", "#eca184", "#f8deb1"];
+    function frame() {
+        if (Date.now() > end) return;
+        window.confetti({
+            particleCount: 2,
+            angle: 60,
+            spread: 55,
+            startVelocity: 60,
+            origin: { x: 0, y: 0.5 },
+            colors: colors,
+        });
+        window.confetti({
+            particleCount: 2,
+            angle: 120,
+            spread: 55,
+            startVelocity: 60,
+            origin: { x: 1, y: 0.5 },
+            colors: colors,
+        });
+        requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+''')
+
+def init_stepbar():
+    """
+    Initialise une barre latérale verticale d'étapes (fixée à droite).
+
+    - steps: liste de labels d'étapes (ex: ["Étape 1", "Étape 2", ...])
+    - current_step_index: 1-indexé, étape active au chargement
+    - position_right_px: marge droite (px)
+    """
+    steps_labels = []
+    steps_keys = []
+    steps_colors = []
+    for key, step in steps.items():
+        steps_labels.append(step['name'])
+        steps_keys.append(key)
+        steps_colors.append(step['color'])
+
+    params = {
+        'steps': steps_labels,
+        'stepNames': steps_keys,
+        'colors': steps_colors,
+        'current': 1,
+        'position_right_px': 24,
+    }
+    run_js(f"window.mathadata.init_stepbar(`{json.dumps(params, cls=NpEncoder)}`)")
+
+
+def toggle_stepbar():
+    """Affiche ou cache la stepbar."""
+    run_js("window.mathadata && window.mathadata.stepbar && window.mathadata.stepbar.toggle()")
+
+
+init_stepbar()
+# Change la couleur au démarage
