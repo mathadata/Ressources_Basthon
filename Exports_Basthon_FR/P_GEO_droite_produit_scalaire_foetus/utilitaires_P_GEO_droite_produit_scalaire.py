@@ -4,6 +4,9 @@ import os
 import sys
 # import mplcursors
 
+from utilitaires_common import *
+import utilitaires_common as common
+
 # Pour accepter réponse élèves QCM
 A = 'A'
 B = 'B'
@@ -14,8 +17,6 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from utilitaires_common import *
-import utilitaires_common as common
 
 if not sequence:
     from themes.geo.utilitaires import *
@@ -23,16 +24,6 @@ if not sequence:
 else:
     from utilitaires_geo import *
     import utilitaires_geo as geo
-
-if not sequence:
-    # For dev environment
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    spec = importlib.util.spec_from_file_location("strings", os.path.join(current_dir, "strings.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    globals().update(vars(module))
-
-
 
 def tracer_10_points_droite():
     data = common.challenge.dataset_10_points
@@ -68,7 +59,7 @@ def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save
                 font-weight: bold;
                 font-size: 2rem;
                 ">
-                Erreur : <span id="{id}-score">...</span>
+                Pourcentage d'erreur : <span id="{id}-score">...</span>
             </div>
 
             <!-- Zone canvas pour tracer le graphique -->
@@ -234,11 +225,11 @@ def calculer_score_droite_normal_2custom():
     calculer_score_droite_geo(validate=common.challenge.objectif_score_droite, banque=False)
 
 def calculer_score_custom_droite_2cara():
-    calculer_score_droite_geo(custom=True, validate=11, banque=False, error_msg="Continuez à chercher 2 zones pour avoir moins de 11% d'erreur. N'oubliez pas de mettre à jour les valeurs de a, b et y après avoir défini votre zone.")
+    calculer_score_droite_geo(custom=True, validate=11, banque=False, error_msg="Continuez à chercher 2 zones pour avoir moins de 11% d'erreur. N'oubliez pas de mettre à jour les valeurs de a, b et y après avoir défini votre sélection.")
 
 def calculer_score_custom_droite():
-    calculer_score_droite_geo(custom=True, validate=6, banque=False, error_msg="Continuez à chercher 2 zones pour avoir moins de 6% d'erreur. N'oubliez pas de mettre à jour les valeurs de a, b et y après avoir défini votre zone.")
- 
+    calculer_score_droite_geo(custom=True, validate=common.challenge.objectif_score_droite_custom, banque=False, error_msg="Continuez à chercher 2 zones pour avoir moins de " +str(common.challenge.objectif_score_droite_custom)+ "% d'erreur. N'oubliez pas de mettre à jour les valeurs de a, b et y après avoir défini votre sélection.")
+
 ### Validation
 
 
@@ -687,7 +678,7 @@ def function_validation_normal_2d(errors, answers):
     if classe_de_M!=vraie_classe_de_M:
         errors.append("La réponse est incorecte. Relis au dessus comment déterminer la classe d'un point à l'aide d'un produit scalaire.")
         return False
-    print(f"Bravo ! Tu es arrivé·e au bout du processus de Classification d'{data('un')} inconnu{e_fem()}.")
+    pretty_print_success(f"Bravo ! Tu es arrivé·e au bout du processus de Classification d'{data('un')} inconnu{e_fem()}.")
     return True 
 
 validation_question_normal_2d = MathadataValidateVariables({

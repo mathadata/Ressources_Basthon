@@ -19,6 +19,9 @@ import requests
 from typing import Tuple
 import builtins # to use builtins.RAW, just for dev test
 
+import utilitaires_common as common
+from utilitaires_common import *
+
 DATASET = getattr(builtins, 'DATASET', 'artificiel_rebiased_2_cheated') # 'original', 'relabelled_std', 'relabelled_std_10s'
 
 LOCAL = getattr(builtins, 'LOCAL', False)  # Pour utiliser les données locales (travail hors ligne)
@@ -105,24 +108,11 @@ strings = {
     "r_grande_caracteristique": "ALARMANT",
     "train_size": int(round(len(d_train), -2)),  # arrondi à la dizaine
     "objectif_score_droite": 21,
+    "objectif_score_droite_custom": 10,
     "pt_retourprobleme": "(40; 20)"
 }
 
 classes = strings['classes']
-
-try:
-    # For dev environment
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    spec = importlib.util.spec_from_file_location("strings", os.path.join(current_dir, "strings.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    globals().update(vars(module))
-except Exception as e:
-    pass
-
-import utilitaires_common as common
-from utilitaires_common import *
-
 
 #Nouvelle variable pour checker la validation de l'exercice de classification
 exercice_classification_ok = False
@@ -178,6 +168,7 @@ class Foetus(common.Challenge):
 
         # Objectif de score avec les 2 caracs de référence pour passer à la suite
         self.objectif_score_droite = strings['objectif_score_droite']
+        self.objectif_score_droite_custom = strings['objectif_score_droite_custom']
 
     def remplacer_d_train_sans_nan(self):
         global d_train, d
@@ -364,12 +355,12 @@ def affichage(d, start_minut:float = -60, duration_in_minuts: float = 30, displa
     plt.show()
 
 def affichage_tableau(d):
-  df = pd.DataFrame(d,columns=['fréquence']).round(2)
+  df = pd.DataFrame(d,columns=['fréquence']).round(1)
   dligne =  df.transpose()
   display(dligne)
 
 def affichage_donnee_courbe(d):
-        df = pd.DataFrame(d).round(2)
+        df = pd.DataFrame(d).round(1)
         dligne =  df.transpose()
         display(dligne)
         # Utile ici la suite ? 
@@ -409,7 +400,7 @@ def affichage_10_frequences():
         for i in range(0, 10):
             fr = np.NAN
             while np.isnan(fr):
-                fr = d[np.random.randint(0, len(d))].round(2)
+                fr = d[np.random.randint(0, len(d))].round(1)
             random_frequencies.append(fr)
         
     df = pd.DataFrame(random_frequencies, columns=['fréquence'])
@@ -666,10 +657,11 @@ run_js("""
     //window.mathadata.preset_zoom_enabled = true;  // Valeur par défaut (le faire passer à false si on ne veut pas le zoom)
 
     
-    window.mathadata.affichage_chart = (id, data, with_selection, preset_zoom) => {
+    window.mathadata.affichage_chart = (id, data, with_selection, preset_zoom, isContainerSmall = false) => {
         if (typeof data === 'string') {
             data = JSON.parse(data)
         }
+        const small = !!isContainerSmall
         const config = {
             type: 'scatter',
             data: {
@@ -728,6 +720,29 @@ run_js("""
                 },
             },
             plugins: [{}],
+        }
+
+        // Si le container est petit, exécuter ceci , hehehee et bien cela nous aidera bien pour l'animation tapis algo.
+        if (small) {
+            // Cacher les titres d'axes
+            if (config.options.scales && config.options.scales.x && config.options.scales.x.title) {
+                config.options.scales.x.title.display = false
+            }
+            if (config.options.scales && config.options.scales.y && config.options.scales.y.title) {
+                config.options.scales.y.title.display = false
+            }
+
+            // Cacher la line de la grid et les ticks
+            config.options.scales.x.grid = { display: false }
+            config.options.scales.y.grid = { display: false }
+            config.options.scales.x.ticks = { display: false, maxTicksLimit: 2 }
+            config.options.scales.y.ticks = { display: false, maxTicksLimit: 2 }
+
+            // Désactiver le zoom et le pan
+            if (config.options.plugins && config.options.plugins.zoom) {
+                config.options.plugins.zoom.zoom.wheel.enabled = false
+                config.options.plugins.zoom.pan.enabled = false
+            }
         }
         
         if (with_selection) {
@@ -851,7 +866,13 @@ run_js("""
         `
         */
 
-        window.mathadata.affichage_chart(`${id}-chart`, data, with_selection, true)
+        // Detect small container (under 100px on either dimension) to adapt chart rendering
+        // Use offsetWidth/offsetHeight (not getBoundingClientRect) for notebook environment compatibility
+        const width = container.offsetWidth || container.clientWidth || 0
+        const height = container.offsetHeight || container.clientHeight || 0
+        const isContainerSmall = Math.min(width, height) < 100
+
+        window.mathadata.affichage_chart(`${id}-chart`, data, with_selection, true, isContainerSmall)
         if (with_selection) {
         /*
             const input = document.getElementById(`${id}-input`)
@@ -1108,6 +1129,271 @@ run_js("""
 
         displayVRange();
     }
+
+    window.mathadata.interface_data_gen = (id) => {
+        const container = document.getElementById(id);
+        container.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 1rem; align-items: center; margin: 20px 0;">
+                <div style="text-align: center;">
+                    <h3>Générateur de Rythme Cardiaque Foetal</h3>
+                    <p style="font-size: 14px; max-width: 600px; margin: 10px auto;">
+                        Dessinez une courbe de rythme cardiaque foetal en cliquant et glissant sur le graphique. 
+                        L'axe horizontal représente le temps (0-7.5 minutes), l'axe vertical la fréquence cardiaque (60-200 bpm).
+                    </p>
+                </div>
+                
+                <div style="display: flex; gap: 2rem; align-items: center;">
+                    <div id="${id}-chart-container" style="position: relative; width: 600px; height: 300px; border: 1px solid #ccc;">
+                        <canvas id="${id}-chart" width="600" height="300" style="cursor: crosshair;"></canvas>
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <!--<div>
+                            <label for="${id}-baseline">Ligne de base (bpm):</label>
+                            <input type="range" id="${id}-baseline" min="60" max="160" value="100" style="width: 150px;">
+                            <span id="${id}-baseline-value">100</span>
+                        </div>
+                        -->
+
+                        <div>
+                            <label for="${id}-variability">Variabilité:</label>
+                            <input type="range" id="${id}-variability" min="0" max="50" value="10" style="width: 150px;">
+                            <span id="${id}-variability-value">10</span>
+                        </div>
+                        
+                        <div>
+                            <label for="${id}-anomalies">Anomalies:</label>
+                            <input type="checkbox" id="${id}-anomalies">
+                        </div>
+                        
+                        <button id="${id}-clear" style="padding: 8px 16px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            Effacer
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const canvas = document.getElementById(`${id}-chart`);
+        const ctx = canvas.getContext('2d');
+        const variabilitySlider = document.getElementById(`${id}-variability`);
+        const anomaliesCheckbox = document.getElementById(`${id}-anomalies`);
+        const clearButton = document.getElementById(`${id}-clear`);
+        
+        // Configuration du graphique
+        const width = 600;
+        const height = 300;
+        const padding = 40;
+        const chartWidth = width - 2 * padding;
+        const chartHeight = height - 2 * padding;
+        
+        // Plages de valeurs
+        const timeRange = 7.5; // minutes
+        const hrMin = 60;
+        const hrMax = 200;
+        
+        // Données du rythme cardiaque
+        let heartRateData = [];
+        let isDrawing = false;
+        let lastIndex = null;
+        let lastHeartRate = null;
+        
+        function initializeData() {
+            heartRateData = new Array(1800).fill(null); //Pour ne plus avoir les longues lignes qui depassent on pase à null aqu lieu de 0 en fill
+            drawChart();
+        }
+        
+        // Dessiner le graphique
+        function drawChart() {
+            ctx.clearRect(0, 0, width, height);
+            
+            // Dessiner les axes
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(padding, padding);
+            ctx.lineTo(padding, height - padding);
+            ctx.lineTo(width - padding, height - padding);
+            ctx.stroke();
+            
+            // Dessiner la grille
+            ctx.strokeStyle = '#eee';
+            ctx.lineWidth = 0.5;
+            
+            // Lignes horizontales (fréquence cardiaque)
+            for (let i = 0; i <= 5; i++) {
+                const y = padding + (chartHeight / 5) * i;
+                ctx.beginPath();
+                ctx.moveTo(padding, y);
+                ctx.lineTo(width - padding, y);
+                ctx.stroke();
+            }
+            
+            // Lignes verticales (temps)
+            for (let i = 0; i <= 6; i++) {
+                const x = padding + (chartWidth / 6) * i;
+                ctx.beginPath();
+                ctx.moveTo(x, padding);
+                ctx.lineTo(x, height - padding);
+                ctx.stroke();
+            }
+            
+            // Dessiner les labels
+            ctx.fillStyle = '#333';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            
+            // Labels Y (fréquence cardiaque)
+            for (let i = 0; i <= 5; i++) {
+                const value = hrMax - (hrMax - hrMin) * i / 5;
+                const y = padding + (chartHeight / 5) * i;
+                ctx.fillText(value.toString(), padding - 10, y + 4);
+            }
+            
+            // Labels X (temps)
+            for (let i = 0; i <= 6; i++) {
+                const value = (1800 / 6) * i;  // échelle en secondes
+                const x = padding + (chartWidth / 6) * i;
+                ctx.fillText(value.toFixed(0) + 's', x, height - padding + 20);
+            }
+            
+            // Dessiner la courbe de rythme cardiaque
+            if (heartRateData.length > 0) {
+                    ctx.strokeStyle = '#68BBBA';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+
+                    let firstPoint = true;
+                    for (let i = 0; i < heartRateData.length; i++) {
+                        if (heartRateData[i] == null) continue;
+
+                        const x = padding + (chartWidth * i) / (heartRateData.length - 1);
+                        const y = padding + chartHeight - (chartHeight * (heartRateData[i] - hrMin)) / (hrMax - hrMin);
+
+                        // Dessiner une croix pour le point
+                        const size = 4; // taille de la croix
+                        ctx.strokeStyle = '#68BBBA';
+                        ctx.lineWidth = 1;
+
+                        ctx.beginPath();
+                        ctx.moveTo(x - size, y - size);
+                        ctx.lineTo(x + size, y + size);
+                        ctx.moveTo(x - size, y + size);
+                        ctx.lineTo(x + size, y - size);
+                        ctx.stroke();
+                    }
+                    ctx.stroke();
+            }
+        }
+        
+        // Convertir les coordonnées de la souris en données
+        function mouseToData(mouseX, mouseY) {
+            const x = Math.max(0, Math.min(chartWidth, mouseX - padding));
+            const y = Math.max(0, Math.min(chartHeight, mouseY - padding));
+            
+            const timeIndex = Math.round((x / chartWidth) * (heartRateData.length - 1));
+            const heartRate = hrMax - (y / chartHeight) * (hrMax - hrMin);
+            
+            return { timeIndex, heartRate };
+        }
+        
+        // Appliquer la variabilité et les anomalies
+        function applyVariability() {
+            const variability = parseInt(variabilitySlider.value);
+            const hasAnomalies = anomaliesCheckbox.checked;
+            
+            for (let i = 0; i < heartRateData.length; i++) {
+                // Variabilité normale
+                const randomVariation = (Math.random() - 0.5) * variability;
+                heartRateData[i] = Math.max(hrMin, Math.min(hrMax, heartRateData[i] + randomVariation));
+                
+                // Anomalies occasionnelles
+                if (hasAnomalies && Math.random() < 0.02) {
+                    if (Math.random() < 0.5) {
+                        // Décélération
+                        for (let j = Math.max(0, i - 20); j < Math.min(heartRateData.length, i + 20); j++) {
+                            const distance = Math.abs(j - i);
+                            const intensity = Math.max(0, 1 - distance / 20);
+                            heartRateData[j] = Math.max(hrMin, heartRateData[j] - intensity * 30);
+                        }
+                    } else {
+                        // Accélération
+                        for (let j = Math.max(0, i - 15); j < Math.min(heartRateData.length, i + 15); j++) {
+                            const distance = Math.abs(j - i);
+                            const intensity = Math.max(0, 1 - distance / 15);
+                            heartRateData[j] = Math.min(hrMax, heartRateData[j] + intensity * 20);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Événements de la souris
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            const { timeIndex, heartRate } = mouseToData(mouseX, mouseY);
+
+            lastIndex = timeIndex;
+            lastHeartRate = heartRate;
+            heartRateData[timeIndex] = heartRate;
+            drawChart();
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDrawing) {
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                const { timeIndex, heartRate } = mouseToData(mouseX, mouseY);
+
+                if (lastIndex !== null) {
+                    const start = Math.max(0, Math.min(lastIndex, timeIndex));
+                    const end = Math.min(heartRateData.length - 1, Math.max(lastIndex, timeIndex));
+                    const startVal = lastHeartRate;
+                    const endVal = heartRate;
+                    const variability = parseInt(variabilitySlider.value);
+
+                    for (let i = start; i <= end; i++) {
+                        const t = (end === start) ? 1 : (i - start) / (end - start);
+                        let v = startVal + t * (endVal - startVal);
+                        if (variability > 0) {
+                            const randomVariation = (Math.random() - 0.5) * variability;
+                            v = (v + randomVariation);
+                        }
+                        heartRateData[i] = Math.max(hrMin, Math.min(hrMax, v));
+                    }
+                } else {
+                    heartRateData[timeIndex] = heartRate;
+                }
+
+                lastIndex = timeIndex;
+                lastHeartRate = heartRate;
+                drawChart();
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isDrawing = false;
+            lastIndex = null;
+            lastHeartRate = null;
+        });
+        
+        variabilitySlider.addEventListener('input', (e) => {
+            document.getElementById(`${id}-variability-value`).textContent = e.target.value;
+        });
+        
+        clearButton.addEventListener('click', () => {
+            initializeData();
+        });
+        
+        // Initialiser
+        initializeData();
+
+        return () => heartRateData;
+    }
 """)
 
 # Validation
@@ -1139,7 +1425,7 @@ def validate_caracteristique(errors, answers):
         return False
     
     if x == count * 10:
-        print(f"Bravo ! Il y a {count} valeurs avec une fréquence cardiaque inférieure à {v} soit {x}% du temps total.")
+        pretty_print_success(f"Bravo ! Il y a {count} valeurs avec une fréquence cardiaque inférieure à {v} soit {x}% du temps total.")
         return True
     
     errors.append(f"Ce n'est pas la bonne réponse. La caractéristique est le pourcentage de valeurs avec une fréquence cardiaque inférieure à {v}.")
@@ -1162,17 +1448,17 @@ def validate_question_frequence(errors, answers):
     if f==Ellipsis:
         errors.append("Tu n'as pas remplacé les ...")
         return False
-    if f!= d[3].round(2):
+    if f!= d[3].round(1):
         errors.append("Ce n'est pas la bonne valeur. Reprends le tableau et vérifie la valeur de la fréquence cardiaque après 3 secondes d'enregistrement.")
         return False 
     return True
 
 validation_question_frequence = common.MathadataValidateVariables({
     'frequence':None
-}, function_validation=validate_question_frequence, success="Bravo ! La fréquence cardiaque est "+ str(d[3].round(2)))
+}, function_validation=validate_question_frequence, success="Bravo ! La fréquence cardiaque est "+ str(d[3].round(1)))
 
 validation_exercice_classification = common.MathadataValidate(
-    success="Bravo ! La classification est correcte.",
+    success="Bravo ! Tu commences à savoir distinguer les différentes classes.",
     function_validation= validate_exercice
 )
 validation_execution_affichage_etendue = common.MathadataValidate(success="")
