@@ -2844,30 +2844,30 @@ chat = 0
 cat = 0
 
 validation_question_faineant = MathadataValidateVariables(get_names_and_values=lambda: {
-    'Reponse_Image_A': {
+    'Reponse_Donnee_A': {
         'value': challenge.classes[0],
         'errors': [
             {
                 'value': challenge.classes[0],
-                'else': "Reponse_Image_A n'a pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
+                'else': "Reponse_Donnee_A n'a pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
             },
         ]
     },
-    'Reponse_Image_B': {
+    'Reponse_Donnee_B': {
         'value': challenge.classes[0],
         'errors': [
             {
                 'value': challenge.classes[0],
-                'else': "Reponse_Image_B n'as pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
+                'else': "Reponse_Donnee_B n'as pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
             },
         ]
     },
-    'Reponse_Image_C': {
+    'Reponse_Donnee_C': {
         'value': challenge.classes[0],
         'errors': [
             {
                 'value': challenge.classes[0],
-                'else': "Reponse_Image_C n'as pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
+                'else': "Reponse_Donnee_C n'as pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
             },
         ]
     }
