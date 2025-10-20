@@ -1202,6 +1202,24 @@ run_js(f"""
 
 # Fonctions utilitaires JS
 run_js("""
+    // Redirection des logs pyodide dans la console
+    if (window.pyodide) {
+        // rediriger stdout
+        window.pyodide.setStdout({
+            batched: (msg) => {
+            // msg est une ligne ou fragment de sortie
+                console.log("[PYODIDE STDOUT]", msg);
+            }
+        });
+        // rediriger stderr
+        window.pyodide.setStderr({
+            batched: (msg) => {
+                console.error("[PYODIDE STDERR]", msg);
+            }
+        });
+    } else {
+        console.warn("pyodide n'est pas accessible dans ce contexte");
+    }
 
     function chartjs_title(context) {
         return context[0]?.dataset?.label
@@ -2252,7 +2270,7 @@ def update_score():
 steps = {
     'bdd': {
         'name': 'Présentation des données',
-        'color': 'rgb(250,181,29)',
+        'color': 'rgb(250,243,8)',
     },
     'depart': {
         'name': 'Algorithme de départ',
@@ -2278,6 +2296,10 @@ steps = {
         'name': 'Votre propre caractéristique',
         'color': 'rgb(20,129,173)',
     },
+    # 'bacasable': {
+    #     'name': 'Zone libre',
+    #     'color': 'rgb(117,94,224)',
+    # },
 }
 
 
@@ -2844,30 +2866,30 @@ chat = 0
 cat = 0
 
 validation_question_faineant = MathadataValidateVariables(get_names_and_values=lambda: {
-    'Reponse_Image_A': {
+    'Reponse_Donnee_A': {
         'value': challenge.classes[0],
         'errors': [
             {
                 'value': challenge.classes[0],
-                'else': "Reponse_Image_A n'a pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
+                'else': "Reponse_Donnee_A n'a pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
             },
         ]
     },
-    'Reponse_Image_B': {
+    'Reponse_Donnee_B': {
         'value': challenge.classes[0],
         'errors': [
             {
                 'value': challenge.classes[0],
-                'else': "Reponse_Image_B n'as pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
+                'else': "Reponse_Donnee_B n'as pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
             },
         ]
     },
-    'Reponse_Image_C': {
+    'Reponse_Donnee_C': {
         'value': challenge.classes[0],
         'errors': [
             {
                 'value': challenge.classes[0],
-                'else': "Reponse_Image_C n'as pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
+                'else': "Reponse_Donnee_C n'as pas la bonne valeur. As-tu bien lu ce que fait l'algorithme fainéant ?"
             },
         ]
     }
