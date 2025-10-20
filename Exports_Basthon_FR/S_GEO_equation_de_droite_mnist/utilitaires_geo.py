@@ -1,7 +1,8 @@
-from IPython.display import display # Pour afficher des DataFrames avec display(df)
+from IPython.display import display  # Pour afficher des DataFrames avec display(df)
 import pandas as pd
 import os
 import sys
+
 try:
     from sklearn.linear_model import LogisticRegression
 except ImportError:
@@ -19,17 +20,9 @@ if parent_dir not in sys.path:
 from utilitaires_common import *
 import utilitaires_common as common
 
-if not sequence:
-    # For dev environment
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    spec = importlib.util.spec_from_file_location("strings", os.path.join(current_dir, "strings.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    globals().update(vars(module))
-
-
 A_true = None
 B_true = None
+
 
 def tracer_2_points():
     deux_caracteristiques = common.challenge.deux_caracteristiques
@@ -40,28 +33,28 @@ def tracer_2_points():
 
     id = uuid.uuid4().hex
     display(HTML(f'<canvas id="{id}"></canvas>'))
-    
+
     params = {
         'd1': data[0],
         'd2': data[1],
         # On hardcode les coordonnées pour que ça tombe juste
-        'x1': 15, #c_train[0][0],
-        'y1': 20, #c_train[0][1],
-        'x2': 25, #c_train[1][0],
-        'y2': 30, #c_train[1][1],
+        'x1': 15,  # c_train[0][0],
+        'y1': 20,  # c_train[0][1],
+        'x2': 25,  # c_train[1][0],
+        'y2': 30,  # c_train[1][1],
     }
 
     # On stocke en global pour la fonction validation
     global A_true, B_true
     A_true = [params['x1'], params['y1']]
     B_true = [params['x2'], params['y2']]
-    
+
     run_js(f"setTimeout(() => window.mathadata.tracer_2_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
     df = pd.DataFrame()
     labels = ['Point A :', 'Point B :']
     df.index = labels
-    #df.index.name = 'Point'
+    # df.index.name = 'Point'
     df['$r$'] = [f'${r[0]}$', f'${r[1]}$']
     df['$x$'] = ['$?$', '$?$']
     df['$y$'] = ['$?$', '$?$']
@@ -74,25 +67,31 @@ def tracer_200_points(nb=200):
     display(HTML(f'''
         <canvas id="{id}-chart"></canvas>
     '''))
-    
-    c_train_par_population = compute_c_train_by_class(fonction_caracteristique=common.challenge.deux_caracteristiques, d_train=common.challenge.d_train[0:nb], r_train=common.challenge.r_train[0:nb])
+
+    c_train_par_population = compute_c_train_by_class(fonction_caracteristique=common.challenge.deux_caracteristiques,
+                                                      d_train=common.challenge.d_train[0:nb],
+                                                      r_train=common.challenge.r_train[0:nb])
     params = {
         'points': c_train_par_population,
         'hideClasses': True,
     }
-    
+
     run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
 
+
 def update_custom():
-    c_train_par_population = compute_c_train_by_class(fonction_caracteristique=common.challenge.deux_caracteristiques_custom)
+    c_train_par_population = compute_c_train_by_class(
+        fonction_caracteristique=common.challenge.deux_caracteristiques_custom)
     return json.dumps(c_train_par_population, cls=NpEncoder)
+
 
 def estim_2d(a, b, c, k, above=None, below=None):
     if above is None:
         above = common.challenge.r_grande_caracteristique
     if below is None:
         below = common.challenge.r_petite_caracteristique
-    return below if (b == 0 and k[0] > -c/a) or (b != 0 and a*k[0] + b*k[1] + c > 0) else above
+    return below if (b == 0 and k[0] > -c / a) or (b != 0 and a * k[0] + b * k[1] + c > 0) else above
+
 
 def _classification(a, b, c, c_train, above=None, below=None):
     r_est_train = np.array([
@@ -100,11 +99,13 @@ def _classification(a, b, c, c_train, above=None, below=None):
         for k in c_train
     ])
     return r_est_train
-    
+
+
 def erreur_lineaire(a, b, c, c_train, above=None, below=None):
     r_est_train = _classification(a, b, c, c_train, above, below)
     erreurs = (r_est_train != common.challenge.r_train).astype(int)
-    return 100*np.mean(erreurs)
+    return 100 * np.mean(erreurs)
+
 
 # regreession logistique toute simple
 def compute_best_score_logistic(c_train, r_train, r_audessus=None, r_endessous=None):
@@ -118,7 +119,7 @@ def compute_best_score_logistic(c_train, r_train, r_audessus=None, r_endessous=N
     - erreur est le pourcentage d'erreur de classification
     - [a, b, c] sont les coefficients de la droite ax + by + c = 0
     """
-    
+
     clf = LogisticRegression(max_iter=10000)
     clf.fit(c_train, r_train)
     predictions = clf.predict(c_train)
@@ -127,15 +128,17 @@ def compute_best_score_logistic(c_train, r_train, r_audessus=None, r_endessous=N
     # La régression logistique donne w0*x + w1*y + b = 0
     w = clf.coef_[0]  # [w0, w1]
     b = clf.intercept_[0]  # biais
-    
+
     # Paramètres de la droite ax + by + c = 0
     a, b_coef, c = w[0], w[1], b
-    
+
     return 1 - accuracy, [a, b_coef, c]
+
 
 from sklearn.svm import SVC
 from sklearn.linear_model import Perceptron
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+
 
 def compute_best_score_svm_hard(c_train, r_train):
     """
@@ -145,15 +148,16 @@ def compute_best_score_svm_hard(c_train, r_train):
     # C très grand = marge dure, trouve l'optimum global pour données séparables
     svm = SVC(kernel='linear', C=1e6)
     svm.fit(c_train, r_train)
-    
+
     predictions = svm.predict(c_train)
     accuracy = np.mean(predictions == r_train)
-    
+
     # Récupération des paramètres de la droite ax + by + c = 0
     w = svm.coef_[0]
     b = svm.intercept_[0]
-    
+
     return 1 - accuracy, [w[0], w[1], b]
+
 
 def compute_best_score_lda(c_train, r_train):
     """
@@ -162,18 +166,19 @@ def compute_best_score_lda(c_train, r_train):
     """
     lda = LinearDiscriminantAnalysis()
     lda.fit(c_train, r_train)
-    
+
     predictions = lda.predict(c_train)
     accuracy = np.mean(predictions == r_train)
-    
+
     # Récupération des paramètres (plus complexe pour LDA)
     # Approximation via les moyennes des classes
     class_means = np.array([c_train[r_train == i].mean(axis=0) for i in [0, 1]])
     w = class_means[1] - class_means[0]  # Direction de séparation
     midpoint = (class_means[0] + class_means[1]) / 2
     b = -np.dot(w, midpoint)
-    
+
     return 1 - accuracy, [w[0], w[1], b]
+
 
 def compute_best_score_perceptron(c_train, r_train):
     """
@@ -182,42 +187,44 @@ def compute_best_score_perceptron(c_train, r_train):
     """
     perceptron = Perceptron(max_iter=1000, tol=1e-3)
     perceptron.fit(c_train, r_train)
-    
+
     predictions = perceptron.predict(c_train)
     accuracy = np.mean(predictions == r_train)
-    
+
     # Récupération des paramètres
     w = perceptron.coef_[0]
     b = perceptron.intercept_[0]
-    
+
     return 1 - accuracy, [w[0], w[1], b]
+
 
 def compute_best_score_multiple_init(c_train, r_train):
     """
     Régression logistique avec plusieurs initialisations aléatoires
     Rapide et souvent suffisant.
     """
-    
+
     best_error = float('inf')
     best_line = None
-    
+
     # Tester plusieurs initialisations
     for random_state in [42, 123, 456, 789, 999]:
-        clf = LogisticRegression(max_iter=2000, random_state=random_state, 
-                                solver='lbfgs', C=1e6)
+        clf = LogisticRegression(max_iter=2000, random_state=random_state,
+                                 solver='lbfgs', C=1e6)
         clf.fit(c_train, r_train)
-        
+
         predictions = clf.predict(c_train)
         accuracy = np.mean(predictions == r_train)
         error = 1 - accuracy
-        
+
         if error < best_error:
             best_error = error
             w = clf.coef_[0]
             b = clf.intercept_[0]
             best_line = [w[0], w[1], b]
-    
+
     return best_error, best_line
+
 
 def compute_best_score_fast(c_train, r_train):
     """
@@ -229,11 +236,11 @@ def compute_best_score_fast(c_train, r_train):
         ("LDA", compute_best_score_lda),
         ("LogReg multi-init", compute_best_score_multiple_init)
     ]
-    
+
     best_error = float('inf')
     best_line = None
     best_method = None
-    
+
     for method_name, method_func in methods:
         try:
             error, line = method_func(c_train, r_train)
@@ -244,8 +251,9 @@ def compute_best_score_fast(c_train, r_train):
         except Exception as e:
             print(f"Erreur avec {method_name}: {e}")
             continue
-    
+
     return best_error, best_line
+
 
 # SOLUTION ULTRA-RAPIDE pour notebook peu performant
 def compute_best_score_ultra_fast(c_train, r_train):
@@ -255,13 +263,13 @@ def compute_best_score_ultra_fast(c_train, r_train):
     """
     svm = SVC(kernel='linear', C=1e6)
     svm.fit(c_train, r_train)
-    
+
     predictions = svm.predict(c_train)
     accuracy = np.mean(predictions == r_train)
-    
+
     w = svm.coef_[0]
     b = svm.intercept_[0]
-    
+
     return 1 - accuracy, [w[0], w[1], b]
 
 
@@ -279,13 +287,13 @@ def get_best_score(method='utra-fast'):
     c_train = np.array([car(d) for d in d_train])
 
     methods = {'ultra-fast': compute_best_score_ultra_fast,
-                'fast': compute_best_score_fast,
-                'svm_hard': compute_best_score_svm_hard,
-                'perceptron': compute_best_score_perceptron,
-                'lda': compute_best_score_lda,
-                'multiple_init': compute_best_score_multiple_init,
-                'logistic': compute_best_score_logistic,
-              }
+               'fast': compute_best_score_fast,
+               'svm_hard': compute_best_score_svm_hard,
+               'perceptron': compute_best_score_perceptron,
+               'lda': compute_best_score_lda,
+               'multiple_init': compute_best_score_multiple_init,
+               'logistic': compute_best_score_logistic,
+               }
 
     if method not in methods:
         raise ValueError(f"Méthode '{method}' non reconnue. Choisissez parmi {list(methods.keys())}.")
@@ -295,9 +303,11 @@ def get_best_score(method='utra-fast'):
 
     erreur = round(100 * erreur, 2)  # Convertir en pourcentage et arrondir à 2 décimales
     print(f"Meilleur score possible avec ces caractéristiques : {erreur}%")
-    print(f"Paramètres de la meilleure droite : a={round(params[0], 2)}, b={round(params[1], 2)}, c={round(params[2], 2)}")
+    print(
+        f"Paramètres de la meilleure droite : a={round(params[0], 2)}, b={round(params[1], 2)}, c={round(params[2], 2)}")
     return erreur, params
- 
+
+
 # JS
 
 run_js('''
@@ -524,8 +534,20 @@ run_js('''
           params = JSON.parse(params);
       }
 
-      const {points, droite, vecteurs, centroides, additionalPoints, hideClasses, hover, inputs, labels, displayValue, save, custom, compute_score, drag } = params;
- 
+      const {points, droite, vecteurs, centroides, additionalPoints, hideClasses, hover, inputs, labels, displayValue, save, custom, compute_score, drag, force_origin, equation_hide } = params;
+        // points: tableau des données en entrée sous forme de coordonnées (deux éléments, les points des 2 et les points des 7) [[[x,y],[x,y],...] , [[x,y],[x,y],...]]
+        // droite: la droite à afficher (objet)
+        // vecteurs: vecteurs à afficher pour le bouger (normal ou directeur)
+        // centroides: bool: afficher les centroides
+        // additionalPoints: tableau de points additionnels
+        // hideClasses: bool: (défault: false) pour afficher la légende au dessus du graphe
+        // hover: objet par défault, peux être appelé comme booleen pour un affichage hover selon son type
+        // drag: bool: autorise à bouger les points
+        // force_origin: bool: force le cadre à l'origine
+        // custom: bool: pour le calcul du score, est-ce qu'on utilise la caractèristique custom ?
+        // compute_score: bool: affichage du score
+        // displayValue: bool: relatif à l'affichage des valeurs des inputs externes
+        // equation_hide: bool: masque l'equation de la droite
       const computeScore = () => {
         const {a, b, c} = values;
         if (a === undefined || b === undefined || c === undefined) {
@@ -579,6 +601,9 @@ run_js('''
             const allData = points.flat(2);
             max = Math.ceil(Math.max(...allData) + 1);
             min = Math.floor(Math.min(...allData) - 1);
+            if (force_origin) {
+            min = Math.min(min, 0);
+            }
             points.forEach((set, index) => {
             datasets[index].data = set.map(([x, y]) => ({ x, y }))
             })
@@ -865,6 +890,9 @@ run_js('''
 
           let label;
           let showLegend = true;
+          if (equation_hide) {
+            showLegend = false;
+          }
             
           if (m !== undefined && p !== undefined) {
               label = `y = ${m}x ${p < 0 ? '-' : '+'} ${Math.abs(p)}`;
@@ -1285,36 +1313,38 @@ run_js('''
 
 input_values = {}
 
+
 def set_input_values(values):
     global input_values
     input_values = json.loads(values)
+
 
 def compute_score(a, b, c, custom=False, above=None, below=None):
     if custom:
         carac = common.challenge.deux_caracteristiques_custom
     else:
         carac = common.challenge.deux_caracteristiques
-        
+
     c_train = compute_c_train(carac, common.challenge.d_train)
     error = erreur_lineaire(a, b, c, c_train, above, below)
     return error
+
 
 def compute_score_json(a, b, c, custom=False):
     error = compute_score(a, b, c, custom)
     return json.dumps({'error': error})
 
-    
 
 def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banque=True, success_msg=None):
     global input_values
-    
+
     if custom:
         deux_caracteristiques = common.challenge.deux_caracteristiques_custom
     else:
         deux_caracteristiques = common.challenge.deux_caracteristiques
 
     base_score = compute_score(input_values['a'], input_values['b'], input_values['c'], custom)
-    
+
     if base_score <= 50:
         above = common.challenge.r_grande_caracteristique
         below = common.challenge.r_petite_caracteristique
@@ -1324,7 +1354,8 @@ def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banqu
 
     if validate is not None and base_score >= validate and base_score <= 100 - validate:
         if error_msg is None:
-            print_error(f"Vous pourrez passer à la suite quand vous aurez un pourcentage d'erreur de moins de {validate}%.")
+            print_error(
+                f"Vous pourrez passer à la suite quand vous aurez un pourcentage d'erreur de moins de {validate}%.")
         else:
             print_error(error_msg)
 
@@ -1335,83 +1366,94 @@ def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banqu
     def cb(score):
         if validate is not None and score * 100 <= validate:
             if success_msg is None:
-                print("Bravo, vous pouvez passer à la suite.")
+                pretty_print_success("Bravo, vous pouvez passer à la suite.")
             else:
                 print(success_msg)
             pass_breakpoint()
 
-    calculer_score(algorithme, method="2 moyennes", parameters=f"a={input_values['a']}, b={input_values['b']}, c={input_values['c']}", cb=cb, banque=banque) 
+    calculer_score(algorithme, method="2 moyennes",
+                   parameters=f"a={input_values['a']}, b={input_values['b']}, c={input_values['c']}", cb=cb,
+                   banque=banque)
+
 
 ### Validation
 
 def check_coordinates(coords, errors):
     if not (isinstance(coords, tuple)):
-        errors.append("Les coordonnées doivent être écrites entre parenthèses séparés par une virgule. Exemple : (3, 5)")
+        errors.append(
+            "Les coordonnées doivent être écrites entre parenthèses séparés par une virgule. Exemple : (3, 5)")
         return False
     if len(coords) != 2:
-        errors.append("Les coordonnées doivent être composées de deux valeurs séparés par une virgule. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
+        errors.append(
+            "Les coordonnées doivent être composées de deux valeurs séparés par une virgule. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
     if coords[0] is Ellipsis or coords[1] is Ellipsis:
         errors.append("Tu n'as pas remplacé les ...")
         return False
     if not (isinstance(coords[0], (int, float)) and isinstance(coords[1], (int, float))):
-        errors.append("Les coordonnées doivent être des nombres. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
+        errors.append(
+            "Les coordonnées doivent être des nombres. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
     return True
+
 
 def function_validation_2_points(errors, answers):
     A = answers['A']
     B = answers['B']
     if not check_coordinates(A, errors) or not check_coordinates(B, errors):
         return False
-    
+
     deux_caracteristiques = common.challenge.deux_caracteristiques
-    
+
     global A_true, B_true
-    
-    distA = np.sqrt((A[0] - A_true[0])**2 + (A[1] - A_true[1])**2)
-    distB = np.sqrt((B[0] - B_true[0])**2 + (B[1] - B_true[1])**2)
-    
+
+    distA = np.sqrt((A[0] - A_true[0]) ** 2 + (A[1] - A_true[1]) ** 2)
+    distB = np.sqrt((B[0] - B_true[0]) ** 2 + (B[1] - B_true[1]) ** 2)
+
     if distA > 3:
-        distARev = np.sqrt((A[1] - A_true[0])**2 + (A[0] - A_true[1])**2)
-        distAB = np.sqrt((A[0] - B_true[0])**2 + (A[1] - B_true[1])**2)
+        distARev = np.sqrt((A[1] - A_true[0]) ** 2 + (A[0] - A_true[1]) ** 2)
+        distAB = np.sqrt((A[0] - B_true[0]) ** 2 + (A[1] - B_true[1]) ** 2)
         if distAB < 3:
-            errors.append("Les coordonnées de A ne sont pas correctes. Tu as peut être donné les coordonnées du point B à la place ?")
+            errors.append(
+                "Les coordonnées de A ne sont pas correctes. Tu as peut être donné les coordonnées du point B à la place ?")
         elif distARev < 3:
-            errors.append("Les coordonnées de A ne sont pas correctes. Attention, la première coordonnée est l'abscisse x et la deuxième l'ordonnée y.")
+            errors.append(
+                "Les coordonnées de A ne sont pas correctes. Attention, la première coordonnée est l'abscisse x et la deuxième l'ordonnée y.")
         else:
             errors.append("Les coordonnées de A ne sont pas correctes.")
     if distB > 3:
-        distBRev = np.sqrt((B[1] - B_true[0])**2 + (B[0] - B_true[1])**2)
-        distAB = np.sqrt((B[0] - A_true[0])**2 + (B[1] - A_true[1])**2)
+        distBRev = np.sqrt((B[1] - B_true[0]) ** 2 + (B[0] - B_true[1]) ** 2)
+        distAB = np.sqrt((B[0] - A_true[0]) ** 2 + (B[1] - A_true[1]) ** 2)
         if distAB < 3:
-            errors.append("Les coordonnées de B ne sont pas correctes. Tu as peut être donné les coordonnées du point A à la place ?")
+            errors.append(
+                "Les coordonnées de B ne sont pas correctes. Tu as peut être donné les coordonnées du point A à la place ?")
         elif distBRev < 3:
-            errors.append("Les coordonnées de B ne sont pas correctes. Attention, la première coordonnée est l'abscisse x et la deuxième l'ordonnée y.")
+            errors.append(
+                "Les coordonnées de B ne sont pas correctes. Attention, la première coordonnée est l'abscisse x et la deuxième l'ordonnée y.")
         else:
             errors.append("Les coordonnées de B ne sont pas correctes.")
 
+
 def function_validation_score_droite(errors, answers):
     user_answer = answers['erreur_10']
-    
+
     # Vérifications de base
     if not isinstance(user_answer, (int, float)):
         errors.append("Le pourcentage d'erreur doit être un nombre.")
         return False
-    
+
     if user_answer < 0 or user_answer > 100:
         errors.append("Le pourcentage d'erreur doit être compris entre 0 et 100.")
         return False
-
 
     """Calcule dynamiquement le score attendu pour la droite à partir des données du défi"""
     # Récupération des données du défi
     dataset_10_points = common.challenge.dataset_10_points
     labels_10_points = common.challenge.labels_10_points
     droite_10_points = common.challenge.droite_10_points
-    
+
     c_train = [common.challenge.deux_caracteristiques(d) for d in dataset_10_points]
-    
+
     # Récupération des paramètres de la droite
     if 'm' in droite_10_points and 'p' in droite_10_points:
         m = droite_10_points['m']
@@ -1430,7 +1472,7 @@ def function_validation_score_droite(errors, answers):
     # Calcul des prédictions
     nb_erreurs = 0
     nb_erreurs_par_classe = [0, 0]
- 
+
     for i, (k, r_true) in enumerate(zip(c_train, labels_10_points)):
         # Classification 2D
         r_pred = estim_2d(a, b, c, k)
@@ -1443,23 +1485,102 @@ def function_validation_score_droite(errors, answers):
                 nb_erreurs_par_classe[1] += 1
 
     pourcentage_erreur = (nb_erreurs / len(dataset_10_points)) * 100
-    
+
     # Vérification si l'utilisateur a donné le nombre d'erreurs au lieu du pourcentage
     if user_answer == nb_erreurs:
-        errors.append(f"Ce n'est pas la bonne valeur. Vous avez donné le nombre d'erreurs ({nb_erreurs}) et non le pourcentage d'erreur.")
+        errors.append(
+            f"Ce n'est pas la bonne valeur. Vous avez donné le nombre d'erreurs ({nb_erreurs}) et non le pourcentage d'erreur.")
         return False
-    
+
     # Vérification de la réponse correcte
     if user_answer == pourcentage_erreur:
         if nb_erreurs == 0:
-            print("Bravo, c'est la bonne réponse. Il n'y a aucune erreur de classification sur ce schéma.")
+            pretty_print_success(
+                "Bravo, c'est la bonne réponse. Il n'y a aucune erreur de classification sur ce schéma.")
         else:
             # Détails sur les erreurs pour le message
-            print(f"Bravo, c'est la bonne réponse. Il y a {nb_erreurs_par_classe[0] == 1 and 'un' or nb_erreurs_par_classe[0]} {common.challenge.classes[0]} {'au dessus' if common.challenge.classes[0] == common.challenge.r_petite_caracteristique else 'en dessous'} de la droite et {nb_erreurs_par_classe[1] == 1 and 'un' or nb_erreurs_par_classe[1]} {common.challenge.classes[1]} {'au dessus' if common.challenge.classes[1] == common.challenge.r_petite_caracteristique else 'en dessous'}, donc {nb_erreurs} erreurs soit {pourcentage_erreur}%.")
+            pretty_print_success(
+                f"Bravo, c'est la bonne réponse. Il y a {nb_erreurs_par_classe[0] == 1 and 'un' or nb_erreurs_par_classe[0]} {common.challenge.classes[0]} {'au dessus' if common.challenge.classes[0] == common.challenge.r_petite_caracteristique else 'en dessous'} de la droite et {nb_erreurs_par_classe[1] == 1 and 'un' or nb_erreurs_par_classe[1]} {common.challenge.classes[1]} {'au dessus' if common.challenge.classes[1] == common.challenge.r_petite_caracteristique else 'en dessous'}, donc {nb_erreurs} erreurs soit {pourcentage_erreur}%.")
         return True
     else:
-        errors.append(f"Ce n'est pas la bonne réponse. Comptez le nombre d'erreurs c'est à dire le nombre de points du mauvais côté de la droite puis calculez le pourcentage d'erreur.")
+        errors.append(
+            f"Ce n'est pas la bonne réponse. Comptez le nombre d'erreurs c'est à dire le nombre de points du mauvais côté de la droite puis calculez le pourcentage d'erreur.")
         return False
+
+
+def function_validation_score_droite_20(errors, answers):
+    user_answer = answers['erreur_20']
+
+    # Vérifications de base
+    if not isinstance(user_answer, (int, float)):
+        errors.append("Le pourcentage d'erreur doit être un nombre.")
+        return False
+
+    if user_answer < 0 or user_answer > 100:
+        errors.append("Le pourcentage d'erreur doit être compris entre 0 et 100.")
+        return False
+
+    """Calcule dynamiquement le score attendu pour la droite à partir des données du défi"""
+    # Récupération des données du défi
+    dataset_20_points = common.challenge.dataset_20_points
+    labels_20_points = common.challenge.labels_20_points
+    droite_20_points = common.challenge.droite_20_points
+
+    c_train = [common.challenge.deux_caracteristiques(d) for d in dataset_20_points]
+
+    # Récupération des paramètres de la droite
+    if 'm' in droite_20_points and 'p' in droite_20_points:
+        m = droite_20_points['m']
+        p = droite_20_points['p']
+        # Conversion en forme ax + by + c = 0
+        a = m
+        b = -1
+        c = p
+    elif 'a' in droite_20_points and 'b' in droite_20_points and 'c' in droite_20_points:
+        a = droite_20_points['a']
+        b = droite_20_points['b']
+        c = droite_20_points['c']
+    else:
+        raise ValueError("Paramètres de droite non supportés")
+
+    # Calcul des prédictions
+    nb_erreurs = 0
+    nb_erreurs_par_classe = [0, 0]
+
+    for i, (k, r_true) in enumerate(zip(c_train, labels_20_points)):
+        # Classification 2D
+        r_pred = estim_2d(a, b, c, k)
+
+        if r_pred != r_true:
+            nb_erreurs += 1
+            if r_true == common.challenge.classes[0]:
+                nb_erreurs_par_classe[0] += 1
+            else:
+                nb_erreurs_par_classe[1] += 1
+
+    pourcentage_erreur = (nb_erreurs / len(dataset_20_points)) * 100
+
+    # Vérification si l'utilisateur a donné le nombre d'erreurs au lieu du pourcentage
+    if user_answer == nb_erreurs:
+        errors.append(
+            f"Ce n'est pas la bonne valeur. Vous avez donné le nombre d'erreurs ({nb_erreurs}) et non le pourcentage d'erreur.")
+        return False
+
+    # Vérification de la réponse correcte
+    if user_answer == pourcentage_erreur:
+        if nb_erreurs == 0:
+            pretty_print_success(
+                "Bravo, c'est la bonne réponse. Il n'y a aucune erreur de classification sur ce schéma.")
+        else:
+            # Détails sur les erreurs pour le message
+            pretty_print_success(
+                f"Bravo, c'est la bonne réponse. Il y a {nb_erreurs_par_classe[0] == 1 and 'un' or nb_erreurs_par_classe[0]} {common.challenge.classes[0]} {'au dessus' if common.challenge.classes[0] == common.challenge.r_petite_caracteristique else 'en dessous'} de la droite et {nb_erreurs_par_classe[1] == 1 and 'un' or nb_erreurs_par_classe[1]} {common.challenge.classes[1]} {'au dessus' if common.challenge.classes[1] == common.challenge.r_petite_caracteristique else 'en dessous'}, donc {nb_erreurs} erreurs soit {pourcentage_erreur}%.")
+        return True
+    else:
+        errors.append(
+            f"Ce n'est pas la bonne réponse. Comptez le nombre d'erreurs c'est à dire le nombre de points du mauvais côté de la droite puis calculez le pourcentage d'erreur.")
+        return False
+
 
 validation_execution_2_points = MathadataValidate(success="")
 validation_question_2_points = MathadataValidateVariables({
@@ -1493,16 +1614,21 @@ validation_question_couleur = MathadataValidateVariables({
 })
 
 validation_execution_10_points = MathadataValidate(success="")
+validation_execution_20_points = MathadataValidate(success="")
 validation_question_score_droite = MathadataValidateVariables({
     'erreur_10': None
-}, 
+},
     function_validation=function_validation_score_droite,
-    success="",
-    on_success=lambda answers: set_step(2)
-)
+    success="")
+validation_question_score_droite_20 = MathadataValidateVariables({
+    'erreur_20': None
+},
+    function_validation=function_validation_score_droite_20,
+    success="")
 validation_execution_tracer_points_droite = MathadataValidate(success="")
 validation_score_droite = MathadataValidate(success="Bien joué, vous pouvez passer à la partie suivante.")
 validation_execution_point_droite = MathadataValidate(success="")
-validation_score_droite_custom = MathadataValidate(success="Bravo, vous pouvez continuer à essayer d'améliorer votre score. Il est possible de faire seulement 3% d'erreur.")
+validation_score_droite_custom = MathadataValidate(
+    success="Bravo, vous pouvez continuer à essayer d'améliorer votre score. Il est possible de faire seulement 3% d'erreur.")
 validation_execution_scatter_caracteristiques_ripou = MathadataValidate(success="")
 validation_execution_afficher_customisation = MathadataValidate(success="")
