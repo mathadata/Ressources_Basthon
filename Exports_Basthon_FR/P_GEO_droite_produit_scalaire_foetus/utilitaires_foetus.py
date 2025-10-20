@@ -53,14 +53,28 @@ def load_data(source=DATASET, local=LOCAL):
             r_train = pickle.load(f)
         print(f"LOCAL données {source} chargées")
     else:
-        inputs_zip_url = f"https://raw.githubusercontent.com/mathadata/data_challenges_lycee/main/input_foetus_{source}.zip"
+        inputs_zip_urls = [f"{files_url}/foetus.zip", "https://raw.githubusercontent.com/mathadata/data_challenges_lycee/main/foetus.zip"]
+        loading_errors = []
 
-        inputs_zip = requests.get(inputs_zip_url)
+        for url in inputs_zip_urls:
+            try:
+                inputs_zip = requests.get(url)
+                break
+            except Exception as e:
+                loading_errors.append(f"erreur de chargement {url} : {e}")
+                if debug:
+                    print_error(f"failed to load from {url} : {e}")
+        else:
+            error = '\n'.join(loading_errors)
+            pretty_print_error(f"Erreur du chargement des données. Essayez de recharger la page, relancer le notebook en suivant les instructions SOS ou sur un autre navigateur internet.")
+            pretty_print_error(f'Si le problème persiste, transmettez cette erreur à votre professeur pour qu\'il nous l\'envoie :\n\n{error}')
+            exit(1)
+
         zf = ZipFile(BytesIO(inputs_zip.content))
         zf.extractall()
         zf.close()
-        d_train_path = f'd_train_{source}.pickle'
-        r_train_path = f'r_train_{source}.pickle'
+        d_train_path = f'd_train.pickle'
+        r_train_path = f'r_train.pickle'
         with open(d_train_path, 'rb') as f:
             d_train = pickle.load(f)
 
@@ -93,7 +107,7 @@ def load_data(source=DATASET, local=LOCAL):
     return d_train, r_train, d_animation
 
 # chargement des données
-d_train, r_train_0_1, d_animation = load_data(source=DATASET, local=LOCAL)
+d_train, r_train, d_animation = load_data(source=DATASET, local=LOCAL)
 
 
 # Import des strings pour lire l'export dans jupyter - A FAIRE AVANT IMPORT utilitaires_common
@@ -122,12 +136,6 @@ def set_exercice_classification_ok():
     global exercice_classification_ok
     exercice_classification_ok = True
     #print(f"DEBUG: exercice_classification_ok mis à jour -> {exercice_classification_ok}")
-
-# On dans r_train change les noms des classes en fonction de strings[classes]
-r_train = np.empty_like(r_train_0_1, dtype=object)
-for i in range(len(strings['classes'])):
-    choices = np.where(r_train_0_1 == i)
-    r_train[choices] = strings['classes'][i]
 
 d = d_train[0]
 # d2 = d_train[167]
