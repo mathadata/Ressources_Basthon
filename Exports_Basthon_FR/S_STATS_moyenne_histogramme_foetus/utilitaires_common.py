@@ -1202,6 +1202,24 @@ run_js(f"""
 
 # Fonctions utilitaires JS
 run_js("""
+    // Redirection des logs pyodide dans la console
+    if (window.pyodide) {
+        // rediriger stdout
+        window.pyodide.setStdout({
+            batched: (msg) => {
+            // msg est une ligne ou fragment de sortie
+                console.log("[PYODIDE STDOUT]", msg);
+            }
+        });
+        // rediriger stderr
+        window.pyodide.setStderr({
+            batched: (msg) => {
+                console.error("[PYODIDE STDERR]", msg);
+            }
+        });
+    } else {
+        console.warn("pyodide n'est pas accessible dans ce contexte");
+    }
 
     function chartjs_title(context) {
         return context[0]?.dataset?.label
@@ -2252,7 +2270,7 @@ def update_score():
 steps = {
     'bdd': {
         'name': 'Présentation des données',
-        'color': 'rgb(250,181,29)',
+        'color': 'rgb(250,243,8)',
     },
     'depart': {
         'name': 'Algorithme de départ',
@@ -2278,6 +2296,10 @@ steps = {
         'name': 'Votre propre caractéristique',
         'color': 'rgb(20,129,173)',
     },
+    # 'bacasable': {
+    #     'name': 'Zone libre',
+    #     'color': 'rgb(117,94,224)',
+    # },
 }
 
 
