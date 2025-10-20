@@ -9,18 +9,6 @@ if parent_dir not in sys.path:
 from utilitaires_common import *
 import utilitaires_common as common
 
-notebook_id = 5
-
-common.start_analytics_session(notebook_id)
-
-if not sequence:
-    # For dev environment
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    spec = importlib.util.spec_from_file_location("strings", os.path.join(current_dir, "strings.py"))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    globals().update(vars(module))
-
 
 def compute_histogramme(caracteristique):
     c_train = compute_c_train(caracteristique, common.challenge.d_train)
@@ -116,7 +104,6 @@ def calculer_score_hist_seuil():
 
     def cb(score):
         validation_score_seuil_optim()
-        set_step(3)
 
     calculer_score(algorithme, method="moyenne ref hist", parameters=f"t={t}", cb=cb)
 
@@ -367,9 +354,9 @@ validation_execution_afficher_customisation = MathadataValidate(success="")
 
 def on_success_question_hist_1(answers):
     if common.challenge.carac_explanation:
-        print(common.challenge.carac_explanation)
+        pretty_print_success(common.challenge.carac_explanation)
     else:
-        print("Bravo, c'est la bonne réponse !")
+        pretty_print_success("Bravo, c'est la bonne réponse !")
 
 
 validation_question_hist_1 = MathadataValidateVariables({
