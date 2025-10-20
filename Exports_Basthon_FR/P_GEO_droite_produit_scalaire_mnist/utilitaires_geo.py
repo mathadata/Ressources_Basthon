@@ -1495,10 +1495,86 @@ def function_validation_score_droite(errors, answers):
     # Vérification de la réponse correcte
     if user_answer == pourcentage_erreur:
         if nb_erreurs == 0:
-            pretty_print_success("Bravo, c'est la bonne réponse. Il n'y a aucune erreur de classification sur ce schéma.")
+            pretty_print_success(
+                "Bravo, c'est la bonne réponse. Il n'y a aucune erreur de classification sur ce schéma.")
         else:
             # Détails sur les erreurs pour le message
-            pretty_print_success(f"Bravo, c'est la bonne réponse. Il y a {nb_erreurs_par_classe[0] == 1 and 'un' or nb_erreurs_par_classe[0]} {common.challenge.classes[0]} {'au dessus' if common.challenge.classes[0] == common.challenge.r_petite_caracteristique else 'en dessous'} de la droite et {nb_erreurs_par_classe[1] == 1 and 'un' or nb_erreurs_par_classe[1]} {common.challenge.classes[1]} {'au dessus' if common.challenge.classes[1] == common.challenge.r_petite_caracteristique else 'en dessous'}, donc {nb_erreurs} erreurs soit {pourcentage_erreur}%.")
+            pretty_print_success(
+                f"Bravo, c'est la bonne réponse. Il y a {nb_erreurs_par_classe[0] == 1 and 'un' or nb_erreurs_par_classe[0]} {common.challenge.classes[0]} {'au dessus' if common.challenge.classes[0] == common.challenge.r_petite_caracteristique else 'en dessous'} de la droite et {nb_erreurs_par_classe[1] == 1 and 'un' or nb_erreurs_par_classe[1]} {common.challenge.classes[1]} {'au dessus' if common.challenge.classes[1] == common.challenge.r_petite_caracteristique else 'en dessous'}, donc {nb_erreurs} erreurs soit {pourcentage_erreur}%.")
+        return True
+    else:
+        errors.append(
+            f"Ce n'est pas la bonne réponse. Comptez le nombre d'erreurs c'est à dire le nombre de points du mauvais côté de la droite puis calculez le pourcentage d'erreur.")
+        return False
+
+
+def function_validation_score_droite_20(errors, answers):
+    user_answer = answers['erreur_20']
+
+    # Vérifications de base
+    if not isinstance(user_answer, (int, float)):
+        errors.append("Le pourcentage d'erreur doit être un nombre.")
+        return False
+
+    if user_answer < 0 or user_answer > 100:
+        errors.append("Le pourcentage d'erreur doit être compris entre 0 et 100.")
+        return False
+
+    """Calcule dynamiquement le score attendu pour la droite à partir des données du défi"""
+    # Récupération des données du défi
+    dataset_20_points = common.challenge.dataset_20_points
+    labels_20_points = common.challenge.labels_20_points
+    droite_20_points = common.challenge.droite_20_points
+
+    c_train = [common.challenge.deux_caracteristiques(d) for d in dataset_20_points]
+
+    # Récupération des paramètres de la droite
+    if 'm' in droite_20_points and 'p' in droite_20_points:
+        m = droite_20_points['m']
+        p = droite_20_points['p']
+        # Conversion en forme ax + by + c = 0
+        a = m
+        b = -1
+        c = p
+    elif 'a' in droite_20_points and 'b' in droite_20_points and 'c' in droite_20_points:
+        a = droite_20_points['a']
+        b = droite_20_points['b']
+        c = droite_20_points['c']
+    else:
+        raise ValueError("Paramètres de droite non supportés")
+
+    # Calcul des prédictions
+    nb_erreurs = 0
+    nb_erreurs_par_classe = [0, 0]
+
+    for i, (k, r_true) in enumerate(zip(c_train, labels_20_points)):
+        # Classification 2D
+        r_pred = estim_2d(a, b, c, k)
+
+        if r_pred != r_true:
+            nb_erreurs += 1
+            if r_true == common.challenge.classes[0]:
+                nb_erreurs_par_classe[0] += 1
+            else:
+                nb_erreurs_par_classe[1] += 1
+
+    pourcentage_erreur = (nb_erreurs / len(dataset_20_points)) * 100
+
+    # Vérification si l'utilisateur a donné le nombre d'erreurs au lieu du pourcentage
+    if user_answer == nb_erreurs:
+        errors.append(
+            f"Ce n'est pas la bonne valeur. Vous avez donné le nombre d'erreurs ({nb_erreurs}) et non le pourcentage d'erreur.")
+        return False
+
+    # Vérification de la réponse correcte
+    if user_answer == pourcentage_erreur:
+        if nb_erreurs == 0:
+            pretty_print_success(
+                "Bravo, c'est la bonne réponse. Il n'y a aucune erreur de classification sur ce schéma.")
+        else:
+            # Détails sur les erreurs pour le message
+            pretty_print_success(
+                f"Bravo, c'est la bonne réponse. Il y a {nb_erreurs_par_classe[0] == 1 and 'un' or nb_erreurs_par_classe[0]} {common.challenge.classes[0]} {'au dessus' if common.challenge.classes[0] == common.challenge.r_petite_caracteristique else 'en dessous'} de la droite et {nb_erreurs_par_classe[1] == 1 and 'un' or nb_erreurs_par_classe[1]} {common.challenge.classes[1]} {'au dessus' if common.challenge.classes[1] == common.challenge.r_petite_caracteristique else 'en dessous'}, donc {nb_erreurs} erreurs soit {pourcentage_erreur}%.")
         return True
     else:
         errors.append(
@@ -1538,10 +1614,16 @@ validation_question_couleur = MathadataValidateVariables({
 })
 
 validation_execution_10_points = MathadataValidate(success="")
+validation_execution_20_points = MathadataValidate(success="")
 validation_question_score_droite = MathadataValidateVariables({
     'erreur_10': None
 },
     function_validation=function_validation_score_droite,
+    success="")
+validation_question_score_droite_20 = MathadataValidateVariables({
+    'erreur_20': None
+},
+    function_validation=function_validation_score_droite_20,
     success="")
 validation_execution_tracer_points_droite = MathadataValidate(success="")
 validation_score_droite = MathadataValidate(success="Bien joué, vous pouvez passer à la partie suivante.")

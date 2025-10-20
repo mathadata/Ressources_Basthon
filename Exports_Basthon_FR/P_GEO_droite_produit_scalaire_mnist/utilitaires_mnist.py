@@ -3,22 +3,16 @@
 ###### VERSION 2/7 #####
 
 # Import des librairies utilisées dans le notebook
-import requests
-import os
-import numpy as np
-import matplotlib.pyplot as plt
 import pickle
+from io import BytesIO
 from zipfile import ZipFile
-from io import BytesIO, StringIO
+
 import matplotlib.patches as mpatches
-#from scipy.spatial import Voronoi, voronoi_plot_2d
-import pandas as pd
-from IPython.display import display,HTML # Pour afficher des DataFrames avec display(df)
-import importlib.util
 
-from utilitaires_common import *
 import utilitaires_common as common
+from utilitaires_common import *
 
+# from scipy.spatial import Voronoi, voronoi_plot_2d
 
 strings = {
     "dataname": "image",
@@ -37,7 +31,8 @@ strings = {
 ### --- IMPORT DES DONNÉES ---
 # Téléchargement et extraction des inputs contenus dans l'archive zip
 
-inputs_zip_urls = [f"{files_url}/mnist.zip", "https://raw.githubusercontent.com/mathadata/data_challenges_lycee/main/mnist.zip"]
+inputs_zip_urls = [f"{files_url}/mnist.zip",
+                   "https://raw.githubusercontent.com/mathadata/data_challenges_lycee/main/mnist.zip"]
 loading_errors = []
 
 for url in inputs_zip_urls:
@@ -50,10 +45,11 @@ for url in inputs_zip_urls:
             print_error(f"failed to load from {url} : {e}")
 else:
     error = '\n'.join(loading_errors)
-    pretty_print_error(f"Erreur du chargement des données. Essayez de recharger la page, relancer le notebook en suivant les instructions SOS ou sur un autre navigateur internet.")
-    pretty_print_error(f'Si le problème persiste, transmettez cette erreur à votre professeur pour qu\'il nous l\'envoie :\n\n{error}')
+    pretty_print_error(
+        f"Erreur du chargement des données. Essayez de recharger la page, relancer le notebook en suivant les instructions SOS ou sur un autre navigateur internet.")
+    pretty_print_error(
+        f'Si le problème persiste, transmettez cette erreur à votre professeur pour qu\'il nous l\'envoie :\n\n{error}')
     exit(1)
-    
 
 zf = ZipFile(BytesIO(inputs_zip.content))
 zf.extractall()
@@ -73,29 +69,30 @@ classes = [2, 7]
 
 N = len(d_train)
 
-d_train_par_population = [d_train[r_train==k] for k in classes]
+d_train_par_population = [d_train[r_train == k] for k in classes]
 
-d = d_train[10,:,:].copy()
-d2 = d_train[2,:,:].copy()
+d = d_train[10, :, :].copy()
+d2 = d_train[2, :, :].copy()
 
 #10 images en tableau format 3x3
 d_train_simple = [
-    [[ 195, 195,  195], [0,  190, 1], [ 190, 0,  0]],
-    [[255,  76, 132], [ 18, 240,  59], [101,  37, 200]],
-    [[ 64, 128, 249], [ 92,  11, 175], [220,  58, 143]],
-    [[  7,  99, 187], [142,  33, 255], [ 68, 214, 121]],
-    [[ 85,  19, 236], [194, 129,  72], [150, 223,  41]],
-    [[203,  54, 116], [ 25, 177,  88], [244,  61, 135]],
-    [[ 39, 212,  97], [181,  14, 250], [ 73, 160, 226]],
-    [[109,  42, 190], [  5, 167, 251], [138,  81, 219]],
-    [[120, 231,  53], [146,  27, 205], [ 66, 156, 248]],
-    [[178,  36, 141], [222,  63, 109], [  8, 199, 255]]
+    [[195, 195, 195], [0, 190, 1], [190, 0, 0]],
+    [[255, 76, 132], [18, 240, 59], [101, 37, 200]],
+    [[64, 128, 249], [92, 11, 175], [220, 58, 143]],
+    [[7, 99, 187], [142, 33, 255], [68, 214, 121]],
+    [[85, 19, 236], [194, 129, 72], [150, 223, 41]],
+    [[203, 54, 116], [25, 177, 88], [244, 61, 135]],
+    [[39, 212, 97], [181, 14, 250], [73, 160, 226]],
+    [[109, 42, 190], [5, 167, 251], [138, 81, 219]],
+    [[120, 231, 53], [146, 27, 205], [66, 156, 248]],
+    [[178, 36, 141], [222, 63, 109], [8, 199, 255]]
 ]
-d_simple= np.array(d_train_simple[2])
+d_simple = np.array(d_train_simple[2])
 # Noms de variables pour la question 'fainéant
 chat = 'chat'
-Chat= 'chat'
+Chat = 'chat'
 cat = 'cat'
+
 
 class Mnist(common.Challenge):
     def __init__(self):
@@ -106,7 +103,7 @@ class Mnist(common.Challenge):
         self.r_train = r_train
         self.d = d
         self.d2 = d2
-        self.classes = classes 
+        self.classes = classes
         self.r_petite_caracteristique = strings['r_petite_caracteristique']
         self.r_grande_caracteristique = strings['r_grande_caracteristique']
         self.custom_zone = None
@@ -127,8 +124,8 @@ class Mnist(common.Challenge):
 
         # GEO
         # Tracer 20 points
-        self.dataset_20_points = d_train[20:30]
-        self.labels_20_points = r_train[20:30]
+        self.dataset_20_points = d_train[10:30]
+        self.labels_20_points = r_train[10:30]
         self.droite_20_points = {
             'm': 0.5,
             'p': 20,
@@ -136,7 +133,7 @@ class Mnist(common.Challenge):
 
         # Droite produit scalaire
         # Pour les versions question_normal
-        self.M_retourprobleme=(40,20)
+        self.M_retourprobleme = (40, 20)
 
         # Objectif de score avec les 2 caracs de référence pour passer à la suite
         self.objectif_score_droite = strings['objectif_score_droite']
@@ -145,17 +142,18 @@ class Mnist(common.Challenge):
         # Centroides
         self.dataset_10_centroides = d_train[30:40]
         self.labels_10_centroides = r_train[30:40]
-        
-        
-    def affichage_dix(self, d=d_train, a=None, b=None, zones=[], y = r_train, n=10, axes=False):
+
+    def affichage_dix(self, d=d_train, a=None, b=None, zones=None, y=r_train, n=10, axes=False):
+        if zones is None:
+            zones = []
         global r_train
         fig, ax = plt.subplots(1, n, figsize=(figw_full, figw_full / n + 1))
-        
+
         # Cachez les axes des subplots
         for j in range(n):
             if axes:
-                ax[j].set_xticks(np.arange(0,28,5))
-                ax[j].set_yticks(np.arange(0,28,5))
+                ax[j].set_xticks(np.arange(0, 28, 5))
+                ax[j].set_yticks(np.arange(0, 28, 5))
                 ax[j].xaxis.tick_top()
                 ax[j].tick_params(axis='both', which='major', labelsize=7)
 
@@ -163,12 +161,12 @@ class Mnist(common.Challenge):
                 ax[j].axis('off')
             imshow(ax[j], d[j])
             if y is not None:
-                ax[j].set_title('$r = $'+str(y[j]), y=0, size=16, pad=-20)
+                ax[j].set_title('$r = $' + str(y[j]), y=0, size=16, pad=-20)
 
             outline_selected(ax[j], a, b)
             for zone in zones:
                 outline_selected(ax[j], zone[0], zone[1], zoneName=zone[2])
-        
+
         fig.subplots_adjust(left=0, right=1, top=1, bottom=0, wspace=0.2 if axes else 0.05, hspace=0)
         plt.show()
         plt.close()
@@ -200,20 +198,19 @@ class Mnist(common.Challenge):
                 container.appendChild(gif)
             }}, 500)
         ''')
-            
 
     def caracteristique(self, d):
         return moyenne(d)
-    
+
     def caracteristique_custom(self, d):
         if self.custom_zone is None:
             return 0
-        
+
         return moyenne_zone(d, self.custom_zone[0], self.custom_zone[1])
 
     def deux_caracteristiques(self, d):
-        zone_1 = [(0,0), (13,27)]
-        zone_2 = [(14,0), (27,27)]
+        zone_1 = [(0, 0), (13, 27)]
+        zone_2 = [(14, 0), (27, 27)]
 
         k1 = moyenne_zone(d, zone_1[0], zone_1[1])
         k2 = moyenne_zone(d, zone_2[0], zone_2[1])
@@ -232,17 +229,19 @@ class Mnist(common.Challenge):
             k2 = 0
         else:
             k2 = moyenne_zone(d, self.custom_zones[1][0], self.custom_zones[1][1])
-        
+
         return (k1, k2)
 
     def cb_custom_score(self, score):
         if score < 0.1:
             return True
         elif score < 0.3:
-            pretty_print_success("Bravo, ta zone choisie pour calculer la moyenne est meilleure que faire la moyenne de toute l'image. Améliore encore ta zone pour faire moins de 10% d'erreur et passer à la suite.")
+            pretty_print_success(
+                "Bravo, ta zone choisie pour calculer la moyenne est meilleure que faire la moyenne de toute l'image. Améliore encore ta zone pour faire moins de 10% d'erreur et passer à la suite.")
         else:
-            print_error("Modifie ta zone pour faire moins de 10% d'erreur et passer à la suite. Cherche une zone où l'image est différente si c'est un 2 ou un 7")
-        
+            print_error(
+                "Modifie ta zone pour faire moins de 10% d'erreur et passer à la suite. Cherche une zone où l'image est différente si c'est un 2 ou un 7")
+
         return False
 
     def affichage_2_cara(self, A1=None, B1=None, A2=None, B2=None, displayPoints=False, titre1="", titre2=""):
@@ -254,52 +253,56 @@ class Mnist(common.Challenge):
 
         image1 = self.d
         image2 = self.d2
-        
+
         fig, ax = plt.subplots(1, 2, figsize=(figw_full, figw_full / 2))
         imshow(ax[0], image1)
         ax[0].set_title(titre1)
-        ax[0].set_xticks(np.arange(0,28,5))
+        ax[0].set_xticks(np.arange(0, 28, 5))
         ax[0].xaxis.tick_top()
         outline_selected(ax[0], A1, B1, displayPoints, nameA='A1', nameB='B1', color='red')
         outline_selected(ax[0], A2, B2, displayPoints, nameA='A2', nameB='B2', color='C0')
 
         imshow(ax[1], image2)
         ax[1].set_title(titre2)
-        ax[1].set_xticks(np.arange(0,28,5))
+        ax[1].set_xticks(np.arange(0, 28, 5))
         ax[1].xaxis.tick_top()
         outline_selected(ax[1], A1, B1, displayPoints, nameA='A1', nameB='B1', color='red')
         outline_selected(ax[1], A2, B2, displayPoints, nameA='A2', nameB='B2', color='C0')
 
         plt.show()
         plt.close()
-        
+
         self.custom_zones = [(A1, B1), (A2, B2)]
         return
 
+
 init_challenge(Mnist())
+
 
 def imshow(ax, image, **kwargs):
     ax.imshow(image, cmap='gray', vmin=0, vmax=255, extent=[0, 28, 28, 0], **kwargs)
 
-def outline_selected(ax, a=None, b=None, displayPoints=False, zoneName=None, zoneNamePos='right', nameA='A', nameB='B', color='red'):
+
+def outline_selected(ax, a=None, b=None, displayPoints=False, zoneName=None, zoneNamePos='right', nameA='A', nameB='B',
+                     color='red'):
     if a is not None:
         if b is None:
             b = a
-            
+
         numero_ligne_debut = min(a[0], b[0])
         numero_ligne_fin = max(a[0], b[0])
         numero_colonne_debut = min(a[1], b[1])
         numero_colonne_fin = max(a[1], b[1])
-    
+
         if numero_ligne_debut < 0 or numero_colonne_debut < 0 or numero_ligne_fin > 27 or numero_colonne_fin > 27:
             print_error("Les valeurs des index doivent être compris entre 0 et 27.")
             return
 
         padding = 0  # adjust this value as needed
-        rect = mpatches.Rectangle((numero_colonne_debut + padding, numero_ligne_debut + padding), 
-                                 numero_colonne_fin - numero_colonne_debut + 1 - 2 * padding, 
-                                 numero_ligne_fin - numero_ligne_debut + 1 - 2 * padding, 
-                                 fill=False, edgecolor=color, lw=2)
+        rect = mpatches.Rectangle((numero_colonne_debut + padding, numero_ligne_debut + padding),
+                                  numero_colonne_fin - numero_colonne_debut + 1 - 2 * padding,
+                                  numero_ligne_fin - numero_ligne_debut + 1 - 2 * padding,
+                                  fill=False, edgecolor=color, lw=2)
         ax.add_patch(rect)
 
         if displayPoints and a != b:
@@ -357,27 +360,28 @@ def affichage(image, a=None, b=None, displayPoints=False, titre=""):
         print_error("fonction affichage : Les valeurs des pixels de l'image doivent être compris entre 0 et 255.")
         return
 
-    fig, ax = plt.subplots(figsize=(figw_full /2, figw_full /2))
+    fig, ax = plt.subplots(figsize=(figw_full / 2, figw_full / 2))
     imshow(ax, image)
     ax.set_title(titre)
-    ax.set_xticks(np.arange(0,28,5))
+    ax.set_xticks(np.arange(0, 28, 5))
     ax.xaxis.tick_top()
     ax.set_title(titre)
-    ax.xaxis.set_label_position('top') 
+    ax.xaxis.set_label_position('top')
     outline_selected(ax, a, b, displayPoints)
 
     plt.show()
     plt.close()
 
+
 def affichage_2_geo(display_k=False):
-    zone_1 = [(0,0), (13,27)]
-    zone_2 = [(14,0), (27,27)]
+    zone_1 = [(0, 0), (13, 27)]
+    zone_2 = [(14, 0), (27, 27)]
     deux_caracteristiques = common.challenge.deux_caracteristiques
 
     images = np.array([common.challenge.d2, common.challenge.d])
     fig, ax = plt.subplots(1, len(images), figsize=(figw_full * 0.8, figw_full * 0.8 / 2))
     c_train = np.array([np.array(deux_caracteristiques(d)) for d in images])
-    
+
     for i in range(len(images)):
         imshow(ax[i], images[i])
         k = c_train[i]
@@ -387,7 +391,7 @@ def affichage_2_geo(display_k=False):
             zoneNamePos = 'right'
         else:
             zoneNamePos = 'center'
-        
+
         k1 = f'{k[0]:.2f}' if display_k else '?'
         k2 = f'{k[1]:.2f}' if display_k else '?'
         outline_selected(ax[i], zone_1[0], zone_1[1], zoneName=f'$x = {k1}$', zoneNamePos=zoneNamePos)
@@ -401,10 +405,12 @@ def affichage_2_geo(display_k=False):
     reversed = c_train[::-1]
 
     if not display_k:
-        df = pd.DataFrame({'$x$': reversed[:,0], '$y$': reversed[:,1], '$r$': ['$r_1$ = 2 ou 7 ?', '$r_2$ = 2 ou 7 ?']})
+        df = pd.DataFrame(
+            {'$x$': reversed[:, 0], '$y$': reversed[:, 1], '$r$': ['$r_1$ = 2 ou 7 ?', '$r_2$ = 2 ou 7 ?']})
         df.index += 1
         display(df)
         return
+
 
 # Affichage d'une image sous forme de tableau
 pd.set_option('display.max_rows', 28)
@@ -412,6 +418,7 @@ pd.set_option('display.max_columns', 28)
 # Set the width of each column
 pd.set_option('display.float_format', '{:.2f}'.format)
 pd.set_option('colheader_justify', 'center')
+
 
 def affichage_tableau(image, a=None, b=None):
     """Fonction qui affiche une image sous forme de tableau avec un rectangle rouge délimité par les points a et b
@@ -430,7 +437,7 @@ def affichage_tableau(image, a=None, b=None):
             numero_ligne_fin = a[0]
             numero_colonne_debut = a[1]
             numero_colonne_fin = a[1]
-    
+
         if numero_ligne_debut < 0 or numero_colonne_debut < 0 or numero_ligne_fin > 27 or numero_colonne_fin > 27:
             print_error("Les valeurs des index doivent être compris entre 0 et 27.")
             return
@@ -443,26 +450,29 @@ def affichage_tableau(image, a=None, b=None):
         except:
             if b is not None:
                 # return df.iloc[max(0, numero_ligne_debut - 1):min(len(image), numero_ligne_fin+2), max(0, numero_colonne_debut - 1):min(len(image), numero_colonne_fin+2)]
-                display(df.iloc[numero_ligne_debut:numero_ligne_fin+1, numero_colonne_debut:numero_colonne_fin+1])
-                return 
+                display(df.iloc[numero_ligne_debut:numero_ligne_fin + 1, numero_colonne_debut:numero_colonne_fin + 1])
+                return
     display(df)
     return
+
 
 # Moyenne
 def moyenne(liste):
     arr = np.array(liste)
     return np.mean(arr)
 
+
 def moyenne_zone(arr, a, b):
     if a is None or b is None:
         print_error("Les points A et B ne sont pas définis.")
         return 0
-    
+
     numero_ligne_debut = min(a[0], b[0])
     numero_ligne_fin = max(a[0], b[0])
     numero_colonne_debut = min(a[1], b[1])
     numero_colonne_fin = max(a[1], b[1])
-    return np.mean(arr[numero_ligne_debut:numero_ligne_fin+1, numero_colonne_debut:numero_colonne_fin+1])
+    return np.mean(arr[numero_ligne_debut:numero_ligne_fin + 1, numero_colonne_debut:numero_colonne_fin + 1])
+
 
 def check_pixel_coordinates(coords, errors):
     if not isinstance(coords, tuple) or len(coords) != 2:
@@ -478,17 +488,20 @@ def check_pixel_coordinates(coords, errors):
     if coords[0] < 0 or coords[0] > 27 or coords[1] < 0 or coords[1] > 27:
         errors.append("Les coordonnées du pixel doivent être entre 0 et 27.")
         return False
-    return True 
+    return True
 
-def update_selected(A,B):
-    common.challenge.custom_zone = (A,B)
 
-def update_selected_2(A1,B1,A2,B2):
-    common.challenge.custom_zones = [(A1,B1), (A2,B2)]
+def update_selected(A, B):
+    common.challenge.custom_zone = (A, B)
+
+
+def update_selected_2(A1, B1, A2, B2):
+    common.challenge.custom_zones = [(A1, B1), (A2, B2)]
+
 
 def affichage_trois(data=None):
     id = uuid.uuid4().hex
-    
+
     # Création du conteneur parent avec 2 div
     display(
         HTML(f'''
@@ -529,7 +542,6 @@ def affichage_trois(data=None):
         // Injection du tableau HTML côté Python dans la div tab
         tabContainer.innerHTML = {table_html_js};
     """)
-
 
 
 # JS
@@ -1074,7 +1086,8 @@ window.mathadata.interface_data_gen = (id) => {
     };
 };
 """)
-    
+
+
 ### Validation cellules ###
 
 def validate_algo(errors, answers):
@@ -1088,8 +1101,8 @@ def validate_algo(errors, answers):
         else:
             errors.append("Votre algorithme a répondu autre chose que 2 ou 7 : " + str(first_non_matching))
         return False
-    
-    return True 
+
+    return True
 
 
 def validate_pixel_noir(errors, answers):
@@ -1102,13 +1115,15 @@ def validate_pixel_noir(errors, answers):
     elif d[17][15] == 254:
         errors.append("Tu n'as pas changé la valeur du pixel, il vaut toujours 254")
     else:
-        errors.append("Tu as bien changé la valeur mais ce n'est pas la bonne. Relis l'énoncé pour voir la valeur à donner pour un pixel noir.")
+        errors.append(
+            "Tu as bien changé la valeur mais ce n'est pas la bonne. Relis l'énoncé pour voir la valeur à donner pour un pixel noir.")
     return False
- 
+
+
 validation_execution_affichage = MathadataValidate(success="")
 validation_question_pixel = MathadataValidateVariables({
     'pixel': {
-        'value': int(d[18,15]),
+        'value': int(d[18, 15]),
         'errors': [
             {
                 'value': {
@@ -1118,19 +1133,25 @@ validation_question_pixel = MathadataValidateVariables({
                 'else': "Ta réponse n'est pas bonne. Les pixels peuvent uniquement avoir des valeurs entre 0 et 255."
             },
             {
-                'value': int(d[15,18]),
+                'value': int(d[15, 18]),
                 'if': "Attention ! Les coordonnées sont données en (ligne, colonne)."
             }
         ]
     }
 })
-validation_question_pixel_noir = MathadataValidate(success="Bravo, le pixel est devenu noir.", function_validation=validate_pixel_noir)
-validation_question_moyenne = MathadataValidateVariables({'moyenne_zone_4pixels': np.mean(d[14:16,15:17])}, success="Bravo, la moyenne vaut en effet (142 + 154 + 0 + 0) / 4 = 74")
-validation_question_moyenne_triple = MathadataValidateVariables({'moyenne_pixels': np.mean(d_simple)}, success="Bravo, la moyenne vaut en effet ((64 + 128 + 249) + (92 + 11 + 175) + (220 + 58 + 143)) / 9 = 142")
+validation_question_pixel_noir = MathadataValidate(success="Bravo, le pixel est devenu noir.",
+                                                   function_validation=validate_pixel_noir)
+validation_question_moyenne = MathadataValidateVariables({'moyenne_zone_4pixels': np.mean(d[14:16, 15:17])},
+                                                         success="Bravo, la moyenne vaut en effet (142 + 154 + 0 + 0) / 4 = 74")
+validation_question_moyenne_triple = MathadataValidateVariables({'moyenne_pixels': np.mean(d_simple)},
+                                                                success="Bravo, la moyenne vaut en effet ((64 + 128 + 249) + (92 + 11 + 175) + (220 + 58 + 143)) / 9 = 142")
+
+
 # Geometrie
 
 def on_success_2_caracteristiques(answers):
     affichage_2_geo(display_k=True)
+
 
 validation_execution_2_caracteristiques = MathadataValidate(success="")
 validation_question_2_caracteristiques = MathadataValidateVariables({
@@ -1156,11 +1177,11 @@ validation_question_2_caracteristiques = MathadataValidateVariables({
             }
         ]
     }
-}, success="C'est la bonne réponse. L'image de 7 a presque la même moyenne sur la moitié haute et la moitié basse. L'image de 2 a une moyenne plus élevée sur la moitié basse car il y a plus de pixels blancs.",
+},
+    success="C'est la bonne réponse. L'image de 7 a presque la même moyenne sur la moitié haute et la moitié basse. L'image de 2 a une moyenne plus élevée sur la moitié basse car il y a plus de pixels blancs.",
     on_success=on_success_2_caracteristiques)
 
 validation_execution_def_caracteristiques_ripou = MathadataValidate(success="")
-
 
 # Notebook histogramme
 
@@ -1218,16 +1239,16 @@ validation_question_hist_3 = MathadataValidateVariables({
     },
 }, tips=[
     {
-      'seconds': 30,
-      'tip': 'En passant la souris sur les barres de l\'histogramme, tu peux voir le nombre d\'images qui ont une caractéristique dans l\'intervalle correspondant.'
+        'seconds': 30,
+        'tip': 'En passant la souris sur les barres de l\'histogramme, tu peux voir le nombre d\'images qui ont une caractéristique dans l\'intervalle correspondant.'
     }
-  ])
+])
 
-validation_affichage_trois= MathadataValidate(success="")
- # la fonction validation_question_affichage_trois doit verifier si l'utilisateur a bien saisi la bonne moyenne 
-validation_question_affichage_trois= MathadataValidateVariables({
+validation_affichage_trois = MathadataValidate(success="")
+# la fonction validation_question_affichage_trois doit verifier si l'utilisateur a bien saisi la bonne moyenne
+validation_question_affichage_trois = MathadataValidateVariables({
     'moyenne_pixels_simple': {
-        'value': ((195*3)+(0+190+1)+(190+0+0))/9,
+        'value': ((195 * 3) + (0 + 190 + 1) + (190 + 0 + 0)) / 9,
         'errors': [
             {
                 'value': {
@@ -1241,44 +1262,41 @@ validation_question_affichage_trois= MathadataValidateVariables({
 })
 
 #Stockage valeur zones custom proposés
-A_2 = (7, 2)       # <- coordonnées du point A1
-B_2 = (9, 25)     # <- coordonnées du point B1
-A_1 = (14, 2)     # <- coordonnées du point A2
-B_1 = (23, 10)     # <- coordonnées du point B2
+A_2 = (7, 2)  # <- coordonnées du point A1
+B_2 = (9, 25)  # <- coordonnées du point B1
+A_1 = (14, 2)  # <- coordonnées du point A2
+B_1 = (23, 10)  # <- coordonnées du point B2
 
 
 def affichage_zones_custom_2_cara(A1, B1, A2, B2):
     common.challenge.affichage_2_cara(A1, B1, A2, B2, True)
 
 
-
-
 def caracteristique_ligne_correction(d):
-
-    # Sélection de la ligne 12 et 14 
-    ligne1 = d[11,:]
-    ligne2 = d[13,:]
+    # Sélection de la ligne 12 et 14
+    ligne1 = d[11, :]
+    ligne2 = d[13, :]
     # Calcul de la somme des pixels de cette ligne
     somme_pixels = 0
     nombre_pixels = 0
     for pixel in ligne1:
-            somme_pixels += pixel
-            nombre_pixels += 1
+        somme_pixels += pixel
+        nombre_pixels += 1
     for pixel in ligne2:
-            somme_pixels += pixel
-            nombre_pixels += 1
+        somme_pixels += pixel
+        nombre_pixels += 1
     # Calcul de la moyenne
     moyenne_des_pixels = somme_pixels / nombre_pixels
 
     return moyenne_des_pixels
 
+
 def on_success_affichage_histograme(answers):
     if has_variable('afficher_histogramme'):
+        get_variable('afficher_histogramme')(legend=True, caracteristique=get_variable('caracteristique'))
 
-        get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
 
-
-validation_caracteristique_ligne_et_affichage=MathadataValidateFunction(
+validation_caracteristique_ligne_et_affichage = MathadataValidateFunction(
     'caracteristique',
     test_set=lambda: common.challenge.d_train[0:100],
     expected=lambda: [caracteristique_ligne_correction(d) for d in common.challenge.d_train[0:100]],
