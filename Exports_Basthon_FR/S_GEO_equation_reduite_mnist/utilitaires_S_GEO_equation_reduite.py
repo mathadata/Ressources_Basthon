@@ -188,6 +188,10 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
     p_color = "#FF0000"
     css_url = f"https://cdn.jsdelivr.net/npm/jsxgraph@{jsx_version}/distrib/jsxgraph.css"
     js_url = f"https://cdn.jsdelivr.net/npm/jsxgraph@{jsx_version}/distrib/jsxgraphcore.js"
+    
+    # Variable pour éviter les backslash dans f-string (Python < 3.12)
+    score_div = f'<div id="{box_id}-score-container" style="text-align: center; font-weight: bold; font-size: 1rem;">Pourcentage d{chr(39)}erreur : <span id="{box_id}-score">...</span></div>' if error_score else ""
+    
     page = f"""<!DOCTYPE html>
 <html>
   <head>
@@ -207,7 +211,7 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
       <span style="color:{m_color}; font-weight:700;">m</span> x +
       <span style="color:{p_color}; font-weight:700;">p</span>
     </div>
-    {f"<div id='{box_id}-score-container' style='text-align: center; font-weight: bold; font-size: 1rem;'>Pourcentage d'erreur : <span id='{box_id}-score'>...</span></div>" if error_score else ""}
+    {score_div}
     <div id="{box_id}" class="jxgbox" style="width:{width}px; height:{height}px;"></div>
     <script>
       (function() {{
