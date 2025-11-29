@@ -674,7 +674,7 @@ run_js(f"""
     document.head.appendChild(style);
 """)
 
-run_js("""
+run_js(r"""
 let isSelecting = false;
 
 let zone1 = false;
