@@ -1125,7 +1125,7 @@ def get_highscore(challenge_id=116):
 
 
 def set_score(score):
-    run_js(f'window.mathadata.update_score({score});')
+    run_js(f'window.mathadata.updateScore({score});')
 
 
 def submit(csv_content, challenge_id=116, method=None, parameters=None, cb=None):
