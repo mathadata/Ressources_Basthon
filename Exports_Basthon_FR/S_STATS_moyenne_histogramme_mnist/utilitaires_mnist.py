@@ -15,11 +15,34 @@ from utilitaires_common import *
 # from scipy.spatial import Voronoi, voronoi_plot_2d
 
 strings = {
-    "dataname": "image",
-    "dataname_plural": "images",
-    "feminin": True,
-    "contraction": True,
-    "classes": [2, 7],
+    "dataname": {
+        "nom": "image",
+        "pluriel": "images",
+        "feminin": True,
+        "contraction": True,
+    },
+    "classes": [
+        {
+            "nom": "2",
+            "pluriel": "2",
+            "feminin": False,
+            "contraction": False,
+            "nom_alt": "image de 2",
+            "pluriel_alt": "images de 2",
+            "feminin_alt": True,
+            "contraction_alt": True,
+        },
+        {
+            "nom": "7",
+            "pluriel": "7",
+            "feminin": False,
+            "contraction": False,
+            "nom_alt": "image de 7",
+            "pluriel_alt": "images de 7",
+            "feminin_alt": True,
+            "contraction_alt": True,
+        }
+    ],
     "r_petite_caracteristique": 7,
     "r_grande_caracteristique": 2,
     "train_size": "6 000",
@@ -74,7 +97,7 @@ d_train_par_population = [d_train[r_train == k] for k in classes]
 d = d_train[10, :, :].copy()
 d2 = d_train[2, :, :].copy()
 
-#10 images en tableau format 3x3
+# 10 images en tableau format 3x3
 d_train_simple = [
     [[195, 195, 195], [0, 190, 1], [190, 0, 0]],
     [[255, 76, 132], [18, 240, 59], [101, 37, 200]],
@@ -173,7 +196,7 @@ class Mnist(common.Challenge):
 
     def display_custom_selection(self, id):
         run_js(f'''
-            setTimeout(() => {{
+            mathadata.add_observer('{id}', () => {{
                 window.mathadata.setup_zone_selection('{id}', '{json.dumps(self.d_train[4:8].tolist())}')
                 const gif = document.createElement('img')
                 gif.id = 'selection-gif'
@@ -182,12 +205,12 @@ class Mnist(common.Challenge):
                 gif.style = 'width: 25%; height: auto; margin-inline: auto;'
                 const container = document.getElementById('{id}-selection')
                 container.appendChild(gif)
-            }}, 500)
+            }});
         ''')
 
     def display_custom_selection_2d(self, id):
         run_js(f'''
-            setTimeout(() => {{
+            mathadata.add_observer('{id}', () => {{
                 window.mathadata.setup_zone_selection_2d('{id}', '{json.dumps(self.d_train[4:8].tolist())}')
                 const gif = document.createElement('img')
                 gif.id = 'selection-gif'
@@ -196,7 +219,7 @@ class Mnist(common.Challenge):
                 gif.style = 'width: 25%; height: auto; margin-inline: auto;'
                 const container = document.getElementById('{id}')
                 container.appendChild(gif)
-            }}, 500)
+            }});
         ''')
 
     def caracteristique(self, d):
@@ -233,7 +256,7 @@ class Mnist(common.Challenge):
         return (k1, k2)
 
     def cb_custom_score(self, score):
-        if score < 0.1:
+        if score < 0.1 or (has_variable('superuser') and get_variable('superuser') == True):
             return True
         elif score < 0.3:
             pretty_print_success(
@@ -456,6 +479,46 @@ def affichage_tableau(image, a=None, b=None):
     return
 
 
+def affichage_image_et_pixels(image=None):
+    if image is None:
+        image = d
+
+    id = uuid.uuid4().hex
+
+    # Données pour affichage "dessin"
+    params = {
+        'd': image,
+    }
+
+    run_js(
+        f"""mathadata.add_observer('{id}', () => mathadata.affichage_image_et_pixels('{id}', '{json.dumps(params, cls=NpEncoder)}'));""")
+
+    # Création du conteneur parent avec 2 div
+    display(
+        HTML(f'''
+        <div id="{id}" style="display:flex; gap: 20px; margin: 20px 0; justify-content: center;">
+            <div id="{id}-data" style="width: 48%; aspect-ratio: 1;">
+                <!-- Zone affichage -->
+            </div>
+            <div id="{id}-tab" style="width: 48%; aspect-ratio: 1; overflow: auto; background: white; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <!-- Zone tab -->
+            </div>
+        </div>
+        ''')
+    )
+
+
+image_3x3 = np.array([
+    [100, 200, 250],
+    [0, 200, 0],
+    [150, 0, 0]
+])
+
+
+def afficher_image_3x3():
+    affichage_image_et_pixels(image_3x3)
+
+
 # Moyenne
 def moyenne(liste):
     arr = np.array(liste)
@@ -544,31 +607,95 @@ def affichage_trois(data=None):
     """)
 
 
+def qcm_carac_moyenne():
+    id = "qcm-carac-moyenne-question-html"
+
+    image_indexes = [958, 2015]
+    carac1 = common.challenge.caracteristique(common.challenge.d_train[image_indexes[0]])
+    carac2 = common.challenge.caracteristique(common.challenge.d_train[image_indexes[1]])
+    diff = carac1 - carac2
+    
+    if abs(diff) < 5: # Au cas où l'ordre du dataset change, correction générique
+        answer_index = 3  # On ne peut pas savoir
+    elif diff > 0:
+        # Image A a plus grande caractéristique
+        answer_index = 0 
+    else:
+        # Image B a plus grande caractéristique
+        answer_index = 1
+        # Même caractéristique
+
+    run_js(f"""mathadata.add_observer('{id}', () => {{
+        console.log('{json.dumps(common.challenge.d, cls=NpEncoder)}');
+        mathadata.affichage("{id}-qcm-image-A", {json.dumps(common.challenge.d_train[image_indexes[0]], cls=NpEncoder)});
+        mathadata.affichage("{id}-qcm-image-B", {json.dumps(common.challenge.d_train[image_indexes[1]], cls=NpEncoder)});
+    }})""")
+
+    html = f"""
+        <div id="{id}" style="display: flex; flex-direction: column; gap: 2rem; justify-content: center; align-items: center;">
+            <p>Parmi les deux images suivantes, laquelle a la plus grande caractéristique ?</p>
+            <div style="display: flex; gap: 4rem; justify-content: center; align-items: center;">
+                <div style="text-align: center;">
+                    <h4 style="margin-bottom: 1rem;">Image A</h4>
+                    <div id="{id}-qcm-image-A" style="width: 250px; aspect-ratio: 1;"></div>
+                </div>
+                <div style="text-align: center;">
+                    <h4 style="margin-bottom: 1rem;">Image B</h4>
+                    <div id="{id}-qcm-image-B" style="width: 250px; aspect-ratio: 1;"></div>
+                </div>
+            </div>
+        </div> 
+    """
+    
+    create_qcm({
+        'question_html': html,
+        'choices': ["L'image A", "L'image B", "Les deux images ont la même caractéristique", "On ne peut pas savoir"],
+        'answer_index': answer_index,
+        'multiline': True,
+        'success': "En effet, l'image B a plus de pixels blancs donc une moyenne plus haute.",
+    })
+
 # JS
 
 styles = '''
     .image-table {
-        aspect-ratio: 1;
+        width: 100%;
         height: 100%;
-        margin: auto !important;
+        margin: 0 !important;
         border-width: 0;
-        margin: 0;
         border-collapse: collapse;
         border-spacing: 0;
-        table-layout: fixed; /* Ensures uniform cell sizing */
+        table-layout: fixed;
     }
-    
+
     .image-table tr {
-        height: calc(1 / 28 * 100%);
+        height: calc(100% / 28);
     }
     
-    .image-table td {
-        width: calc(1 / 28 * 100%);
+    .image-table td, .image-table th {
+        width: min(calc(1 / 28 * 100%), 30px);
         aspect-ratio: 1;
         padding: 0;
         margin: 0;
         border: none;
         position: relative;
+    }
+
+    .image-table-numbers td, .image-table-numbers th {
+        text-align: center;
+        vertical-align: middle;
+        overflow: hidden;
+        border: 1px solid #e8e8e8;
+        box-sizing: border-box;
+        padding: 0;
+        line-height: 1;
+        white-space: nowrap;
+    }
+
+    .image-table-numbers th {
+        background: #f5f5f5;
+        font-weight: bold;
+        border: 1px solid #ccc !important;
     }
 
     .image-table-selection td:hover {
@@ -595,12 +722,15 @@ run_js(f"""
     document.head.appendChild(style);
 """)
 
-run_js("""
+run_js(r"""
 let isSelecting = false;
 
 let zone1 = false;
 let zone2 = false;
 let zones = [[null, null], [null, null]];
+
+const zone1CheckpointId = 'mnist_zone_custom';
+const zone2CheckpointId = 'mnist_zones_custom_2d';
 
 document.addEventListener('mouseup', () => {
     isSelecting = false;
@@ -692,8 +822,24 @@ function selectCells() {
         let python;
         if (zone1 || zone2) {
             python = `update_selected_2((${minRowIndex}, ${minColIndex}), (${maxRowIndex}, ${maxColIndex}), (${minRowIndex2}, ${minColIndex2}), (${maxRowIndex2}, ${maxColIndex2}))`;
+
+            mathadata.checkpoints.save(zone2CheckpointId, {
+                zone1: {
+                    A: [minRowIndex, minColIndex],
+                    B: [maxRowIndex, maxColIndex]
+                },
+                zone2: {
+                    A: [minRowIndex2, minColIndex2],
+                    B: [maxRowIndex2, maxColIndex2]
+                }
+            });
         } else {
             python = `update_selected((${minRowIndex}, ${minColIndex}), (${maxRowIndex}, ${maxColIndex}))`;
+
+            mathadata.checkpoints.save(zone1CheckpointId, {
+                A: [minRowIndex, minColIndex],
+                B: [maxRowIndex, maxColIndex]
+            });
         }
 
         window.mathadata.run_python(python, () => {
@@ -775,16 +921,238 @@ window.mathadata.affichage = (id, matrix, params) => {
     }
 }
 
+// affiche l'image avec les valeurs des pixels
+function affichage_tableau(id, matrix) {
+    const container = document.getElementById(id)
+    container.style.overflow = 'hidden'
+    container.style.display = 'flex'
+    container.style.alignItems = 'center'
+    container.style.justifyContent = 'center'
+    container.innerHTML = '';
+
+    const table = document.createElement('table')
+    table.classList.add('image-table')
+    table.classList.add('image-table-numbers')
+    table.style.width = '100%'
+    table.style.height = '100%'
+
+    // Calculer la taille de police en fonction du nombre de lignes/colonnes
+    // Plus il y a de cellules, plus la police doit être petite
+    const numCols = matrix[0].length + 1; // +1 pour la colonne header
+    const numRows = matrix.length + 1; // +1 pour la ligne header
+    const cellSize = Math.min(100 / numCols, 100 / numRows); // pourcentage
+    // Taille de police proportionnelle à la taille de cellule
+    const fontSize = Math.max(6, Math.min(14, cellSize * 0.4)); // entre 6px et 14px
+    table.style.fontSize = fontSize + 'px';
+
+    container.appendChild(table)
+
+    const thead = document.createElement('thead');
+    const corner_th = document.createElement('th');
+    corner_th.innerText = 'n°';
+    thead.appendChild(corner_th);
+    for (let col = 0; col < matrix[0].length; col++) {
+        const th = document.createElement('th');
+        th.innerText = col + 1;
+        thead.appendChild(th);
+    }
+
+    table.appendChild(thead);
+    for (let row = 0; row < matrix.length; row++) {
+        const tr = document.createElement('tr');
+        const th = document.createElement('th');
+        th.innerText = row + 1;
+        tr.appendChild(th);
+
+        for (let col = 0; col < matrix[row].length; col++) {
+            const td = document.createElement('td');
+            const value = matrix[row][col];
+            td.innerText = value;
+            tr.appendChild(td);
+        }
+        table.appendChild(tr);
+    }
+}
+    
+
+window.mathadata.affichage_image_et_pixels = (id, params) => {
+    if (typeof params === 'string') {
+        params = JSON.parse(params)
+    }
+    
+    const { d } = params;
+    mathadata.affichage(id + '-data', d);
+    affichage_tableau(id + '-tab', d);
+}
+
+window.mathadata.animation_moyenne = async (id, data) => {
+    const container = document.getElementById(id);
+    const table = container.querySelector('table');
+    const cells = Array.from(table.querySelectorAll('td'));
+
+    if (!data) {
+        data = await mathadata.run_python_async('get_data(0)');
+    }
+
+    // Rendre le container position relative pour l'overlay
+    const originalPosition = container.style.position;
+    container.style.position = 'relative';
+
+    const totalPixels = 28 * 28;
+    const flatData = data.flat();
+
+    // Phase 0 : Afficher toutes les valeurs d'un coup en fadeIn
+    cells.forEach((cell, i) => {
+        const value = flatData[i];
+        cell.style.fontSize = '6px';
+        cell.style.fontWeight = 'bold';
+        cell.style.textAlign = 'center';
+        cell.style.color = value > 127 ? 'rgba(0, 0, 0, 0)' : 'rgba(255, 255, 255, 0)';
+        cell.style.transition = 'color 1000ms ease';
+        cell.innerText = value;
+    });
+
+    requestAnimationFrame(() => {
+        cells.forEach((cell, i) => {
+            const value = flatData[i];
+            cell.style.color = value > 127 ? 'rgba(0, 0, 0, 1)' : 'rgba(255, 255, 255, 1)';
+        });
+    });
+
+    // Pause pour voir toutes les valeurs
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Créer le conteneur d'affichage avec somme à gauche et count à droite
+    const displayContainer = document.createElement('div');
+    displayContainer.style.position = 'absolute';
+    displayContainer.style.left = '50%';
+    displayContainer.style.top = '50%';
+    displayContainer.style.transform = 'translate(-50%, -50%)';
+    displayContainer.style.display = 'flex';
+    displayContainer.style.alignItems = 'center';
+    displayContainer.style.gap = '20px';
+    displayContainer.style.fontSize = '28px';
+    displayContainer.style.fontWeight = 'bold';
+    displayContainer.style.color = '#fff';
+    displayContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+    displayContainer.style.padding = '20px 30px';
+    displayContainer.style.borderRadius = '12px';
+    displayContainer.style.zIndex = '1000';
+    container.appendChild(displayContainer);
+
+    // Somme à gauche
+    const sumDisplay = document.createElement('div');
+    sumDisplay.textContent = '0';
+    displayContainer.appendChild(sumDisplay);
+
+    // Zone pour le symbole diviser (initialement vide)
+    const dividerDisplay = document.createElement('div');
+    dividerDisplay.style.fontSize = '32px';
+    dividerDisplay.style.opacity = '0';
+    displayContainer.appendChild(dividerDisplay);
+
+    // Compteur à droite
+    const countDisplay = document.createElement('div');
+    countDisplay.textContent = '0';
+    displayContainer.appendChild(countDisplay);
+
+    let sum = 0;
+    let count = 0;
+    const initialDelay = 15;  // Début: 15ms par pixel
+    const minDelay = 0.5;     // Fin: 0.5ms par pixel
+    const accelerationFactor = 1.08;
+
+    // Phase 1 : Parcours rapide avec "+" qui tombent
+    for (let i = 0; i < cells.length; i++) {
+        const cell = cells[i];
+        const value = flatData[i];
+
+        // Calculer le délai avec accélération
+        const delay = Math.max(minDelay, initialDelay / Math.pow(accelerationFactor, i / 50));
+
+        // Créer le symbole "+" qui pop
+        const plusSign = document.createElement('div');
+        plusSign.textContent = '+';
+        plusSign.style.position = 'absolute';
+        plusSign.style.fontSize = '14px';
+        plusSign.style.fontWeight = 'bold';
+        plusSign.style.color = '#ff4444';
+        plusSign.style.pointerEvents = 'none';
+        plusSign.style.top = '50%';
+        plusSign.style.left = '50%';
+        plusSign.style.transform = 'translate(-50%, -50%) scale(0)';
+        plusSign.style.transition = 'transform 200ms ease-out, opacity 400ms ease-out';
+        plusSign.style.zIndex = '10';
+        plusSign.style.opacity = '1';
+        cell.appendChild(plusSign);
+
+        // Animation de pop
+        requestAnimationFrame(() => {
+            plusSign.style.transform = 'translate(-50%, -50%) scale(1.5)';
+        });
+
+        // Ajouter à la somme et au compteur
+        sum += value;
+        count++;
+        sumDisplay.textContent = Math.round(sum);
+        countDisplay.textContent = count;
+
+        // Faire disparaître en fondu après 200ms
+        setTimeout(() => {
+            plusSign.style.opacity = '0';
+            plusSign.style.transform = 'translate(-50%, -50%) scale(1)';
+            // Supprimer après le fade out
+            setTimeout(() => plusSign.remove(), 400);
+        }, 200);
+
+        await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    // Phase 2 : Faire apparaître le symbole diviser
+    await new Promise(resolve => setTimeout(resolve, 400));
+    dividerDisplay.textContent = '÷';
+    dividerDisplay.style.transition = 'opacity 400ms ease';
+    dividerDisplay.style.opacity = '1';
+
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    // Phase 3 : Transformer en résultat final
+    const moyenne = sum / totalPixels;
+    const moyenneColor = Math.round(moyenne);
+
+    // Masquer le layout somme/count et afficher le résultat
+    displayContainer.style.backgroundColor = `rgb(${moyenneColor}, ${moyenneColor}, ${moyenneColor})`;
+    displayContainer.style.color = moyenneColor > 127 ? '#000' : '#fff';
+    displayContainer.style.flexDirection = 'column';
+    displayContainer.style.gap = '10px';
+    sumDisplay.textContent = 'Moyenne';
+    sumDisplay.style.fontSize = '18px';
+    dividerDisplay.style.display = 'none';
+    countDisplay.textContent = moyenne.toFixed(1);
+    countDisplay.style.fontSize = '32px';
+
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
+    // Nettoyer
+    displayContainer.remove();
+
+    // Enlever toutes les valeurs affichées
+    cells.forEach(cell => {
+        cell.innerText = '';
+    });
+    container.style.position = originalPosition;
+}
+
 window.mathadata.setup_zone_selection = (id, matrixes) => {
     matrixes = JSON.parse(matrixes)
-    
+
     const container = document.getElementById(id)
     container.innerHTML = `
         <div id="${id}-selection">
             <div class="custom-images" id="${id}-images"></div>
         </div>
     `;
-    
+
     const imagesContainer = document.getElementById(`${id}-images`)
     window.mathadata.image_tables = [];
     for (let i = 0; i < matrixes.length; i++) {
@@ -796,12 +1164,27 @@ window.mathadata.setup_zone_selection = (id, matrixes) => {
         window.mathadata.image_tables.push(window.mathadata.affichage(`${id}-image-${i}`, matrixes[i], {with_selection: true}))
     }
 
+    // Charger la zone sauvegardée si elle existe
+
+    const savedZone = window.mathadata.checkpoints.get(zone1CheckpointId);
+    if (savedZone && savedZone.A?.every(v => v !== null) && savedZone.B?.every(v => v !== null)) {
+        // Restaurer la zone sauvegardée
+        const firstTable = window.mathadata.image_tables[0];
+        if (firstTable && firstTable.rows) {
+            const startCell = firstTable.rows[savedZone.A[0]]?.cells[savedZone.A[1]];
+            const endCell = firstTable.rows[savedZone.B[0]]?.cells[savedZone.B[1]];
+            if (startCell && endCell) {
+                zones[0] = [startCell, endCell];
+            }
+        }
+    }
+
     selectCells(); // To show zones if reexecute
 }
 
 window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
     matrixes = JSON.parse(matrixes)
-    
+
     const container = document.getElementById(id)
     container.innerHTML = `
          <style>
@@ -901,7 +1284,7 @@ window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
             <!-- Par défaut, Zone 1 est affichée -->
         </div>
 
-        
+
         </div>
     </div>
     `;
@@ -916,7 +1299,7 @@ window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
         zone1 = !toggle.checked;
         zone2 = toggle.checked;
     })
-    
+
     const imagesContainer = document.getElementById(`${id}-images`)
     window.mathadata.image_tables = [];
     for (let i = 0; i < matrixes.length; i++) {
@@ -926,6 +1309,32 @@ window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
         table.id = `${id}-image-${i}`
         imagesContainer.appendChild(table)
         window.mathadata.image_tables.push(window.mathadata.affichage(`${id}-image-${i}`, matrixes[i], {with_selection: true}))
+    }
+
+    // Charger les zones sauvegardées si elles existent
+    const savedZones = window.mathadata.checkpoints.get(zone2CheckpointId);
+    if (savedZones) {
+        const firstTable = window.mathadata.image_tables[0];
+        if (firstTable && firstTable.rows) {
+
+            if (savedZones.zone1.A?.every(v => v !== null) && savedZones.zone1.B?.every(v => v !== null)) {
+                // Restaurer zone 1
+                const start1 = firstTable.rows[savedZones.zone1.A[0]]?.cells[savedZones.zone1.A[1]];
+                const end1 = firstTable.rows[savedZones.zone1.B[0]]?.cells[savedZones.zone1.B[1]];
+                if (start1 && end1) {
+                    zones[0] = [start1, end1];
+                }
+            }
+            
+            if (savedZones.zone2.A?.every(v => v !== null) && savedZones.zone2.B?.every(v => v !== null)) {
+                // Restaurer zone 2
+                const start2 = firstTable.rows[savedZones.zone2.A[0]]?.cells[savedZones.zone2.A[1]];
+                const end2 = firstTable.rows[savedZones.zone2.B[0]]?.cells[savedZones.zone2.B[1]];
+                if (start2 && end2) {
+                    zones[1] = [start2, end2];
+                }
+            }
+        }
     }
 
     selectCells(); // To show zones if reexecute
@@ -949,27 +1358,70 @@ function isBoardBlack(board) {
 window.mathadata.interface_data_gen = (id) => {
     const container = document.getElementById(id);
     const table_id = id + '-table';
-    
+
     container.innerHTML = `
         <div>
-            <table id="${table_id}" class="image-table" style="height: 300px"></table>
+            <table id="${table_id}" class="image-table" style="height: 300px; aspect-ratio: 1;"></table>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 1rem; align-items: center; justify-content: center; height: 100%">
-            <p style="margin-bottom: 2rem; font-size: 14px; text-align: center; max-width: 400px;">Maintenez appuyé et passez la souris sur le tableau noir pour dessiner un chiffre.</p>
-            <div>
-                <label for="gomme" style="margin-right: 10px">Gomme</label>
-                <input type="checkbox" class="toggle" id="gomme">
+        <div style="display: flex; flex-direction: column; gap: 1.5rem; align-items: center; justify-content: center; height: 100%">
+            <p style="font-size: 13px; color: #666; text-align: center; max-width: 280px; margin: 0; line-height: 1.5;">
+                Cliquez sur la zone noir et déplacez la souris pour dessiner
+            </p>
+
+            <!-- Switch Dessin/Gomme -->
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; align-items: center;">
+                <label style="font-size: 14px; font-weight: 500; color: #333;">Mode</label>
+                <div style="display: flex; align-items: center; gap: 0.5rem; background: #f5f5f5; padding: 0.5rem 0.75rem; border-radius: 8px;">
+                    <span id="${id}-mode-label-draw" style="font-size: 13px; font-weight: 600; color: #667eea;">Dessin</span>
+                    <label style="position: relative; display: inline-block; width: 50px; height: 26px; margin: 0;">
+                        <input type="checkbox" id="${id}-gomme" style="opacity: 0; width: 0; height: 0;">
+                        <span id="${id}-switch-bg" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #667eea; transition: 0.3s; border-radius: 26px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);"></span>
+                        <span id="${id}-switch-btn" style="position: absolute; content: ''; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: 0.3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></span>
+                    </label>
+                    <span id="${id}-mode-label-erase" style="font-size: 13px; color: #999;">Gomme</span>
+                </div>
             </div>
-            <button style="height: 50px; width: 100px; display: flex; justify-content: center; align-items: center; background-color: #B20F0F; border: none; border-radius: 5px; cursor: pointer; margin: 10px 0">Tout effacer</button>
+
+            <!-- Bouton Effacer tout -->
+            <button id="${id}-reset" class="mathadata-button" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; padding: 12px 24px; font-size: 14px;">
+                Tout effacer
+            </button>
         </div>
     `;
 
     const table = document.getElementById(table_id);
-    
-    const toggleGomme = document.getElementById('gomme');
-    const resetButton = container.querySelector('button');
+    const toggleGomme = document.getElementById(`${id}-gomme`);
+    const resetButton = document.getElementById(`${id}-reset`);
+    const modeLabelDraw = document.getElementById(`${id}-mode-label-draw`);
+    const modeLabelErase = document.getElementById(`${id}-mode-label-erase`);
+    const switchBg = document.getElementById(`${id}-switch-bg`);
+    const switchBtn = document.getElementById(`${id}-switch-btn`);
 
-    container.style = 'display:flex; justify-content: space-around; align-items: center;';
+    // Style du container (restauré de l'original)
+    container.style = 'display:flex; justify-content: space-around; align-items: center; gap: 2rem;';
+
+    // Gérer le changement de mode visuel
+    toggleGomme.addEventListener('change', () => {
+        if (toggleGomme.checked) {
+            // Mode gomme
+            modeLabelDraw.style.color = '#999';
+            modeLabelDraw.style.fontWeight = '400';
+            modeLabelErase.style.color = '#ff6b6b';
+            modeLabelErase.style.fontWeight = '600';
+            // Changer la couleur du switch
+            switchBg.style.backgroundColor = '#ff6b6b';
+            switchBtn.style.left = '27px';
+        } else {
+            // Mode dessin
+            modeLabelDraw.style.color = '#667eea';
+            modeLabelDraw.style.fontWeight = '600';
+            modeLabelErase.style.color = '#999';
+            modeLabelErase.style.fontWeight = '400';
+            // Changer la couleur du switch
+            switchBg.style.backgroundColor = '#667eea';
+            switchBtn.style.left = '3px';
+        }
+    });
 
     // Création de la table avec des cellules initialement noires
     for (let row = 0; row < 28; row++) {
@@ -1105,42 +1557,41 @@ def validate_algo(errors, answers):
     return True
 
 
-def validate_pixel_noir(errors, answers):
-    if d[17][15] is Ellipsis:
-        errors.append("Tu n'as pas remplacé les ...")
-        return False
-    answers['pixel'] = int(d[17][15])
-    if d[17][15] == 0:
-        return True
-    elif d[17][15] == 254:
-        errors.append("Tu n'as pas changé la valeur du pixel, il vaut toujours 254")
-    else:
-        errors.append(
-            "Tu as bien changé la valeur mais ce n'est pas la bonne. Relis l'énoncé pour voir la valeur à donner pour un pixel noir.")
-    return False
+def question_pixel():
+    value = 210
+    create_qcm({
+        'question_html': f"A votre avis, quelle est la valeur associée à ce pixel ?<br/><div style='width: 60px; height: 60px; background-color: rgb({value}, {value}, {value}); margin: 10px auto; border: 1px solid black;'></div>",
+        'choices': ['10', '110', str(value)],
+        'answer': str(value)
+    })
 
 
 validation_execution_affichage = MathadataValidate(success="")
-validation_question_pixel = MathadataValidateVariables({
-    'pixel': {
-        'value': int(d[18, 15]),
-        'errors': [
-            {
-                'value': {
-                    'min': 0,
-                    'max': 255
-                },
-                'else': "Ta réponse n'est pas bonne. Les pixels peuvent uniquement avoir des valeurs entre 0 et 255."
-            },
-            {
-                'value': int(d[15, 18]),
-                'if': "Attention ! Les coordonnées sont données en (ligne, colonne)."
-            }
-        ]
-    }
-})
-validation_question_pixel_noir = MathadataValidate(success="Bravo, le pixel est devenu noir.",
-                                                   function_validation=validate_pixel_noir)
+
+validation_question_nb_pixels = MathadataValidateVariables({
+    'nb_pixels': d.shape[0] * d.shape[1],
+}, tips=[{
+    'seconds': 10,
+    'tip': "Pour connaître le nombre de pixels dans une image, il faut multiplier le nombre de lignes par le nombre de colonnes."
+}, {
+    'seconds': 30,
+    'trials': 2,
+    'tip': "Les images ont 28 lignes et 28 colonnes."
+}],
+    success="Bravo, les images ont 28 lignes et 28 colonnes, donc elles contiennent 28 X 28 = 784 pixels.")
+
+validation_execution_afficher_image_3x3 = MathadataValidate(success="")
+validation_question_moyenne_3x3 = MathadataValidateVariables({
+    'x': np.mean(image_3x3),
+}, tips=[{
+    'tip': "Pour calculer la moyenne des pixels, il faut additionner les valeurs de tous les pixels puis diviser par le nombre total de pixels."
+}, {
+    'seconds': 60,
+    'trials': 2,
+    'tip': f"La somme des valeurs des pixels de l'image est {np.sum(image_3x3)}."
+}],
+    success=f"Bravo, la caractéristique vaut {np.sum(image_3x3)} / {np.size(image_3x3)} = {np.mean(image_3x3)}")
+
 validation_question_moyenne = MathadataValidateVariables({'moyenne_zone_4pixels': np.mean(d[14:16, 15:17])},
                                                          success="Bravo, la moyenne vaut en effet (142 + 154 + 0 + 0) / 4 = 74")
 validation_question_moyenne_triple = MathadataValidateVariables({'moyenne_pixels': np.mean(d_simple)},
@@ -1261,7 +1712,7 @@ validation_question_affichage_trois = MathadataValidateVariables({
     }
 })
 
-#Stockage valeur zones custom proposés
+# Stockage valeur zones custom proposés
 A_2 = (7, 2)  # <- coordonnées du point A1
 B_2 = (9, 25)  # <- coordonnées du point B1
 A_1 = (14, 2)  # <- coordonnées du point A2
