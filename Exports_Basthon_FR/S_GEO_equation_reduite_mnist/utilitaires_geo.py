@@ -829,7 +829,7 @@ def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save
 
 def tracer_points_droite_vecteur_directeur(initial_values=None):
     if initial_values is None:
-        initial_values = {'ux': 5, 'uy': 10, 'xa': 50, 'ya': 50}
+        initial_values = {'ux': 5, 'uy': 10, 'xa': 50, 'ya': 80}
     tracer_points_droite_vecteur(directeur=True, initial_values=initial_values)
 
 def update_custom():
@@ -1287,7 +1287,7 @@ run_js('''
           params = JSON.parse(params);
       }
 
-      const {points, droite, vecteurs, centroides, additionalPoints, hideClasses, hover, inputs, initial_values, displayValue, save, custom, compute_score, drag, force_origin, equation_hide, param_colors, equation_fixed_position } = params;
+      const {points, droite, vecteurs, centroides, additionalPoints, hideClasses, hover, inputs, initial_values, displayValue, save, custom, compute_score, drag, force_origin, equation_hide, param_colors, equation_fixed_position, side_box = true } = params;
         // points: tableau des données en entrée sous forme de coordonnées (deux éléments, les points des 2 et les points des 7) [[[x,y],[x,y],...] , [[x,y],[x,y],...]]
         // droite: la droite à afficher (objet)
         // vecteurs: vecteurs à afficher pour le bouger (normal ou directeur)
@@ -1321,6 +1321,20 @@ run_js('''
             text: `y = ${m}x ${sign} ${absP}`
         };
       };
+
+      const getYInterceptPoint = (vals) => {
+        if (!vals || vals.b === undefined || vals.c === undefined) {
+            return null;
+        }
+        if (vals.b === 0) {
+            return null;
+        }
+        const y0 = -vals.c / vals.b;
+        if (!isFinite(y0)) {
+            return null;
+        }
+        return { x: 0, y: y0 };
+      };
       
       const computeScore = () => {
         const {a, b, c} = values;
@@ -1348,6 +1362,76 @@ run_js('''
       if (initial_values) {
           Object.assign(values, initial_values)
       }
+
+      // Slope box (optionnel)
+      const slopeBox = side_box ? document.getElementById(`${id}-slope-box`) : null;
+      if (slopeBox && !slopeBox.dataset.init) {
+        slopeBox.innerHTML = `
+          <svg id="${id}-slope-svg" width="100%" height="100%" viewBox="0 0 250 180" style="overflow: visible;">
+              <line id="${id}-slope-base" stroke="black" stroke-width="4" stroke-linecap="round" />
+              <line id="${id}-slope-height" stroke="${param_colors?.m || '#239E28'}" stroke-width="4" stroke-linecap="round" />
+              <line id="${id}-slope-hypo" stroke="purple" stroke-width="5" stroke-linecap="round" />
+              <text id="${id}-text-base" text-anchor="middle" font-weight="bold" font-size="16">5</text>
+              <text id="${id}-text-calc" text-anchor="start" font-weight="bold" font-size="16" fill="${param_colors?.m || '#239E28'}"></text>
+          </svg>
+        `;
+        slopeBox.dataset.init = '1';
+      }
+
+      const getSlope = () => {
+        if (values.m !== undefined) return values.m;
+        if (values.a !== undefined && values.b !== undefined && values.b !== 0) {
+          return -(values.a / values.b);
+        }
+        return null;
+      };
+
+      const updateSlopeBox = () => {
+        if (!slopeBox) return;
+        const svg = document.getElementById(`${id}-slope-svg`);
+        if (!svg) return;
+        const baseLine = document.getElementById(`${id}-slope-base`);
+        const heightLine = document.getElementById(`${id}-slope-height`);
+        const hypoLine = document.getElementById(`${id}-slope-hypo`);
+        const textBase = document.getElementById(`${id}-text-base`);
+        const textCalc = document.getElementById(`${id}-text-calc`);
+        if (!baseLine || !heightLine || !hypoLine || !textBase || !textCalc) return;
+
+        const mVal = getSlope() ?? 0;
+        const basePx = 80; // 5 unités => 80px
+        const Ax = 40;
+        const Ay = 100;
+        const Bx = Ax + basePx;
+        const By = Ay;
+        const hPx = basePx * mVal;
+        const Cx = Bx;
+        const Cy = By - hPx;
+
+        baseLine.setAttribute('x1', Ax);
+        baseLine.setAttribute('y1', Ay);
+        baseLine.setAttribute('x2', Bx);
+        baseLine.setAttribute('y2', By);
+
+        heightLine.setAttribute('x1', Bx);
+        heightLine.setAttribute('y1', By);
+        heightLine.setAttribute('x2', Cx);
+        heightLine.setAttribute('y2', Cy);
+
+        hypoLine.setAttribute('x1', Ax);
+        hypoLine.setAttribute('y1', Ay);
+        hypoLine.setAttribute('x2', Cx);
+        hypoLine.setAttribute('y2', Cy);
+
+        textBase.setAttribute('x', (Ax + Bx) / 2);
+        textBase.setAttribute('y', Ay + 20);
+
+        textCalc.setAttribute('x', Bx + 10);
+        textCalc.setAttribute('y', (By + Cy) / 2 + 5);
+
+        const mDisp = parseFloat(mVal.toFixed(2));
+        const resDisp = parseFloat((5 * mVal).toFixed(2));
+        textCalc.textContent = `5 x ${mDisp} = ${resDisp}`;
+      };
       
       const plugins = [];
 
@@ -1371,6 +1455,7 @@ run_js('''
       
       let max, min;
       let droiteDatasetIndex;
+      let yInterceptDatasetIndex;
       let centroid1DatasetIndex, centroid2DatasetIndex;
 
         // when caracteristique changes
@@ -1387,6 +1472,12 @@ run_js('''
             })
         } else { // pour appeler depuis le callback dragData sans changer les coordonnées des points
             points = datasets.slice(0, 2).map(d => d.data).map(d => d.map(({x, y}) => [x, y]))
+        }
+
+        const interceptPoint = getYInterceptPoint(values);
+        if (interceptPoint) {
+            max = Math.max(max, interceptPoint.y);
+            min = Math.min(min, interceptPoint.y);
         }
 
         if (centroid1DatasetIndex) {
@@ -1414,6 +1505,11 @@ run_js('''
             }
         }
 
+        if (yInterceptDatasetIndex !== undefined) {
+            const interceptData = getYInterceptPoint(values);
+            datasets[yInterceptDatasetIndex].data = interceptData ? [interceptData] : [];
+        }
+
         const chart = mathadata.charts[`${id}-chart`]
         if (chart) {
           chart.options.scales.x.min = min
@@ -1426,10 +1522,9 @@ run_js('''
         if (compute_score) {
             computeScore()
         }
-      }
 
-      // initialisation
-      updatePoints(points)
+        updateSlopeBox();
+      }
 
         // rend la fonction updatePoints accessible via l'objet chart
       plugins.push({
@@ -1843,6 +1938,20 @@ run_js('''
           if (compute_score) {
             computeScore()
           }
+
+          // Ordonnée à l'origine (point rouge sur l'axe des ordonnées)
+          const initialIntercept = getYInterceptPoint(values);
+          datasets.push({
+              label: "Ordonnée à l'origine",
+              data: initialIntercept ? [initialIntercept] : [],
+              backgroundColor: 'red',
+              borderColor: 'red',
+              pointStyle: 'circle',
+              pointRadius: 6,
+              pointHoverRadius: 6,
+              order: 2,
+          });
+          yInterceptDatasetIndex = datasets.length - 1;
         }
 
       if (additionalPoints) {
@@ -1888,6 +1997,9 @@ run_js('''
             }
         })
       }
+      
+      // initialisation (après création des datasets, incluant l'ordonnée à l'origine)
+      updatePoints(points, {animate: false})
       
         // Create the Chart.js configuration
         const chartConfig = {
@@ -2012,6 +2124,9 @@ run_js('''
         }
         
         window.mathadata.create_chart(`${id}-chart`, chartConfig);
+        if (side_box) {
+          updateSlopeBox();
+        }
 
         if (inputs) {
           // On suppose que les inputs ont un élément html correspondant avec l'id {id}-input-{key}
@@ -2080,6 +2195,10 @@ run_js('''
             if (droiteDatasetIndex) {
               datasets[droiteDatasetIndex].data = mathadata.findIntersectionPoints(values.a, values.b, values.c, min, max); 
             }
+            if (yInterceptDatasetIndex !== undefined) {
+              const interceptData = getYInterceptPoint(values);
+              datasets[yInterceptDatasetIndex].data = interceptData ? [interceptData] : [];
+            }
 
             mathadata.charts[`${id}-chart`].update()
 
@@ -2087,6 +2206,8 @@ run_js('''
             if (compute_score) {
               computeScore()
             }
+
+            updateSlopeBox();
           }
 
           // Initialisation point A
@@ -2212,8 +2333,7 @@ def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banqu
                 print(success_msg)
             pass_breakpoint()
 
-    calculer_score(algorithme, method="2 moyennes",
-                   parameters=f"a={input_values['a']}, b={input_values['b']}, c={input_values['c']}", cb=cb,
+    calculer_score(algorithme, cb=cb,
                    banque=banque)
 
 

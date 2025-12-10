@@ -520,15 +520,8 @@ def compute_erreur(func_carac=None):
 
     return (t_values, scores_array)
 
-# registered_calculer_score_cb = None
 
-# def call_calculer_score_cb(score):
-#     global registered_calculer_score_cb
-#     if registered_calculer_score_cb is not None:
-#         registered_calculer_score_cb(score)
-#         registered_calculer_score_cb = None
-
-def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=None, caracteristique=None, banque=True, animation=True):
+def calculer_score(algorithme, cb=None, caracteristique=None, banque=True, animation=True):
     try:
         r_prediction_train = get_estimations(challenge.d_train, algorithme=algorithme)
         score = np.mean(r_prediction_train != challenge.r_train)
@@ -539,10 +532,11 @@ def calculer_score(algorithme, method=None, parameters=None, cb=None, a=None, b=
             # registered_calculer_score_cb = cb
             animation_classification_score(r_prediction_train)
         else:
-            print("Calcul du score en cours...")
+            print("Calcul du pourcentage d'erreur en cours...")
             if banque:
                 affichage_banque(carac=caracteristique, showPredictions=True, estimations=r_prediction_train)
             set_score(score)
+            print(f"Pourcentage d'erreur : {score * 100:.2f}%")
 
         if cb is not None:
             cb(score)
@@ -621,6 +615,9 @@ def test_algorithme(algorithme=None):
 def test_algorithme_faineant():
     """Test l'algorithme paresseux avec l'interface animation calcul score"""
     test_algorithme(algorithme=algo_faineant)
+
+def test_algorithme_ref():
+    test_algorithme(algorithme=algo_carac)
 
 
 def animation_classification_score(estimations):
@@ -858,13 +855,13 @@ def calculer_score_etape_1(animation=True):
     def cb(score):
         validation_score_fixe()
 
-    calculer_score(algo_faineant, method="fixed", cb=cb, animation=animation)  
+    calculer_score(algo_faineant, cb=cb, animation=animation)
 
 def calculer_score_carac():
     def cb(score):
         validation_score_carac()
 
-    calculer_score(algo_carac, method="carac ref", cb=cb, caracteristique=caracteristique)
+    calculer_score(algo_carac, cb=cb, caracteristique=caracteristique, animation=False)
 
 
 def calculer_score_custom():
@@ -879,7 +876,7 @@ def calculer_score_custom():
             set_step_algo_carac_custom(answers=None)
             validation_custom()
 
-    calculer_score(algo_carac_custom, method="carac custom", caracteristique=challenge.caracteristique_custom, cb=cb)
+    calculer_score(algo_carac_custom, caracteristique=challenge.caracteristique_custom, cb=cb, animation=False)
 
 
 def calculer_score_code_eleve():
@@ -906,7 +903,7 @@ def calculer_score_code_eleve():
         else:
             print_error("Essaie de trouver une zone qui fait moins de 5% d'erreur.")
 
-    calculer_score(algorithme, method="code eleve", caracteristique=get_variable('caracteristique'))
+    calculer_score(algorithme, caracteristique=get_variable('caracteristique'))
 
 
 def calculer_score_code_free():
@@ -929,7 +926,7 @@ def calculer_score_code_free():
 
     validation_code_free()
 
-    calculer_score(algorithme, method="code free", caracteristique=get_variable('caracteristique'))
+    calculer_score(algorithme, caracteristique=get_variable('caracteristique'))
 
 
 def calculer_score_code_etendue():
@@ -952,7 +949,7 @@ def calculer_score_code_etendue():
 
     validation_code_etendue()
 
-    calculer_score(algorithme, method="code etendue", caracteristique=get_variable('caracteristique'))
+    calculer_score(algorithme, caracteristique=get_variable('caracteristique'))
 
 
 def calculer_score_code_moyenne_ligne():
@@ -975,7 +972,7 @@ def calculer_score_code_moyenne_ligne():
 
     validation_code_moyenne_ligne()
 
-    calculer_score(algorithme, method="code moyenne ligne", caracteristique=get_variable('caracteristique'))
+    calculer_score(algorithme, caracteristique=get_variable('caracteristique'))
 
 
 def get_erreur_plot(func_carac=None):
@@ -1031,6 +1028,30 @@ def exercice_droite_carac():
         </div>
     '''))
 
+    
+def affichage_10_droite():
+    id = uuid.uuid4().hex
+
+    size = 10
+    set = challenge.d_train[0:size]
+    c_train = compute_c_train(challenge.caracteristique, set)
+
+    t = get_variable('t')
+
+    params = {
+        'c_train': c_train,
+        'labels': [0 if r == challenge.classes[0] else 1 for r in challenge.r_train[0:size]],
+        't': t,
+        'afficherPoints': True,
+    }
+
+    run_js(
+        f"mathadata.add_observer('{id}', () => window.mathadata.tracer_droite_carac('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
+
+    display(HTML(f'''
+        <canvas id="{id}"></canvas>
+    '''))
+
 
 def calculer_score_seuil_optimise():
     if not validation_question_seuil_optimise():
@@ -1044,7 +1065,7 @@ def calculer_score_seuil_optimise():
         x = caracteristique(d)
         return classification(x, t)
 
-    calculer_score(algorithme, method="carac ref seuil optim", parameters=f"t={t}")
+    calculer_score(algorithme)
 
 
 ### Analytics ###
@@ -2411,6 +2432,15 @@ run_js("""
 
             mathadata.tracer_droite_carac(`${id}-chart`, params)
             const chart = window.mathadata.charts[`${id}-chart`]
+
+            /* erreur recursion scriptable
+            chart.options.plugins.legend = chart.options.plugins.legend || {}
+            chart.options.plugins.legend.labels = chart.options.plugins.legend.labels || {}
+            chart.options.plugins.legend.labels.filter = function(legendItem, data) {
+                console.log(legendItem.text)
+                return legendItem.text !== 'Erreur';
+            }
+            */
             
             for (let i = 0; i < i_exercice_droite_carac; i++) {
                 const datasetIndex = labels[i]
@@ -2428,10 +2458,15 @@ run_js("""
                 return `${dataname} n°${context[0].dataIndex + 1}`;    
             }
 
-            function setStatusMessage(msg) {
+            function setStatusMessage(msg, color) {
                 const status = document.getElementById(`${id}-status`)
                 status.innerHTML = msg
+                status.style.color = color || 'black'
             }
+
+            // Variable pour gérer l'animation d'erreur en cours
+            let currentErrorInterval = null;
+            let currentErrorDatasetIndex = null;
 
             if (i_exercice_droite_carac < c_train.length) {
                 setStatusMessage(`Cliquez sur la droite au bon endroit pour placer ${mathadata.data('le')} n°${i_exercice_droite_carac + 1}.`)
@@ -2445,7 +2480,7 @@ run_js("""
                         i_exercice_droite_carac++
                         if (i_exercice_droite_carac == c_train.length) {
                             chart.options.onClick = null;
-                            setStatusMessage(`Bravo, vous avez placé tous les points ! Exécutez la cellule suivante pour passer à la suite.`)
+                            setStatusMessage(`Bravo, vous avez placé tous les points ! Exécutez la cellule suivante pour passer à la suite.`, 'green')
                             localStorage.setItem('exercice_droite_carac_ok', 'true')
                             window.mathadata.run_python(`set_exercice_droite_carac_ok()`)
                         } else {
@@ -2453,18 +2488,74 @@ run_js("""
                         }
                         chart.update()
                     } else {
-                        setStatusMessage(`${mathadata.data({article: 'le', uppercase: true})} n'est pas à la bonne position sur la droite. Tu as placé un point à l'abscisse ${dataX.toFixed(2)} alors que ${mathadata.data({article: 'le', alt: true})} a une caractéristique x = ${c_train[i_exercice_droite_carac].toFixed(2)}`)
+                        setStatusMessage(`${mathadata.data({article: 'le', uppercase: true})} n'est pas à la bonne position sur la droite. Tu as placé un point à l'abscisse ${dataX.toFixed(2)} alors que ${mathadata.data({article: 'le', alt: true})} a une caractéristique x = ${c_train[i_exercice_droite_carac].toFixed(2)}`, 'red')
+
+                        // Nettoyer toute animation d'erreur en cours
+                        if (currentErrorInterval !== null) {
+                            clearInterval(currentErrorInterval);
+                            // Supprimer le dataset d'erreur précédent s'il existe encore
+                            if (currentErrorDatasetIndex !== null) {
+                                const indexToRemove = chart.data.datasets.findIndex(ds => ds.label === 'Erreur');
+                                if (indexToRemove !== -1) {
+                                    chart.data.datasets.splice(indexToRemove, 1);
+                                }
+                            }
+                        }
+
+                        // Ajouter un dataset temporaire pour le point d'erreur
+                        const errorDatasetIndex = chart.data.datasets.length;
+                        chart.data.datasets.push({
+                            label: 'Erreur',
+                            data: [{x: dataX, y: 0}],
+                            pointRadius: 4,
+                            pointBackgroundColor: 'rgba(255, 0, 0, 1)', // Opacité complète au départ
+                        });
+                        chart.update();
+
+                        // Stocker l'index du dataset d'erreur
+                        currentErrorDatasetIndex = errorDatasetIndex;
+
+                        // Faire clignoter le point en alternant l'opacité
+                        let blinkCount = 0;
+                        let isVisible = true;
+                        currentErrorInterval = setInterval(() => {
+                            const errorDataset = chart.data.datasets[errorDatasetIndex];
+                            if (errorDataset) {
+                                // Alterner l'opacité entre visible et presque invisible
+                                isVisible = !isVisible;
+                                errorDataset.pointBackgroundColor = isVisible ? 'rgba(255, 0, 0, 1)' : 'rgba(255, 0, 0, 0.1)';
+                                errorDataset.pointBorderColor = isVisible ? 'rgb(200, 0, 0)' : 'rgba(200, 0, 0, 0.1)';
+                                chart.update();
+                                blinkCount++;
+
+                                if (blinkCount >= 8) { // 4 clignotements complets
+                                    clearInterval(currentErrorInterval);
+                                    currentErrorInterval = null;
+                                    currentErrorDatasetIndex = null;
+                                    // Supprimer le dataset d'erreur après le clignotement
+                                    const indexToRemove = chart.data.datasets.findIndex(ds => ds.label === 'Erreur');
+                                    if (indexToRemove !== -1) {
+                                        chart.data.datasets.splice(indexToRemove, 1);
+                                    }
+                                    chart.update();
+                                }
+                            }
+                        }, 500); // Clignoter toutes les 200ms
                     }
                 }
             } else {
-                setStatusMessage(`Bravo, vous avez placé tous les points ! Exécutez la cellule suivante pour passer à la suite.`)
+                setStatusMessage(`Bravo, vous avez placé tous les points ! Exécutez la cellule suivante pour passer à la suite.`, 'green')
             }
 
             chart.update()
         },
 
         tracer_droite_carac(id, params) {
-            const {c_train, labels, t} = params
+            if (typeof params === 'string') {
+                params = JSON.parse(params)
+            }
+            
+            const {c_train, labels, t, afficherPoints} = params
             const max = Math.ceil(Math.max(...c_train) + 1)
             const min = Math.min(0, Math.floor(Math.min(...c_train) - 1))
 
@@ -2535,6 +2626,12 @@ run_js("""
                         }
                     },
                 }
+            }
+            
+            if (afficherPoints) {
+                c_train.forEach((x, i) => {
+                    config.data.datasets[labels[i]].data.push({x, y: 0});
+                })
             }
 
             if (t != undefined) {
@@ -4049,7 +4146,7 @@ def affichage_seuil():
         return True
 
 
-validation_execution_affichage_score = MathadataValidate(success="")
+validation_execution_affichage_10_droite = MathadataValidate(success="")
 
 validation_question_score_seuil = ValidateScoreThresold()
 validation_score_carac = MathadataValidate(success="")
@@ -4096,6 +4193,7 @@ validation_question_nombre_total = MathadataValidateVariables(get_names_and_valu
 ])
 
 validation_execution_test_algorithme_faineant = MathadataValidate(success="", on_success=lambda a: print(f"Testez l'algorithme sur plusieurs {data(alt=True, plural=True)} avant de passer à la suite."))
+validation_execution_test_algorithme_ref = MathadataValidate(success="", on_success=lambda a: print(f"Testez l'algorithme sur plusieurs {data(alt=True, plural=True)} avant de passer à la suite."))
 
 # Defini pour éviter l'erreur python par defaut si l'élève mets reponse = chat
 chat = 0
@@ -4410,20 +4508,56 @@ window.mathadata.mutationObserver = new MutationObserver((mutationsList, observe
 window.mathadata.mutationObserver.observe(document.body, { childList: true, subtree: true });
 
 window.mathadata.create_qcm = function(id, configInput) {
-    let configs = configInput;
-    if (typeof configs === 'string') {
-        configs = JSON.parse(configs);
+    if (typeof configInput === 'string') {
+        configInput = JSON.parse(configInput);
     }
+
+    let configs;
+    let multipleQuestions = true;
+
     // Normaliser en tableau pour supporter une ou plusieurs questions
-    if (!Array.isArray(configs)) {
-        configs = [configs];
+    if (!Array.isArray(configInput)) {
+        if (configInput.questions !== undefined) {
+            configs = configInput.questions;
+            if (configs.length <= 1) {
+                multipleQuestions = false;
+            }
+        } else {
+            configs = [configInput];
+            multipleQuestions = false;
+        }
+    } else {
+        configs = configInput;
+        configInput = { questions: configs };
     }
+
+    // Fonction de hashing simple pour la config
+    function hashConfig(config) {
+        // Créer une représentation déterministe de la config pour le hash
+        const configToHash = {
+            questions: config.questions || [config],
+        };
+        const str = JSON.stringify(configToHash);
+
+        // Simple hash function (DJB2)
+        let hash = 5381;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) + hash) + str.charCodeAt(i);
+        }
+        return 'qcm_' + (hash >>> 0).toString(36);
+    }
+
+    // Générer le hash de cette config
+    const configHash = hashConfig(configInput);
+
+    // Vérifier si ce QCM a déjà été réussi
+    const completedQCMs = JSON.parse(localStorage.getItem('mathadata_completed_qcms') || '{}');
+    const isAlreadyCompleted = completedQCMs[configHash] === true;
 
     const container = document.getElementById(id);
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
     container.style.alignItems = 'center';
-    container.style.gap = '30px'; // Espace entre les questions
 
     let htmlContent = '';
 
@@ -4458,17 +4592,18 @@ window.mathadata.create_qcm = function(id, configInput) {
                     `
                 }).join('\\n')}
             </div>
-            <div id="${id}-qcm-status-${index}" style="margin-top: 5px; text-align: center; min-height: 20px; font-size: 0.9rem;"></div>
+            <div id="${id}-qcm-status-${index}" style="margin-top: 5px; text-align: center; min-height: 2rem;"></div>
         </div>
         `;
     });
 
-    htmlContent += `
-        <button id="${id}-qcm-validate-button" style="margin: auto; margin-top: 20px; margin-bottom: 10px; padding: 8px 16px; border-radius: 5px; background-color: #007bff; color: white; border: none; cursor: pointer; font-size: 1rem;">Valider</button>
+    container.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 30px; align-items: center;">
+            ${htmlContent}
+        </div>
+        <button id="${id}-qcm-validate-button" style="margin: auto; margin-top: 20px; margin-bottom: 10px; padding: 5px 10px; border-radius: 5px; background-color: #007bff; color: white; border: none; cursor: pointer;">Valider</button>
         <div id="${id}-qcm-global-status" style="margin-top: 10px; margin-bottom: 10px; text-align: center; font-weight: bold;"></div>
     `;
-
-    container.innerHTML = htmlContent;
 
     const validateButton = document.getElementById(id + '-qcm-validate-button');
 
@@ -4490,6 +4625,7 @@ window.mathadata.create_qcm = function(id, configInput) {
             }
 
             const isMultipleAnswers = correctAnswers.length > 1;
+            const statusText = document.getElementById(`${id}-qcm-status-${index}`);
             
             // Récupérer les réponses cochées pour CETTE question
             const selectedValues = Array.from(container.querySelectorAll(`input[name="${id}-qcm-${index}"]:checked`))
@@ -4497,6 +4633,13 @@ window.mathadata.create_qcm = function(id, configInput) {
 
             if (selectedValues.length === 0) {
                 allAnswered = false;
+                statusText.style.color = 'orange';
+                if (isMultipleAnswers) {
+                    statusText.textContent = "Veuillez sélectionner au moins une réponse.";
+                } else {
+                    statusText.textContent = "Veuillez sélectionner une réponse.";
+                }
+                return;
             }
 
             let questionCorrect = false;
@@ -4504,14 +4647,25 @@ window.mathadata.create_qcm = function(id, configInput) {
                 const hasWrongAnswer = selectedValues.some(val => !correctAnswers.includes(val));
                 const hasAllCorrectAnswers = correctAnswers.every(ans => selectedValues.includes(ans));
 
-                if (hasWrongAnswer || !hasAllCorrectAnswers) {
-                    // Incorrect
+                if (hasWrongAnswer) {
+                    statusText.textContent = "Il y a au moins une mauvaise réponse dans ta sélection. Essaie encore !";
+                    statusText.style.color = 'red';
+                } else if (!hasAllCorrectAnswers) {
+                    statusText.textContent = "Tu n'as pas trouvé toutes les réponses valides. Continue à chercher !";
+                    statusText.style.color = 'orange';
                 } else {
+                    statusText.textContent = 'Bravo ! Tu as trouvé toutes les bonnes réponses !';
+                    statusText.style.color = 'green';
                     questionCorrect = true;
                 }
             } else {
-                if (selectedValues.length > 0 && correctAnswers.includes(selectedValues[0])) {
+                if (correctAnswers.includes(selectedValues[0])) {
                     questionCorrect = true;
+                    statusText.textContent = 'Bonne réponse !';
+                    statusText.style.color = 'green';
+                } else {
+                    statusText.textContent = "Ce n'est pas la bonne réponse. Essaie encore !";
+                    statusText.style.color = 'red';
                 }
             }
 
@@ -4521,18 +4675,35 @@ window.mathadata.create_qcm = function(id, configInput) {
         });
 
         const globalStatus = document.getElementById(`${id}-qcm-global-status`);
-        if (!allAnswered) {
-            globalStatus.textContent = "Veuillez répondre à toutes les questions.";
-            globalStatus.style.color = 'orange';
-        } else if (allCorrect) {
-            globalStatus.textContent = 'Bravo ! Toutes les réponses sont correctes !';
+        if (allCorrect && allAnswered) {
+            if (configInput.success) {
+                globalStatus.textContent = configInput.success;
+            } else {
+                globalStatus.textContent = 'Bravo ! Vous pouvez passer à la suite.';
+            }
             globalStatus.style.color = 'green';
+
+            // Sauvegarder dans le localStorage que ce QCM a été réussi
+            completedQCMs[configHash] = true;
+            localStorage.setItem('mathadata_completed_qcms', JSON.stringify(completedQCMs));
+
             mathadata.pass_breakpoint();
-        } else {
-            globalStatus.textContent = "Il reste des erreurs.";
+        } else if (multipleQuestions) {
+            globalStatus.textContent = "Répondez correctement à toutes les questions pour passer à la suite.";
             globalStatus.style.color = 'red';
         }
     });
+
+    // Si le QCM a déjà été complété, afficher un message et passer le breakpoint automatiquement
+    if (isAlreadyCompleted) {
+        const globalStatus = document.getElementById(`${id}-qcm-global-status`);
+        globalStatus.textContent = '✓ Vous avez déjà réussi ce QCM précédemment. Vous pouvez continuer.';
+        globalStatus.style.color = 'green';
+        globalStatus.style.fontStyle = 'italic';
+        mathadata.pass_breakpoint();
+    } else if (configInput.superuser) {
+        mathadata.pass_breakpoint();
+    }
 }
 ''')
 
@@ -4540,6 +4711,15 @@ window.mathadata.create_qcm = function(id, configInput) {
 def create_qcm(elements, qcm_id=None):
     if qcm_id is None:
         qcm_id = uuid.uuid4().hex
+
+    if has_variable('superuser') and get_variable('superuser') == True:
+        if isinstance(elements, dict):
+            elements['superuser'] = True
+        elif isinstance(elements, list):
+            elements = {
+                'questions': elements,
+                'superuser': True
+            }
 
     # Use json.dumps with ensure_ascii=False to properly handle LaTeX
     config_json = json.dumps(elements, ensure_ascii=False)
@@ -4972,574 +5152,3 @@ def toggle_stepbar():
 
 init_stepbar()
 # Change la couleur au démarage
-
-
-def exercice_association(questions_dict, answers_dict, question_generale="Associez chaque proposition à sa réponse"):
-    #Crée un exercice interactif d'association de propositions avec drag and drop.
-    #questions_dict: dictionnaire avec les questions (clés: question1, question2, etc.)
-    #answers_dict: dictionnaire avec les réponses (clés: answer1, answer2, etc.)
-    #question_generale: texte de la question générale affichée en haut
-    #validation_instance: instance de MathadataValidate (OBLIGATOIRE) à appeler quand toutes les associations sont correctes
-    #Les associations sont déterminées par les clés: question1 -> answer1, question2 -> answer2, etc.
-    
-    import random
-    import base64
-    
-    # Vérifier que les deux dictionnaires ont le même nombre d'éléments
-    if len(questions_dict) != len(answers_dict):
-        error_msg = f"Erreur: Le nombre de questions ({len(questions_dict)}) ne correspond pas au nombre de réponses ({len(answers_dict)})."
-        display(HTML(f'<div style="color: red; font-weight: bold; padding: 10px;">{error_msg}</div>'))
-        return
-    
-    # Extraire les clés et les trier pour avoir un ordre cohérent
-    question_keys = sorted([k for k in questions_dict.keys() if k.startswith('question')])
-    answer_keys = sorted([k for k in answers_dict.keys() if k.startswith('answer')])
-    
-    # Vérifier à nouveau avec les clés filtrées
-    if len(question_keys) != len(answer_keys):
-        error_msg = f"Erreur: Le nombre de questions ({len(question_keys)}) ne correspond pas au nombre de réponses ({len(answer_keys)})."
-        display(HTML(f'<div style="color: red; font-weight: bold; padding: 10px;">{error_msg}</div>'))
-        return
-    
-    n = len(question_keys)
-    
-    # Créer un ID unique pour cet exercice
-    exercise_id = uuid.uuid4().hex
-    
-    # Randomiser l'ordre des questions (pas des réponses)
-    shuffled_question_keys = question_keys.copy()
-    random.shuffle(shuffled_question_keys)
-    
-    # Préparer les données pour JavaScript
-    questions_data = {key: questions_dict[key] for key in shuffled_question_keys}
-    answers_data = {key: answers_dict[key] for key in answer_keys}
-    correct_associations = {f"question{i+1}": f"answer{i+1}" for i in range(n)}
-    
-    # Convertir en JSON pour JavaScript
-    questions_json = json.dumps(questions_data)
-    answers_json = json.dumps(answers_data)
-    correct_json = json.dumps(correct_associations)
-    
-    html_content = f"""
-    <style>
-        .mathadata-association-container {{
-            font-family: sans-serif;
-            margin: 0;
-            padding: 20px;
-            background: #f5f5f5;
-        }}
-        .mathadata-association-container .mathadata-container {{
-            max-width: 900px;
-            margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }}
-        .mathadata-association-container h1 {{
-            text-align: center;
-            color: #333;
-            margin-bottom: 15px;
-            font-size: 20px;
-        }}
-        .mathadata-association-container .mathadata-exercise-area {{
-            display: flex;
-            justify-content: space-between;
-            gap: 60px;
-            margin-top: 30px;
-        }}
-        .mathadata-association-container .mathadata-column {{
-            flex: 1;
-            min-width: 300px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }}
-        .mathadata-association-container .mathadata-column h2 {{
-            text-align: center;
-            font-size: 18px;
-            color: #666;
-            margin-bottom: 20px;
-            width: 100%;
-        }}
-        .mathadata-association-container .mathadata-column > div[id$="-questions"],
-        .mathadata-association-container .mathadata-column > div[id$="-answers"] {{
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            width: 100%;
-        }}
-        .mathadata-association-container .mathadata-item {{
-            position: relative;
-            padding: 15px;
-            margin: 10px 0;
-            background: #f9f9f9;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            cursor: default;
-            transition: all 0.2s;
-            user-select: none;
-            width: 75%;
-        }}
-        .mathadata-association-container .mathadata-item:hover {{
-            background: #f0f0f0;
-        }}
-        .mathadata-association-container .mathadata-item.mathadata-connected {{
-            border-color: #4CAF50;
-            background: #e8f5e9;
-        }}
-        .mathadata-association-container .mathadata-item.mathadata-correct {{
-            border-color: #4CAF50;
-            background: #c8e6c9;
-        }}
-        .mathadata-association-container .mathadata-item.mathadata-incorrect {{
-            border-color: #f44336;
-            background: #ffcdd2;
-        }}
-        .mathadata-association-container .mathadata-circle {{
-            position: absolute;
-            right: -12px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            background: #4CAF50;
-            border: 2px solid white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            z-index: 10;
-            cursor: pointer;
-        }}
-        .mathadata-association-container .mathadata-circle.mathadata-answer-circle {{
-            left: -12px;
-            right: auto;
-            background: #2196F3;
-        }}
-        .mathadata-association-container .mathadata-item-text {{
-            margin-right: 20px;
-            font-size: 85%;
-        }}
-        .mathadata-association-container .mathadata-item.mathadata-answer-item .mathadata-item-text {{
-            margin-left: 20px;
-            margin-right: 0;
-            font-size: 85%;
-        }}
-        .mathadata-association-container svg {{
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 1;
-        }}
-        .mathadata-association-container .mathadata-connections-layer {{
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 2;
-        }}
-        .mathadata-association-container .mathadata-exercise-wrapper {{
-            position: relative;
-            min-height: 30px;
-        }}
-        .mathadata-association-container .mathadata-feedback {{
-            text-align: center;
-            margin-top: 10px;
-            margin-bottom: 5px;
-            padding: 8px;
-            border-radius: 5px;
-            font-weight: bold;
-            font-size: 14px;
-        }}
-        .mathadata-association-container .mathadata-feedback.mathadata-correct {{
-            background: #c8e6c9;
-            color: #2e7d32;
-        }}
-        .mathadata-association-container .mathadata-feedback.mathadata-incorrect {{
-            background: #ffcdd2;
-            color: #c62828;
-        }}
-        .mathadata-association-container .mathadata-validation-button {{
-            display: block;
-            margin: 15px auto;
-            padding: 10px 25px;
-            background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background 0.3s;
-        }}
-        .mathadata-association-container .mathadata-validation-button:hover {{
-            background: #45a049;
-        }}
-        .mathadata-association-container .mathadata-validation-button:active {{
-            background: #3d8b40;
-        }}
-        .mathadata-association-container .mathadata-validation-button:disabled {{
-            background: #cccccc;
-            color: #666666;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }}
-        .mathadata-association-container .mathadata-validation-button:disabled:hover {{
-            background: #cccccc;
-        }}
-    </style>
-    <div class="mathadata-association-container">
-        <div class="mathadata-container">
-            <h1>{question_generale}</h1>
-            <div class="mathadata-exercise-wrapper">
-                <svg id="{exercise_id}-svg" class="mathadata-connections-layer"></svg>
-                <div class="mathadata-exercise-area" id="{exercise_id}-area">
-                    <div class="mathadata-column">
-                        <h2>Questions</h2>
-                        <div id="{exercise_id}-questions"></div>
-                    </div>
-                    <div class="mathadata-column">
-                        <h2>Réponses</h2>
-                        <div id="{exercise_id}-answers"></div>
-                    </div>
-                </div>
-            </div>
-            <div id="{exercise_id}-feedback" class="mathadata-feedback" style="display: none;"></div>
-            <div style="text-align: center; margin-top: 20px;">
-                <button id="{exercise_id}-validate-btn" class="mathadata-validation-button">Valider</button>
-            </div>
-        </div>
-    </div>
-    <script>
-        (function() {{
-            const exerciseId = '{exercise_id}';
-            const questions = {questions_json};
-            const answers = {answers_json};
-            const correctAssociations = {correct_json};
-            
-            const questionsContainer = document.getElementById(exerciseId + '-questions');
-            const answersContainer = document.getElementById(exerciseId + '-answers');
-            const svg = document.getElementById(exerciseId + '-svg');
-            const feedbackDiv = document.getElementById(exerciseId + '-feedback');
-            const validateButton = document.getElementById(exerciseId + '-validate-btn');
-            
-            // Stocker les associations actuelles
-            const associations = {{}};
-            const questionElements = {{}};
-            const answerElements = {{}};
-            
-            // Stocker les cercles pour le drag
-            const questionCircles = {{}};
-            const answerCircles = {{}};
-            let draggingCircle = null;
-            let tempLine = null;
-            let mouseX = 0;
-            let mouseY = 0;
-            
-            // Créer les éléments de questions
-            Object.keys(questions).forEach((key, index) => {{
-                const item = document.createElement('div');
-                item.className = 'mathadata-item mathadata-question-item';
-                item.id = exerciseId + '-q-' + key;
-                item.dataset.questionKey = key;
-
-                const circle = document.createElement('div');
-                circle.className = 'mathadata-circle';
-                circle.id = exerciseId + '-circle-q-' + key;
-                circle.dataset.questionKey = key;
-
-                const text = document.createElement('div');
-                text.className = 'mathadata-item-text';
-                text.textContent = questions[key];
-
-                item.appendChild(circle);
-                item.appendChild(text);
-                questionsContainer.appendChild(item);
-
-                questionElements[key] = item;
-                questionCircles[key] = circle;
-
-                // Gestionnaires d'événements pour le drag depuis le cercle
-                circle.addEventListener('mousedown', handleCircleMouseDown);
-            }});
-
-            // Créer les éléments de réponses
-            Object.keys(answers).forEach((key, index) => {{
-                const item = document.createElement('div');
-                item.className = 'mathadata-item mathadata-answer-item';
-                item.id = exerciseId + '-a-' + key;
-                item.dataset.answerKey = key;
-
-                const circle = document.createElement('div');
-                circle.className = 'mathadata-circle mathadata-answer-circle';
-                circle.id = exerciseId + '-circle-a-' + key;
-                circle.dataset.answerKey = key;
-
-                const text = document.createElement('div');
-                text.className = 'mathadata-item-text';
-                text.textContent = answers[key];
-
-                item.appendChild(circle);
-                item.appendChild(text);
-                answersContainer.appendChild(item);
-
-                answerElements[key] = item;
-                answerCircles[key] = circle;
-
-                // Gestionnaires d'événements pour le drag depuis le cercle
-                circle.addEventListener('mousedown', handleCircleMouseDown);
-            }});
-            
-            // Fonction pour obtenir la position d'un cercle
-            function getCirclePosition(circle) {{
-                const rect = circle.getBoundingClientRect();
-                const containerRect = svg.getBoundingClientRect();
-                return {{
-                    x: rect.left + rect.width / 2 - containerRect.left,
-                    y: rect.top + rect.height / 2 - containerRect.top
-                }};
-            }}
-            
-            // Fonction pour trouver le cercle le plus proche (sans contrainte de distance)
-            function findNearestCircle(x, y, excludeCircle) {{
-                let nearest = null;
-                let minDist = Infinity;
-                
-                // Chercher dans les cercles de réponses si on drag depuis une question
-                if (draggingCircle && draggingCircle.dataset.questionKey) {{
-                    Object.values(answerCircles).forEach(circle => {{
-                        if (circle === excludeCircle) return;
-                        const pos = getCirclePosition(circle);
-                        const dist = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
-                        if (dist < minDist) {{
-                            minDist = dist;
-                            nearest = circle;
-                        }}
-                    }});
-                }}
-                // Chercher dans les cercles de questions si on drag depuis une réponse
-                else if (draggingCircle && draggingCircle.dataset.answerKey) {{
-                    Object.values(questionCircles).forEach(circle => {{
-                        if (circle === excludeCircle) return;
-                        const pos = getCirclePosition(circle);
-                        const dist = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
-                        if (dist < minDist) {{
-                            minDist = dist;
-                            nearest = circle;
-                        }}
-                    }});
-                }}
-                
-                return nearest;
-            }}
-            
-            function handleCircleMouseDown(e) {{
-                e.preventDefault();
-                e.stopPropagation();
-                
-                draggingCircle = e.target;
-                
-                // Vérifier et supprimer les anciennes connexions
-                if (draggingCircle.dataset.questionKey) {{
-                    // Si on drag depuis un cercle de question, supprimer son association existante
-                    const questionKey = draggingCircle.dataset.questionKey;
-                    if (associations[questionKey]) {{
-                        delete associations[questionKey];
-                        // Mettre à jour les connexions visuelles
-                        updateConnections();
-                    }}
-                }} else if (draggingCircle.dataset.answerKey) {{
-                    // Si on drag depuis un cercle de réponse, trouver et supprimer l'association
-                    const answerKey = draggingCircle.dataset.answerKey;
-                    Object.keys(associations).forEach(qKey => {{
-                        if (associations[qKey] === answerKey) {{
-                            delete associations[qKey];
-                            // Mettre à jour les connexions visuelles
-                            updateConnections();
-                        }}
-                    }});
-                }}
-                
-                const startPos = getCirclePosition(draggingCircle);
-                
-                // Créer une ligne temporaire
-                tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                tempLine.setAttribute('x1', startPos.x);
-                tempLine.setAttribute('y1', startPos.y);
-                tempLine.setAttribute('x2', startPos.x);
-                tempLine.setAttribute('y2', startPos.y);
-                tempLine.setAttribute('stroke', '#666');
-                tempLine.setAttribute('stroke-width', '2');
-                tempLine.setAttribute('opacity', '0.8');
-                svg.appendChild(tempLine);
-                
-                // Ajouter les gestionnaires d'événements globaux
-                document.addEventListener('mousemove', handleMouseMove);
-                document.addEventListener('mouseup', handleMouseUp);
-            }}
-            
-            function handleMouseMove(e) {{
-                if (!draggingCircle || !tempLine) return;
-                
-                const containerRect = svg.getBoundingClientRect();
-                mouseX = e.clientX - containerRect.left;
-                mouseY = e.clientY - containerRect.top;
-
-                // La ligne suit la souris
-                tempLine.setAttribute('x2', mouseX);
-                tempLine.setAttribute('y2', mouseY);
-            }}
-            
-            function handleMouseUp(e) {{
-                if (!draggingCircle || !tempLine) return;
-                
-                const containerRect = svg.getBoundingClientRect();
-                const mouseX = e.clientX - containerRect.left;
-                const mouseY = e.clientY - containerRect.top;
-                
-                // Vérifier si on est proche d'un cercle
-                const nearest = findNearestCircle(mouseX, mouseY, draggingCircle);
-                
-                if (nearest) {{
-                    // Créer l'association
-                    if (draggingCircle.dataset.questionKey) {{
-                        const questionKey = draggingCircle.dataset.questionKey;
-                        const answerKey = nearest.dataset.answerKey;
-                        
-                        // Supprimer l'ancienne association si elle existe
-                        if (associations[questionKey]) {{
-                            delete associations[questionKey];
-                        }}
-                        
-                        // Créer la nouvelle association
-                        associations[questionKey] = answerKey;
-                    }} else if (draggingCircle.dataset.answerKey) {{
-                        const answerKey = draggingCircle.dataset.answerKey;
-                        const questionKey = nearest.dataset.questionKey;
-                        
-                        // Supprimer l'ancienne association si elle existe
-                        Object.keys(associations).forEach(qKey => {{
-                            if (associations[qKey] === answerKey) {{
-                                delete associations[qKey];
-                            }}
-                        }});
-                        
-                        // Créer la nouvelle association
-                        associations[questionKey] = answerKey;
-                    }}
-                    
-                    // Mettre à jour l'affichage
-                    updateConnections();
-                }} else {{
-                    // Pas de connexion, supprimer la ligne temporaire
-                }}
-                
-                // Nettoyer
-                if (tempLine && tempLine.parentNode) {{
-                    tempLine.parentNode.removeChild(tempLine);
-                }}
-                tempLine = null;
-                draggingCircle = null;
-                
-                // Retirer les gestionnaires d'événements
-                document.removeEventListener('mousemove', handleMouseMove);
-                document.removeEventListener('mouseup', handleMouseUp);
-            }}
-            
-            function updateConnections() {{
-                // Nettoyer le SVG (sauf la ligne temporaire si elle existe)
-                const tempLineToKeep = tempLine;
-                svg.innerHTML = '';
-                if (tempLineToKeep) {{
-                    svg.appendChild(tempLineToKeep);
-                }}
-                
-                // Dessiner les lignes de connexion entre les cercles
-                Object.keys(associations).forEach(questionKey => {{
-                    const answerKey = associations[questionKey];
-                    const questionCircle = questionCircles[questionKey];
-                    const answerCircle = answerCircles[answerKey];
-                    
-                    if (questionCircle && answerCircle) {{
-                        const qPos = getCirclePosition(questionCircle);
-                        const aPos = getCirclePosition(answerCircle);
-                        
-                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                        line.setAttribute('x1', qPos.x);
-                        line.setAttribute('y1', qPos.y);
-                        line.setAttribute('x2', aPos.x);
-                        line.setAttribute('y2', aPos.y);
-                        line.setAttribute('stroke', '#666');
-                        line.setAttribute('stroke-width', '2');
-                        // Ligne pleine (pas de stroke-dasharray)
-                        line.setAttribute('opacity', '0.8');
-                        
-                        svg.appendChild(line);
-                    }}
-                }});
-            }}
-            
-            function validateAssociations() {{
-                let allCorrect = true;
-                let allConnected = Object.keys(questions).length === Object.keys(associations).length;
-                
-                // Vérifier chaque association
-                Object.keys(associations).forEach(questionKey => {{
-                    const answerKey = associations[questionKey];
-                    const isCorrect = correctAssociations[questionKey] === answerKey;
-                    
-                    if (!isCorrect) {{
-                        allCorrect = false;
-                    }}
-                }});
-                
-                // Afficher le feedback
-                if (!allConnected) {{
-                    feedbackDiv.textContent = 'Veuillez associer toutes les questions aux réponses.';
-                    feedbackDiv.className = 'mathadata-feedback mathadata-incorrect';
-                    feedbackDiv.style.display = 'block';
-                }} else if (allCorrect) {{
-                    feedbackDiv.textContent = 'Bravo ! Toutes les associations sont correctes.';
-                    feedbackDiv.className = 'mathadata-feedback mathadata-correct';
-                    feedbackDiv.style.display = 'block';
-
-                    // Désactiver le bouton
-                    validateButton.disabled = true;
-
-                    console.log('call pass_breakpoint', mathadata.pass_breakpoint);
-                    mathadata.pass_breakpoint();
-                }} else {{
-                    feedbackDiv.textContent = 'Certaines associations sont incorrectes. Continuez !';
-                    feedbackDiv.className = 'mathadata-feedback mathadata-incorrect';
-                    feedbackDiv.style.display = 'block';
-                }}
-            }}
-            
-            // Ajouter l'événement sur le bouton de validation
-            validateButton.addEventListener('click', validateAssociations);
-            
-            // Mettre à jour les connexions lors du redimensionnement
-            window.addEventListener('resize', updateConnections);
-            
-            // Initialiser le SVG avec la bonne taille
-            function initSVG() {{
-                const wrapper = document.querySelector('.mathadata-exercise-wrapper');
-                const rect = wrapper.getBoundingClientRect();
-                svg.setAttribute('width', rect.width);
-                svg.setAttribute('height', rect.height);
-            }}
-            
-            // Attendre que le DOM soit chargé
-            setTimeout(() => {{
-                initSVG();
-                updateConnections();
-            }}, 100);
-        }})();
-    </script>
-"""
-
-    display(HTML(html_content))

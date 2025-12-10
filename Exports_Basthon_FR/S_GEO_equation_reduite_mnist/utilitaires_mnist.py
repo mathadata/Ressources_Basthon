@@ -607,6 +607,54 @@ def affichage_trois(data=None):
     """)
 
 
+def qcm_carac_moyenne():
+    id = "qcm-carac-moyenne-question-html"
+
+    image_indexes = [958, 2015]
+    carac1 = common.challenge.caracteristique(common.challenge.d_train[image_indexes[0]])
+    carac2 = common.challenge.caracteristique(common.challenge.d_train[image_indexes[1]])
+    diff = carac1 - carac2
+    
+    if abs(diff) < 5: # Au cas où l'ordre du dataset change, correction générique
+        answer_index = 3  # On ne peut pas savoir
+    elif diff > 0:
+        # Image A a plus grande caractéristique
+        answer_index = 0 
+    else:
+        # Image B a plus grande caractéristique
+        answer_index = 1
+        # Même caractéristique
+
+    run_js(f"""mathadata.add_observer('{id}', () => {{
+        console.log('{json.dumps(common.challenge.d, cls=NpEncoder)}');
+        mathadata.affichage("{id}-qcm-image-A", {json.dumps(common.challenge.d_train[image_indexes[0]], cls=NpEncoder)});
+        mathadata.affichage("{id}-qcm-image-B", {json.dumps(common.challenge.d_train[image_indexes[1]], cls=NpEncoder)});
+    }})""")
+
+    html = f"""
+        <div id="{id}" style="display: flex; flex-direction: column; gap: 2rem; justify-content: center; align-items: center;">
+            <p>Parmi les deux images suivantes, laquelle a la plus grande caractéristique ?</p>
+            <div style="display: flex; gap: 4rem; justify-content: center; align-items: center;">
+                <div style="text-align: center;">
+                    <h4 style="margin-bottom: 1rem;">Image A</h4>
+                    <div id="{id}-qcm-image-A" style="width: 250px; aspect-ratio: 1;"></div>
+                </div>
+                <div style="text-align: center;">
+                    <h4 style="margin-bottom: 1rem;">Image B</h4>
+                    <div id="{id}-qcm-image-B" style="width: 250px; aspect-ratio: 1;"></div>
+                </div>
+            </div>
+        </div> 
+    """
+    
+    create_qcm({
+        'question_html': html,
+        'choices': ["L'image A", "L'image B", "Les deux images ont la même caractéristique", "On ne peut pas savoir"],
+        'answer_index': answer_index,
+        'multiline': True,
+        'success': "En effet, l'image B a plus de pixels blancs donc une moyenne plus haute.",
+    })
+
 # JS
 
 styles = '''

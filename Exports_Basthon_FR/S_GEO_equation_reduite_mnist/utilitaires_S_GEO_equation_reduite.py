@@ -16,7 +16,7 @@ else:
 
 dataset_20_points = {
     "blue_pts": [[2, 15], [5, 9], [10, 18], [15, 15], [8, 11], [12, 12], [18, 8], [22, 22], [25, 19], [20, 24]],
-    "orange_pts": [[5, 1], [5, 7], [10, 8], [15, 5], [20,6], [25, 15], [8, 6], [12, 9], [18, 12], [14, 11]]}
+    "orange_pts": [[5, 1], [5, 7], [10, 8], [15, 5], [20, 6], [25, 15], [8, 6], [12, 9], [18, 12], [14, 11]]}
 
 
 def afficher_separation_line(show_slider_p=False, show_slider_m=False,
@@ -111,26 +111,26 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
             slider_y_min = 0
 
         view_y_min = min(data_y_min - y_padding, -2, slider_y_min)  # Include slider space
-        
+
         # Rendre le repère orthonormé : ajuster X pour correspondre au ratio largeur/hauteur
         # On garde l'unité de l'ordonnée comme référence
         canvas_ratio = width / height  # Ratio largeur/hauteur du canvas
         y_range_units = view_y_max - view_y_min  # Plage Y en unités
         x_range_units_needed = y_range_units * canvas_ratio  # Plage X nécessaire pour orthonormé
-        
+
         # Centrer la plage X autour des données tout en gardant l'orthonormé
         # S'assurer que l'origine (0) reste visible
         x_center = (view_x_min + view_x_max) / 2
         new_x_min = x_center - x_range_units_needed / 2
         new_x_max = x_center + x_range_units_needed / 2
-        
+
         # Limiter l'axe des abscisses à -5 minimum du côté négatif
         x_min_limit = -5
         if new_x_min < x_min_limit:
             # Ajuster pour respecter la limite minimale
             new_x_min = x_min_limit
             new_x_max = new_x_min + x_range_units_needed
-        
+
         # Si l'origine n'est pas visible, ajuster pour l'inclure
         if new_x_min > 0:
             # L'origine est à gauche, décaler vers la droite
@@ -144,7 +144,7 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
             # L'origine est déjà dans la plage
             view_x_min = new_x_min
             view_x_max = new_x_max
-        
+
         # Appliquer la limite minimale finale (ne pas aller en dessous de -5)
         if view_x_min < x_min_limit:
             view_x_min = x_min_limit
@@ -163,19 +163,19 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
 
         view_x_min, view_x_max, view_y_max = -10, 50, 50
         view_y_min = min(-10, slider_y_min)
-        
+
         # Rendre le repère orthonormé : ajuster X pour correspondre au ratio largeur/hauteur
         # On garde l'unité de l'ordonnée comme référence
         canvas_ratio = width / height  # Ratio largeur/hauteur du canvas
         y_range_units = view_y_max - view_y_min  # Plage Y en unités
         x_range_units_needed = y_range_units * canvas_ratio  # Plage X nécessaire pour orthonormé
-        
+
         # Centrer la plage X autour de l'origine (cas fallback)
         # Limiter l'axe des abscisses à -5 minimum du côté négatif
         x_min_limit = -5
         view_x_min = -x_range_units_needed / 2
         view_x_max = x_range_units_needed / 2
-        
+
         # Appliquer la limite minimale
         if view_x_min < x_min_limit:
             view_x_min = x_min_limit
@@ -188,10 +188,10 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
     p_color = "#FF0000"
     css_url = f"https://cdn.jsdelivr.net/npm/jsxgraph@{jsx_version}/distrib/jsxgraph.css"
     js_url = f"https://cdn.jsdelivr.net/npm/jsxgraph@{jsx_version}/distrib/jsxgraphcore.js"
-    
+
     # Variable pour éviter les backslash dans f-string (Python < 3.12)
     score_div = f'<div id="{box_id}-score-container" style="text-align: center; font-weight: bold; font-size: 1rem;">Pourcentage d{chr(39)}erreur : <span id="{box_id}-score">...</span></div>' if error_score else ""
-    
+
     page = f"""<!DOCTYPE html>
 <html>
   <head>
@@ -203,6 +203,25 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
       html, body {{ margin:0; padding:0; overflow:hidden; font-family:sans-serif; }}
       .title {{ width:100%; text-align:center; font-size:16px; font-weight:bold; padding:6px 0; }}
       .jxgbox {{ margin:auto; }}
+      .main-container {{
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          justify-content: center;
+          gap: 20px;
+          padding: 10px;
+      }}
+      .slope-box {{
+          width: 250px;
+          height: 180px;
+          border: 4px solid black;
+          border-radius: 20px;
+          background-color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+      }}
     </style>
   </head>
   <body>
@@ -212,7 +231,21 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
       <span style="color:{p_color}; font-weight:700;">p</span>
     </div>
     {score_div}
-    <div id="{box_id}" class="jxgbox" style="width:{width}px; height:{height}px;"></div>
+    
+    <div class="main-container">
+        <div id="{box_id}" class="jxgbox" style="width:{width}px; height:{height}px;"></div>
+        
+        <div id="slope-box-container" class="slope-box" style="display: {'flex' if show_slider_m else 'none'};">
+            <svg id="slope-svg" width="100%" height="100%" viewBox="0 0 250 180" style="overflow: visible;">
+                <line id="slope-base" stroke="black" stroke-width="4" stroke-linecap="round" />
+                <line id="slope-height" stroke="{m_color}" stroke-width="4" stroke-linecap="round" />
+                <line id="slope-hypo" stroke="purple" stroke-width="5" stroke-linecap="round" />
+                <text id="text-base" text-anchor="middle" font-weight="bold" font-size="16">5</text>
+                <text id="text-calc" text-anchor="start" font-weight="bold" font-size="16" fill="{m_color}"></text>
+            </svg>
+        </div>
+    </div>
+
     <script>
       (function() {{
         if (!window.JXG) {{
@@ -325,6 +358,11 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
               point2: {{strokeColor: '{p_color}', fillColor: '{p_color}', size: 6}},
               snapWidth: 1, layer: 8
             }});
+            board.create('text', [
+              function(){{ return (x1 + x2) / 2; }},
+              function(){{ return y_single - 0.6; }},
+              function(){{ return formatNumber(currentP()); }}
+            ], {{fontSize:14, anchorX:'middle', anchorY:'top', color:'{p_color}', layer:9, fixed:true, highlight:false}});
           }} else if (wantM) {{
             // Label avec fond coloré  
             board.create('text', [function(){{ return x1 - 1; }}, function(){{ return y_single; }}, "m"],
@@ -339,6 +377,11 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
               point2: {{strokeColor: '{m_color}', fillColor: '{m_color}', size: 6}},
               snapWidth: 0.1, layer: 8
             }});
+            board.create('text', [
+              function(){{ return (x1 + x2) / 2; }},
+              function(){{ return y_single - 0.6; }},
+              function(){{ return formatNumber(currentM()); }}
+            ], {{fontSize:14, anchorX:'middle', anchorY:'top', color:'{m_color}', layer:9, fixed:true, highlight:false}});
           }}
         }} else if (sliderCount === 2) {{
           var y_p = -8;
@@ -372,6 +415,11 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
             point2: {{strokeColor: '{m_color}', fillColor: '{m_color}', size: 6}},
             snapWidth: 0.1, layer: 8
           }});
+          board.create('text', [
+            function(){{ return (x1 + x2) / 2; }},
+            function(){{ return y_m - 0.6; }},
+            function(){{ return formatNumber(currentM()); }}
+          ], {{fontSize:14, anchorX:'middle', anchorY:'top', color:'{m_color}', layer:9, fixed:true, highlight:false}});
           s_p = board.create('slider', [[x1, y_p], [x2, y_p], [-8, p_fixed, 12]], {{
             withLabel: false, name:'', 
             strokeColor: '{p_color}', fillColor: '{p_color}', 
@@ -380,6 +428,11 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
             point2: {{strokeColor: '{p_color}', fillColor: '{p_color}', size: 6}},
             snapWidth: 1, layer: 8
           }});
+          board.create('text', [
+            function(){{ return (x1 + x2) / 2; }},
+            function(){{ return y_p - 0.6; }},
+            function(){{ return formatNumber(currentP()); }}
+          ], {{fontSize:14, anchorX:'middle', anchorY:'top', color:'{p_color}', layer:9, fixed:true, highlight:false}});
         }}
         // create the line using two hidden points (so polygons auto-update)
         var A = board.create('point', [0, function(){{ return currentP(); }}], {{visible:false}});
@@ -391,6 +444,30 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
           fixed: true,
           highlight: false,
           withLabel: false
+        }});
+        // Origin point O
+        board.create('text', [-0.75, -1.5, 'O'], {{
+        fontSize:16,
+        anchorX:'middle',
+        anchorY:'bottom',
+        color:'#000000',
+        layer:12,
+        fixed:true,
+        highlight:false
+        }});
+        // y-intercept on the y-axis (dynamic red point)
+        var yInterceptPoint = board.create('point', [
+          0,
+          function(){{ return currentP(); }}
+        ], {{
+          name:'',
+          strokeColor:'{p_color}',
+          fillColor:'{p_color}',
+          size:5,
+          withLabel:false,
+          fixed:true,
+          highlight:false,
+          layer:12
         }});
         // optionally show the equation box at (30, 5)
         if ({js_show_equation}) {{
@@ -498,6 +575,64 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
           highlight: false
         }});
 
+        function updateSlopeViz() {{
+            var m = currentM();
+            var svg = document.getElementById('slope-svg');
+            if (!svg) return;
+            
+            var baseLine = document.getElementById('slope-base');
+            var heightLine = document.getElementById('slope-height');
+            var hypoLine = document.getElementById('slope-hypo');
+            var textBase = document.getElementById('text-base');
+            var textCalc = document.getElementById('text-calc');
+            
+            var unit = 20; 
+            var vizBase = 40; // Base visuelle en pixels
+            
+            // Calcul vertical
+            // Hauteur visuelle correspondante : h = vizBase * m
+            var hViz = vizBase * m;
+            
+            // Centrage
+            // Centre SVG = (125, 90) (pour box 250x180)
+            var startX = 60; // Marge gauche
+            var centerY = 90;
+            
+            var startY = centerY + hViz / 2;
+            
+            var Ax = startX;
+            var Ay = startY;
+            var Bx = Ax + vizBase;
+            var By = startY;
+            var Cx = Bx;
+            var Cy = startY - hViz;
+            
+            baseLine.setAttribute('x1', Ax);
+            baseLine.setAttribute('y1', Ay);
+            baseLine.setAttribute('x2', Bx);
+            baseLine.setAttribute('y2', By);
+            
+            heightLine.setAttribute('x1', Bx);
+            heightLine.setAttribute('y1', By);
+            heightLine.setAttribute('x2', Cx);
+            heightLine.setAttribute('y2', Cy);
+            
+            hypoLine.setAttribute('x1', Ax);
+            hypoLine.setAttribute('y1', Ay);
+            hypoLine.setAttribute('x2', Cx);
+            hypoLine.setAttribute('y2', Cy);
+            
+            textBase.setAttribute('x', (Ax + Bx)/2);
+            textBase.setAttribute('y', Ay + 20);
+            
+            textCalc.setAttribute('x', Bx + 10);
+            textCalc.setAttribute('y', (By + Cy)/2 + 5);
+            
+            var mDisp = parseFloat(m.toFixed(2));
+            var resDisp = parseFloat((5 * m).toFixed(2));
+            textCalc.textContent = "5 x " + mDisp + " = " + resDisp;
+        }}
+
         // Fonction pour envoyer les valeurs des sliders à Python
         function sendSliderValues() {{
           var p_val = currentP();
@@ -509,6 +644,7 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
         // Fonction de mise à jour complète
         const updateAll = () => {{
           computeScore();
+          updateSlopeViz();
           sendSliderValues();
         }};
 
@@ -548,7 +684,12 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
         data_uri = f'data:text/html;base64,{page_b64}'
 
         # Utiliser HTML avec data URI (plus compatible que IFrame avec data URI)
-        iframe_html = f'<div style="display:flex; justify-content:center;"><iframe src="{data_uri}" style="width:{width + 40}px; height:{height + 90}px; border:none;"></iframe></div>'
+        # Largeur augmentée pour inclure la slope box (+250px + 40px padding/gap)
+        iframe_width = width + 40
+        if show_slider_m:
+            iframe_width += 270 # 250 box + 20 gap
+            
+        iframe_html = f'<div style="display:flex; justify-content:center;"><iframe src="{data_uri}" style="width:{iframe_width}px; height:{height + 90}px; border:none;"></iframe></div>'
         display(HTML(iframe_html))
 
 
@@ -562,25 +703,6 @@ def tracer_20_points_droite_p():
 
 def tracer_20_points_droite_pm():
     tracer_20_points_droite(slider_p=True, slider_m=True, show_eq=True)
-
-
-def qcm_ordonnee_origine():
-    create_qcm({
-        'question': "Quelle est l\'ordonnée à l'origine ?",
-        'choices': ["L\'abscisse du point d'intersection de la droite avec l\'axe des x.",
-                    "L\'abscisse du point d'intersection de la droite avec l\'axe des y.",
-                    "L\'ordonnée du point d'intersection de la droite avec l\'axe des x.", 
-                    "L\'ordonnée du point d'intersection de la droite avec l\'axe des y."],
-        'answer': "L\'ordonnée du point d'intersection de la droite avec l\'axe des y.",
-    })
-
-
-def qcm_pente():
-    create_qcm({
-        'question': 'Quelle droite a un coefficient directeur négatif ?',
-        'choices': ['d1', 'd2'],
-        'answer': 'd2',
-    })
 
 
 def tracer_10_points_droite(dataset=common.challenge.dataset_10_points, labels=common.challenge.labels_10_points):
@@ -607,15 +729,23 @@ def tracer_10_points_droite(dataset=common.challenge.dataset_10_points, labels=c
     '''))
 
 
-def tracer_points_droite(id_content=None, display_value="range", carac=None, initial_hidden=False, save=True):
+def tracer_points_droite(id_content=None, display_value="range", carac=None, initial_hidden=False, save=True, side_box=True):
     if id_content is None:
         id_content = uuid.uuid4().hex
 
     display(HTML(f'''
-        <div id="{id_content}-container" style="{'visibility:hidden;' if initial_hidden else ''} max-width: 600px; margin: 0 auto;">
+        <div id="{id_content}-container" style="{'visibility:hidden;' if initial_hidden else ''} max-width: 900px; margin: 0 auto;">
             <div id="{id_content}-score-container" style="text-align: center; font-weight: bold; font-size: 1.5rem;">Pourcentage d'erreur : <span id="{id_content}-score">...</span></div>
 
-            <canvas id="{id_content}-chart"></canvas>
+            <div style="display:flex; flex-direction:row; align-items:center; justify-content:center; gap:18px;">
+                <div style="flex:1; min-width:320px;">
+                    <canvas id="{id_content}-chart"></canvas>
+                </div>
+                <div id="{id_content}-slope-box-wrapper" style="display:{'flex' if side_box else 'none'}; align-items:center; justify-content:center;">
+                    <div id="{id_content}-slope-box" style="width:250px; height:180px; border:0; border-radius:0; background:transparent; display:flex; align-items:center; justify-content:center; position:relative;">
+                    </div>
+                </div>
+            </div>
 
             <div id="{id_content}-inputs" style="display: flex; gap: 1rem; justify-content: center; flex-direction: {'column' if display_value == "range" else 'row'};">
                 <div>
@@ -655,6 +785,7 @@ def tracer_points_droite(id_content=None, display_value="range", carac=None, ini
         'compute_score': True,
         'equation_fixed_position': True,
         'force_origin': True,
+        'side_box': side_box,
     }
 
     run_js(
@@ -697,14 +828,10 @@ def tracer_droite(ax, m, p, x_min, x_max, color='black'):
 pointA = (20, 40)
 pointB = (30, 10)
 
-
 # Variables globales pour les valeurs des sliders et taux d'erreur
 slider_p_value = None
 slider_m_value = None
 error_score = None
-
-
-
 
 
 def update_slider_values(p_val, m_val, e_val):
@@ -791,44 +918,10 @@ def exercice_calcul_au_dessus():
     plt.close()
 
 
-def qcm_dessus():
-    create_qcm({
-        'question': "Est-ce que l\'ordonnée de M est plus petite ou plus grande que l\'ordonnée d'A ?",
-        'choices': ['plus petite', 'plus grande'],
-        'answer': 'plus petite',
-    })
-
-
-def qcm_dessus_dessous():
-    create_qcm({
-        'question': (
-            "Pour savoir si un point A(x<sub>A</sub>, y<sub>A</sub>) est au-dessus ou en-dessous d’une droite d’équation y = mx + p, que faut-il comparer ?"
-        ),
-        'choices': [
-            "Comparer y<sub>A</sub> avec px<sub>A</sub> + m.",
-            "Comparer x<sub>A</sub> avec y<sub>A</sub>.",
-            "Comparer y<sub>A</sub> avec mx<sub>A</sub> + p.",
-            "Comparer x<sub>A</sub> avec l'abscisse d'un point quelconque sur la droite."
-        ],
-        'answer': "Comparer y<sub>A</sub> avec mx<sub>A</sub> + p.",
-        'multiline': True,
-    })
-
-
 def exercice_calcul_au_dessous():
     tracer_exercice_classification(point_b=True)
     plt.show()
     plt.close()
-
-
-
-
-def qcm_choix_caracteristiques():
-    create_qcm({
-        'question': 'Quelles zones choisir pour mieux distinguer les 2 de 7 ?',
-        'choices': ['1er choix', '2ème choix'],
-        'answer': '2ème choix',
-    })
 
 
 def affichage_zones_custom(a1, b1, a2, b2):
@@ -862,20 +955,7 @@ def afficher_customisation():
         }}
     ''')
 
-def exercice_association_deux_droites():
-    exercice_association(
-        questions_dict={
-            'question1': ' Quelle droite a un coefficient directeur négatif ?',
-            'question2': ' Quelle droite a un coefficient directeur positif ?',
-            'question3': ' Quelle droite a un coefficient directeur nul ?',
-        },
-        answers_dict={
-            'answer1': 'La droite d2.',
-            'answer2': 'La droite d1.',
-            'answer3': 'La droite d3.',
-        },
-        question_generale="Associez chaque droite à sa pente",
-    )
+
 # JS
 
 def calculer_score_droite():
@@ -895,21 +975,24 @@ def function_validation_calculer_score_droite(errors, answers):
     if geo.input_values is None or 'a' not in geo.input_values or 'b' not in geo.input_values or 'c' not in geo.input_values:
         errors.append("Vous devez d'abord ajuster les paramètres de la droite dans le graphique ci-dessus.")
         return False
-    
+
     score = compute_score(geo.input_values['a'], geo.input_values['b'], geo.input_values['c'], custom=False)
     objectif = common.challenge.objectif_score_droite
-    
+
     if score > objectif and score < 100 - objectif:
-        errors.append(f"Le pourcentage d'erreur est encore trop élevé. Continuez à ajuster les paramètres m et p pour obtenir moins de {objectif}% d'erreur.")
+        errors.append(
+            f"Le pourcentage d'erreur est encore trop élevé. Continuez à ajuster les paramètres m et p pour obtenir moins de {objectif}% d'erreur.")
         return False
-    
+
     pretty_print_success(f"Bravo ! Vous avez trouvé une droite avec {round(score, 2)}% d'erreur.")
     return True
+
 
 validation_execution_tracer_20_points_droite = MathadataValidate(success="")
 validation_execution_tracer_20_points_droite_p = MathadataValidate(success="")
 validation_execution_tracer_20_points_droite_pm = MathadataValidate(success="")
-validation_execution_calculer_score_droite = MathadataValidate(function_validation=function_validation_calculer_score_droite, success="")
+validation_execution_calculer_score_droite = MathadataValidate(
+    function_validation=function_validation_calculer_score_droite, success="")
 validation_execution_point_droite = MathadataValidate(success="")
 validation_execution_point_droite_dessous = MathadataValidate(success="")
 
@@ -949,6 +1032,7 @@ def function_validation_equation_b(errors, answers):
 
     return True
 
+
 def function_validation_score_droite_20(errors, answers):
     user_answer = answers['erreur_20']
 
@@ -969,7 +1053,10 @@ def function_validation_score_droite_20(errors, answers):
         errors.append(
             f"Ce n'est pas la bonne valeur. Vous avez donné le nombre d'erreurs ({nb_erreurs}) et non le pourcentage d'erreur.")
         return False
-
+    if user_answer == nb_erreurs/20:
+        errors.append(
+            f"Ce n'est pas la bonne valeur mais vous êtes sur la bonne voie. Vous avez donné la proportion d'erreurs sous forme de fraction ou d'un nombre décimal. Il reste une dernière opération pour donner comme réponse le pourcentage d'erreur sans le %.")
+        return False
     # Vérification de la réponse correcte
     if user_answer == pourcentage_erreur:
         if nb_erreurs == 0:
@@ -993,12 +1080,11 @@ def function_validation_score_droite_p(errors, answers):
             "La valeur p doit être un nombre. "
             "Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
-    if error_score > 15:
-        errors.append("Le taux d'erreur peut être plus petit. Utilise le curseur pour ajuster la valeur de p et réduire le taux d'erreur.")
-        return False
-    if user_answer != slider_p_value:
-        errors.append(f"Vérifie que ta droite a le même paramètre p que celui choisi ci dessus.")
-        return False
+    # On valide toujours, mais on adapte le message selon le score actuel
+    if error_score is not None and error_score > 15:
+        pretty_print_success(
+            "Bravo, tu as fourni une valeur de p correcte. Règle également p sur le graphique au-dessus.")
+        return True
     pretty_print_success("Bravo, tu as trouvé la bonne valeur de p et la droite ayant cette ordonée à l'origine !")
     return True
 
@@ -1019,10 +1105,10 @@ def function_validation_score_droite_pm(errors, answers):
     err_return = ""
     if error_score != 5:
         err_return += "Le taux d'erreur peut arriver à 5%. Essaie encore.\n"
-    if user_answer_p != round(slider_p_value):
-        err_return += f"Attention, la valeur de p n'est pas celle de la droite.\n"
-    if user_answer_m != round(slider_m_value, 2):
-        err_return += f"Attention, la valeur de m n'est pas celle de la droite.\n"
+    # if user_answer_p != round(slider_p_value):
+    #     err_return += f"Attention, la valeur de p n'est pas celle de la droite.\n"
+    # if user_answer_m != round(slider_m_value, 2):
+    #     err_return += f"Attention, la valeur de m n'est pas celle de la droite.\n"
     if err_return != "":
         errors.append(err_return)
         return False
@@ -1046,15 +1132,75 @@ def function_validation_pente(errors, answers):
     cond1 = (user_answer_m1 != 1)
     cond2 = (user_answer_m2 != -0.5)
     if cond1 and cond2:
-        errors.append("Les deux réponses sont incorrectes. Essaie de faire les calculs étape par étape pour chaque coefficient directeur.")
+        errors.append(
+            "Les deux réponses sont incorrectes. Essaie de faire les calculs étape par étape pour chaque coefficient directeur.")
         return False
     if cond1:
         errors.append("La pente de la première droite est incorrecte. Reessaie !")
         return False
     if cond2:
-        errors.append("La pente de la deuxième droite est incorrecte. Reessaie en faisant attention à l'ordre des calculs ! Le signe est important.")
+        errors.append(
+            "La pente de la deuxième droite est incorrecte. Reessaie en faisant attention à l'ordre des calculs ! Le signe est important.")
         return False
     pretty_print_success("Bravo ! Tu as calculé correctement les pentes des deux droites.")
+    return True
+
+
+def validate_qcm(nb_options, answer, errors, user_anwsers):
+    user_answer = user_anwsers['qcm']
+    if not (isinstance(user_answer, int)):
+        errors.append(
+            "La réponse doit être un nombre entier")
+        return False
+    if not 0 < user_answer < nb_options + 1:
+        errors.append(
+            f"La réponse doit être un nombre entre 1 et {nb_options}")
+        return False
+    if user_answer != answer:
+        errors.append("Mauvaise réponse")
+        return False
+    return True
+
+
+def function_validation_qcm_ordonnee_origine(errors, answers):
+    return validate_qcm(4, 4, errors, answers)
+
+
+def function_validation_qcm_dessus(errors, answers):
+    return validate_qcm(2, 1, errors, answers)
+
+
+def function_validation_qcm_dessous(errors, answers):
+    return validate_qcm(4, 3, errors, answers)
+
+
+def function_validation_qcm_choix_caracteristiques(errors, answers):
+    return validate_qcm(2, 2, errors, answers)
+
+
+def function_validation_question_pixel(errors, answers):
+    return validate_qcm(3, 3, errors, answers)
+
+
+def function_validation_exercice_association_deux_droites(errors, answers):
+    q1 = answers['q1_negatif']
+    q2 = answers['q2_positif']
+    q3 = answers['q3_nul']
+    if not (isinstance(q1, (int, float))):
+        errors.append(
+            "La valeur q1_negatif doit être le nombre d'une droite: 1, 2 ou 3.")
+        return False
+    if not (isinstance(q2, (int, float))):
+        errors.append(
+            "La valeur q2_positif doit être le nombre d'une droite: 1, 2 ou 3.")
+        return False
+    if not (isinstance(q3, (int, float))):
+        errors.append(
+            "La valeur q3_nul doit être le nombre d'une droite: 1, 2 ou 3.")
+        return False
+    if q1 != 2 or q2 != 1 or q3 != 3:
+        errors.append("Mauvaise réponse")
+        return False
     return True
 
 
@@ -1063,42 +1209,42 @@ validation_moyenne_carac_meilleure = MathadataValidate(function_validation=valid
 validation_question_equation = MathadataValidateVariables({
     'ordonnee_M': None},
     tips=[
-    {
-      'seconds': 20,
-      'tip': 'Retrouvez l\'ordonnée de M en remplaçant x par x_M dans l\'équation de la droite.'
-    },
-    {
-      'trials': 3,
-      'tip': 'Retrouvez l\'ordonnée de M en remplaçant x par x_M = 20 dans l\'équation de la droite.'
-    },
-    {
-      'seconds': 30,
-      'trials': 5,
-      'print_solution': False, # Print "Voici la solution: test : 3"
-      'validate': False # Unlock the next cells
-    }
-  ],
-function_validation=function_validation_equation)
+        {
+            'seconds': 20,
+            'tip': 'Retrouvez l\'ordonnée de M en remplaçant x par x_M dans l\'équation de la droite.'
+        },
+        {
+            'trials': 3,
+            'tip': 'Retrouvez l\'ordonnée de M en remplaçant x par x_M = 20 dans l\'équation de la droite.'
+        },
+        {
+            'seconds': 30,
+            'trials': 5,
+            'print_solution': False,  # Print "Voici la solution: test : 3"
+            'validate': False  # Unlock the next cells
+        }
+    ],
+    function_validation=function_validation_equation)
 validation_question_equation_dessous = MathadataValidateVariables({
     'ordonnee_N': None
 },
-  tips=[
-      {
-        'seconds': 20,
-        'tip': 'Retrouvez l\'ordonnée de N en remplaçant x par x_N dans l\'équation de la droite.'
-      },
-      {
-        'trials': 3,
-        'tip': 'Retrouvez l\'ordonnée de N en remplaçant x par x_N = 30 dans l\'équation de la droite.'
-      },
-      {
-        'seconds': 30,
-        'trials': 5,
-        'print_solution': False, # Print "Voici la solution: test : 3"
-        'validate': False # Unlock the next cells
-      }
+    tips=[
+        {
+            'seconds': 20,
+            'tip': 'Retrouvez l\'ordonnée de N en remplaçant x par x_N dans l\'équation de la droite.'
+        },
+        {
+            'trials': 3,
+            'tip': 'Retrouvez l\'ordonnée de N en remplaçant x par x_N = 30 dans l\'équation de la droite.'
+        },
+        {
+            'seconds': 30,
+            'trials': 5,
+            'print_solution': False,  # Print "Voici la solution: test : 3"
+            'validate': False  # Unlock the next cells
+        }
     ],
-function_validation=function_validation_equation_b)
+    function_validation=function_validation_equation_b)
 
 validation_question_score_droite_20 = MathadataValidateVariables({
     'erreur_20': None
@@ -1113,41 +1259,60 @@ validation_question_score_droite_pm = MathadataValidateVariables({
     'p': None
 },
     tips=[
-    {
-      'seconds': 10,
-      'tip': 'Les valeurs de m et p peuvent être lues directement sur l\'équation de la droite affichée en bas du graphique.'
-    },
-    {
-      'trials': 2,
-      'tip': 'Regardez l\'équation de la droite en bas du graphique : elle est de la forme y = m×x + p. Vous pouvez lire directement les valeurs de m (la pente) et p (l\'ordonnée à l\'origine).'
-    },
-    {
-      'seconds': 30,
-      'trials': 5,
-      'print_solution': False,
-      'validate': False
-    }
-  ],
+        {
+            'seconds': 10,
+            'tip': 'Les valeurs de m et p peuvent être lues directement sur l\'équation de la droite affichée en bas du graphique.'
+        },
+        {
+            'trials': 2,
+            'tip': 'Regardez l\'équation de la droite en bas du graphique : elle est de la forme y = mx + p. Vous pouvez lire directement les valeurs de m (la pente) et p (l\'ordonnée à l\'origine).'
+        },
+        {
+            'seconds': 30,
+            'trials': 5,
+            'print_solution': False,
+            'validate': False
+        }
+    ],
     function_validation=function_validation_score_droite_pm, success="")
 validation_question_pente = MathadataValidateVariables({
     'm1': None,
     'm2': None
 },
     tips=[
-    {
-      'seconds': 20,
-      'tip': "Etapes de calcul: 1. Retrouve les coordonnées de deux points d'une droite. 2. Calcule les différences d'ordonnées et d'abscisses. 3. Calcule la pente avec la formule (différence d'ordonnées) / (différence d'abscisses)."
-    },
-    {
-      'trials': 3,
-      'tip': "Etapes de calcul pour le second graphique: 1. Les coordonnées de deux points de d2 : C(4; 11), D(10; 8). 2. différence d'ordonnées = 8-11 et différence d'abscisses = 10-4. 3. Calcule la pente avec la formule (différence d'ordonnées) / (différence d'abscisses)."
-    },
-    {
-      'seconds': 30,
-      'trials': 5,
-      'print_solution': False, # Print "Voici la solution: test : 3"
-      'validate': False # Unlock the next cells
-    }
-  ],
- function_validation=function_validation_pente, success="")
+        {
+            'seconds': 20,
+            'tip': "Etapes de calcul: 1. Retrouve les coordonnées de deux points d'une droite. 2. Calcule les différences d'ordonnées et d'abscisses. 3. Calcule la pente avec la formule (différence d'ordonnées) / (différence d'abscisses)."
+        },
+        {
+            'trials': 3,
+            'tip': "Etapes de calcul pour le second graphique: 1. Les coordonnées de deux points de d2 : C(4; 11), D(10; 8). 2. différence d'ordonnées = 8-11 et différence d'abscisses = 10-4. 3. Calcule la pente avec la formule (différence d'ordonnées) / (différence d'abscisses)."
+        },
+        {
+            'seconds': 30,
+            'trials': 5,
+            'print_solution': False,  # Print "Voici la solution: test : 3"
+            'validate': False  # Unlock the next cells
+        }
+    ],
+    function_validation=function_validation_pente, success="")
 validation_question_association_droite = MathadataValidate(success="Bravo, toutes les associations sont correctes !")
+
+validation_qcm_ordonnee_origine = MathadataValidateVariables(
+    {'qcm': None},
+    function_validation=function_validation_qcm_ordonnee_origine)
+validation_qcm_dessus = MathadataValidateVariables(
+    {'qcm': None},
+    function_validation=function_validation_qcm_dessus)
+validation_qcm_dessous = MathadataValidateVariables(
+    {'qcm': None},
+    function_validation=function_validation_qcm_dessous)
+validation_qcm_choix_caracteristiques = MathadataValidateVariables(
+    {'qcm': None},
+    function_validation=function_validation_qcm_choix_caracteristiques)
+validation_question_pixel = MathadataValidateVariables(
+    {'qcm': None},
+    function_validation=function_validation_question_pixel)
+validation_exercice_association_deux_droites = MathadataValidateVariables(
+    {'q1_negatif': None, 'q2_positif': None, 'q3_nul': None},
+    function_validation=function_validation_exercice_association_deux_droites)
