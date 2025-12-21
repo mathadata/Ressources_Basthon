@@ -760,6 +760,7 @@ def meilleures_caracteristiques(custom=True):
         expected_points_a=exp_a,  # mettre les valeurs pour 2
         expected_points_b=exp_b,  # mettre les valeurs pour 7
         images=different_image_caracteristics,
+        preplace_points_a=True,
     )
 
 
