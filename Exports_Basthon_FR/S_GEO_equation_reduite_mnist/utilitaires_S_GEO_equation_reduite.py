@@ -1329,8 +1329,8 @@ validation_question_score_droite_p = MathadataValidateVariables({
 },
     function_validation=function_validation_score_droite_p, success="")
 validation_question_score_droite_pm = MathadataValidateVariables({
-    'm': None,
-    'p': None
+    'm': 0.5,
+    'p': 5
 },
     tips=[
         {
@@ -1347,8 +1347,7 @@ validation_question_score_droite_pm = MathadataValidateVariables({
             'print_solution': False,
             'validate': False
         }
-    ],
-    function_validation=function_validation_score_droite_pm, success="")
+    ])
 validation_question_pente = MathadataValidateVariables({
     'm1': None,
     'm2': None
