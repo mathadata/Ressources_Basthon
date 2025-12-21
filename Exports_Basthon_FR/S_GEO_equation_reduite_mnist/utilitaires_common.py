@@ -138,9 +138,9 @@ class Challenge:
                 d = self.d
                 # On suppose que d est de la première classe
                 label = self.classes[0]
-        
+
         return (d, label)
-    
+
     def get_data(self, *args, **kwargs):
         (d, label) = self.get_data_internal(*args, **kwargs)
         return json.dumps(d, cls=NpEncoder)
@@ -452,7 +452,7 @@ def get_algorithme_func(error=None):
             print_error(error)
         else:
             print_error(
-                "Vous avez remplacé autre chose que les ... . Revenez en arrière avec le raccourci clavier Ctrl+Z pour annuler vos modifications.")
+                "Tu as remplacé autre chose que les ... . Reviens en arrière avec le raccourci clavier Ctrl+Z pour annuler tes modifications.")
         return None
 
     return algorithme
@@ -544,7 +544,7 @@ def calculer_score(algorithme, cb=None, caracteristique=None, banque=True, anima
     except Exception as e:
         print_error("Il y a eu un problème lors du calcul de l'erreur. Vérifie ta réponse.")
         if debug:
-            raise(e)
+            raise e
 
 
 current_algo = None
@@ -560,6 +560,7 @@ def run_algorithme(d_json):
     return json.dumps({
         'result': res
     }, cls=NpEncoder)
+
 
 def test_algorithme(algorithme=None):
     """Test l'algorithme donnée par donnée avec l'interface animation calcul score"""
@@ -578,6 +579,9 @@ def test_algorithme(algorithme=None):
 
     run_js(f"mathadata.add_observer('{id}', () => window.mathadata.test_algorithme('{id}'))")
 
+    button_text = "Dessiner une image et tester" if challenge.strings['dataname'][
+                                                        'nom'] == 'image' else f"Tester avec {data('ton', alt=True)}"
+
     # Container HTML
     display(HTML(f'''
     <div id="{id}">
@@ -586,7 +590,7 @@ def test_algorithme(algorithme=None):
                 Tester avec {data('un', alt=True)} aléatoire
             </button>
             <button id="{id}-button-generated" class="mathadata-button mathadata-button--secondary" style="flex: 1; max-width: 300px;">
-                Tester avec votre {data('', alt=True)}
+                {button_text}
             </button>
         </div>
 
@@ -596,7 +600,7 @@ def test_algorithme(algorithme=None):
         <div id="{id}-modal" class="mathadata-modal-overlay" style="display: none;">
             <div class="mathadata-modal">
                 <div class="mathadata-modal-header">
-                    <h3 class="mathadata-modal-title">Générer votre {data('', alt=True)}</h3>
+                    <h3 class="mathadata-modal-title">Générer {data('ton', alt=True)}</h3>
                     <button id="{id}-modal-close" class="mathadata-modal-close">×</button>
                 </div>
                 <div class="mathadata-modal-body">
@@ -612,9 +616,11 @@ def test_algorithme(algorithme=None):
     </div>
     '''))
 
+
 def test_algorithme_faineant():
     """Test l'algorithme paresseux avec l'interface animation calcul score"""
     test_algorithme(algorithme=algo_faineant)
+
 
 def test_algorithme_ref():
     test_algorithme(algorithme=algo_carac)
@@ -754,6 +760,11 @@ def nom(name_dict, article=None, plural=False, alt=False, court=False, uppercase
                 art = "l'"
             else:
                 art = "la " if feminine else "le "
+        elif article == "ton":
+            if feminine and not contraction:
+                art = "ta "
+            else:
+                art = "ton "
         else:
             art = ""
         word = art + word
@@ -846,16 +857,25 @@ def algo_carac(d):
 def algo_carac_custom(d):
     caracteristique = challenge.caracteristique_custom
     t = get_variable('t')
-    classification = get_variable('classification')
+    r_petite_caracteristique = get_variable('r_petite_caracteristique')
+    r_grande_caracteristique = get_variable('r_grande_caracteristique')
+
+    def classification(x, t):
+        if x <= t:
+            return r_petite_caracteristique
+        else:
+            return r_grande_caracteristique
+
     x = caracteristique(d)
     return classification(x, t)
 
 
-def calculer_score_etape_1(animation=True):
+def calculer_score_etape_1(animation=True, banque=True):
     def cb(score):
         validation_score_fixe()
 
-    calculer_score(algo_faineant, cb=cb, animation=animation)
+    calculer_score(algo_faineant, cb=cb, animation=animation, banque=banque)
+
 
 def calculer_score_carac():
     def cb(score):
@@ -867,7 +887,7 @@ def calculer_score_carac():
 def calculer_score_custom():
     if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable(
             'r_grande_caracteristique'):
-        print_error('Remplacez tous les ... par vos paramètres.')
+        print_error('Remplace tous les ... par tes paramètres.')
         return
 
     def cb(score):
@@ -882,7 +902,7 @@ def calculer_score_custom():
 def calculer_score_code_eleve():
     if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable(
             'r_grande_caracteristique'):
-        print_error('Remplacez tous les ... par vos paramètres.')
+        print_error('Remplace tous les ... par tes paramètres.')
         return
 
     t = get_variable('t')
@@ -909,7 +929,7 @@ def calculer_score_code_eleve():
 def calculer_score_code_free():
     if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable(
             'r_grande_caracteristique'):
-        print_error('Remplacez tous les ... par vos paramètres.')
+        print_error('Remplace tous les ... par tes paramètres.')
         return
 
     t = get_variable('t')
@@ -932,7 +952,7 @@ def calculer_score_code_free():
 def calculer_score_code_etendue():
     if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable(
             'r_grande_caracteristique'):
-        print_error('Remplacez tous les ... par vos paramètres.')
+        print_error('Remplace tous les ... par tes paramètres.')
         return
 
     t = get_variable('t')
@@ -955,7 +975,7 @@ def calculer_score_code_etendue():
 def calculer_score_code_moyenne_ligne():
     if not has_variable('t') or not has_variable('r_petite_caracteristique') or not has_variable(
             'r_grande_caracteristique'):
-        print_error('Remplacez tous les ... par vos paramètres.')
+        print_error('Remplace tous les ... par tes paramètres.')
         return
 
     t = get_variable('t')
@@ -1028,7 +1048,7 @@ def exercice_droite_carac():
         </div>
     '''))
 
-    
+
 def affichage_10_droite():
     id = uuid.uuid4().hex
 
@@ -1778,6 +1798,8 @@ run_js("""
                     art = contraction ? "l'" : (feminine ? "la " : "le ");
                 } else if (article === "aux") {
                     art = contraction ? "aux " : "aux ";
+                } else if (article === "ton") {
+                    art = (feminine && !contraction) ? "ta " : "ton ";
                 }
                 word = art + word;
             }
@@ -2026,7 +2048,7 @@ run_js("""
                             current_step++
                             window.mathadata.display_exercise_step(div_id, config[current_step])
                         } else {
-                            setStatus("Bravo, c'est la bonne réponse ! Vous pouvez passer à la suite du notebook", "success")
+                            setStatus("Bravo, c'est la bonne réponse ! Tu peux passer à la suite du notebook", "success")
                         }
                     }
                     else {
@@ -2106,36 +2128,60 @@ run_js("""
             parent.appendChild(tipContainer)
         },
         
-        add_tip(parentId, tip, answers) {
+        add_tip(parentId, tip, answers, debug) {
             const parent = document.getElementById(parentId)
             if (!parent) {
                 return
             }
 
+            let debugInfos = ''
+            if (debug) {
+                debugInfos = `DEBUG : Affiché après ${tip.seconds ? tip.seconds + ' secondes' : ''}${tip.trials ? ' et ' + tip.trials + ' essais' : ''}.<br/>`
+            }
+
             if (tip.tip) {
-                window.mathadata.display_tip(parent, `💡 ${tip.tip}`)
+                window.mathadata.display_tip(parent, `💡 ${debugInfos}${tip.tip}`)
             }
 
             if (tip.print_solution && answers) {
-                window.mathadata.display_tip(parent, `📝 Voici la solution :<br/>${answers.join('<br/>')}`)
+                window.mathadata.display_tip(parent, `📝 ${debugInfos}Voici la solution :<br/>${answers.join('<br/>')}`)
             }
 
             if (tip.validate) {
-                window.mathadata.display_tip(parent, `🔓 Tu peux passer cette question et continuer`)
+                window.mathadata.display_tip(parent, `🔓 ${debugInfos}Tu peux passer cette question et continuer`)
                 mathadata.pass_breakpoint()
             }
         },
 
         setup_tips(id, params) {
             params = JSON.parse(params)
-            const {tips, first_call_time, trials, answers} = params
+            const {tips, first_call_time, trials, answers, debug} = params
 
             const now = Date.now()
             const time_since_first_call_s = now / 1000 - first_call_time // python uses seconds, js uses milliseconds
             
             for (const tip of tips) {
-                if ('trials' in tip && trials < tip.trials) {
-                    continue
+                if (debug) {
+                    window.mathadata.add_tip(id, tip, answers, debug)
+                    continue;
+                }
+
+                const operator = tip.operator || 'AND';
+                const trialsDefined = 'trials' in tip;
+                const trialsMet = trialsDefined && trials >= tip.trials;
+
+                if (operator === 'AND') {
+                    if (trialsDefined && !trialsMet) {
+                        continue;
+                    }
+                } else if (operator === 'OR') {
+                     if (trialsMet) {
+                         window.mathadata.add_tip(id, tip, answers)
+                         continue;
+                     }
+                     if (!('seconds' in tip)) {
+                         continue;
+                     }
                 }
 
                 if (!('seconds' in tip) || tip.seconds <= time_since_first_call_s) {
@@ -2469,7 +2515,7 @@ run_js("""
             let currentErrorDatasetIndex = null;
 
             if (i_exercice_droite_carac < c_train.length) {
-                setStatusMessage(`Cliquez sur la droite au bon endroit pour placer ${mathadata.data('le')} n°${i_exercice_droite_carac + 1}.`)
+                setStatusMessage(`Clique sur la droite au bon endroit pour placer ${mathadata.data('le')} n°${i_exercice_droite_carac + 1}.`)
                 chart.options.onClick = (e) => {
                     const canvasPosition = Chart.helpers.getRelativePosition(e, chart);
                     const dataX = chart.scales.x.getValueForPixel(canvasPosition.x);
@@ -2480,11 +2526,11 @@ run_js("""
                         i_exercice_droite_carac++
                         if (i_exercice_droite_carac == c_train.length) {
                             chart.options.onClick = null;
-                            setStatusMessage(`Bravo, vous avez placé tous les points ! Exécutez la cellule suivante pour passer à la suite.`, 'green')
+                            setStatusMessage(`Bravo, tu as placé tous les points ! Exécute la cellule suivante pour passer à la suite.`, 'green')
                             localStorage.setItem('exercice_droite_carac_ok', 'true')
                             window.mathadata.run_python(`set_exercice_droite_carac_ok()`)
                         } else {
-                            setStatusMessage(`Bravo, vous pouvez placer ${mathadata.data({article: 'le'})} suivant${mathadata.e_fem()} (n°${i_exercice_droite_carac + 1}) !`)
+                            setStatusMessage(`Bravo, tu peux placer ${mathadata.data({article: 'le'})} suivant${mathadata.e_fem()} (n°${i_exercice_droite_carac + 1}) !`)
                         }
                         chart.update()
                     } else {
@@ -2544,7 +2590,7 @@ run_js("""
                     }
                 }
             } else {
-                setStatusMessage(`Bravo, vous avez placé tous les points ! Exécutez la cellule suivante pour passer à la suite.`, 'green')
+                setStatusMessage(`Bravo, tu as placé tous les points ! Exécute la cellule suivante pour passer à la suite.`, 'green')
             }
 
             chart.update()
@@ -3327,10 +3373,10 @@ def create_sos_box():
     sosBox.innerHTML = `
         <div class="sos-details">
             <h3>Besoin d'aide ?</h3>
-            <p>Si votre notebook ne fonctionne pas correctement (un affichage semble bloqué, il ne se passe rien quand vous écécutez une cellule, etc.)</p>
+            <p>Si ton notebook ne fonctionne pas correctement (un affichage semble bloqué, il ne se passe rien quand tu exécutes une cellule, etc.)</p>
             <ol>
-                <li>Cliquez sur le boutton <img src="{files_url}/rerun_button.png" alt="restart" style="height: 2.5rem; aspect-ratio: auto;"/> en haut dans la barre d'outils</li>
-                <li>Confirmez en cliquant sur <img src="{files_url}/relancer_executer_confirmation.png" alt="Relancer et exécuter toutes les cellules" style="height: 2.5rem; aspect-ratio: auto;"/></li>
+                <li>Clique sur le bouton <img src="{files_url}/rerun_button.png" alt="restart" style="height: 2.5rem; aspect-ratio: auto;"/> en haut dans la barre d'outils</li>
+                <li>Confirme en cliquant sur <img src="{files_url}/relancer_executer_confirmation.png" alt="Relancer et exécuter toutes les cellules" style="height: 2.5rem; aspect-ratio: auto;"/></li>
             </ol>
         </div>
         <button class="sos-button" title="Besoin d'aide ?">SOS ?<br/>(Cliquer ici)</button>
@@ -3360,7 +3406,6 @@ def create_sos_box():
 create_sidebox()
 create_sos_box()
 
-
 steps = {
     'bdd': {
         'name': 'Présentation des données',
@@ -3387,7 +3432,7 @@ steps = {
     #     'color': 'rgb(244,167,198)',
     # },
     'custom': {
-        'name': 'Votre propre caractéristique',
+        'name': 'Ta propre caractéristique',
         'color': 'rgb(20,129,173)',
     },
     # 'bacasable': {
@@ -3449,6 +3494,7 @@ class _MathadataValidate():
         answers = {}
 
         res = None
+        is_superuser = has_variable('superuser') and get_variable('superuser') == True
         try:
             res = self.validate(errors, answers)
         except Exception as e:
@@ -3466,7 +3512,7 @@ class _MathadataValidate():
             for error in errors:
                 pretty_print_error(error)
 
-        if not res and (self.tips is not None or self.get_tips is not None):
+        if ((not res) or debug or is_superuser) and (self.tips is not None or self.get_tips is not None):
             if self.get_tips is not None:
                 self.tips = self.get_tips()
 
@@ -3477,6 +3523,7 @@ class _MathadataValidate():
                 'tips': self.tips,
                 'trials': self.trials,
                 'answers': self.get_variables_str(),
+                'debug': debug or is_superuser,
             }
             run_js(f'''
                     mathadata.add_observer('{id}-tips', () => window.mathadata.setup_tips('{id}-tips', `{json.dumps(params, cls=NpEncoder)}`));
@@ -3484,7 +3531,7 @@ class _MathadataValidate():
 
             display(HTML(f'''<div id="{id}-tips"></div>'''))
 
-        if has_variable('superuser') and get_variable('superuser') == True:
+        if is_superuser:
             res = True
 
         if res:
@@ -3965,12 +4012,15 @@ class ValidateScoreThresold(MathadataValidate):
         else:
             if e_train_10 == nb_errors:
                 errors.append(
-                    f"Ce n'est pas la bonne valeur. Pour passer du nombre d'erreurs sur 10 {challenge.strings['dataname']['pluriel']} au pourcentage, tu dois multiplier par 10 !")
+                    "Tu as donné le bon nombre d'erreurs mais on veut le pourcentage. Pour passer du nombre d'erreurs au pourcentage d'erreur, tu dois multiplier par 10 !")
             elif e_train_10 < 0 or e_train_10 > 100:
                 errors.append("Ce n'est pas la bonne valeur. Le pourcentage d'erreur doit être compris entre 0 et 100.")
+            elif e_train_10 == (nb_errors / 10):
+                errors.append(
+                    "Tu as donné la bonne proportion d'erreurs mais on veut le pourcentage. Pour passer de la proportion au pourcentage d'erreur, tu dois multiplier par 100 !")
             else:
                 errors.append(
-                    "Ce n'est pas la bonne valeur. Compare ta liste de prédictions avec les vraies valeurs pour trouver le pourcentage d'erreur.")
+                    f"Ce n'est pas la bonne valeur. Note la réponse donnée par ton algorithme pour chaque {challenge.strings['dataname']['nom']} et compte le nombre de différences avec les bonnes réponses.")
             return False
 
 
@@ -4005,6 +4055,10 @@ def validation_func_score_fixed(errors, answers):
             pretty_print_success(
                 f"Bravo, ton algorithme actuel a fait {nb_errors} erreurs sur les 10 {ac_fem('premières', 'premiers')} {challenge.strings['dataname']['pluriel']}, soit {score_10}% d'erreur")
             return True
+        elif score_10 == (nb_errors / 10):
+            errors.append(
+                "Tu as donné la bonne proportion d'erreurs mais on veut le pourcentage !")
+            return False
         else:
             errors.append(
                 "La variable erreur_10 doit être un entier. Attention, écrivez uniquement le nombre sans le %.")
@@ -4016,9 +4070,11 @@ def validation_func_score_fixed(errors, answers):
         return True
 
     if score_10 == nb_errors:
-        errors.append("Ce n'est pas la bonne valeur. Tu as donné le nombre d'erreur et non le pourcentage d'erreur.")
+        errors.append(
+            "Tu as donné le bon nombre d'erreurs mais on veut le pourcentage. Pour passer du nombre d'erreurs au pourcentage d'erreur, tu dois diviser par le nombre de données puis donner la réponse en pourcentage !")
     elif score_10 < 0 or score_10 > 100:
         errors.append("Ce n'est pas la bonne valeur. Le pourcentage d'erreur doit être compris entre 0 et 100.")
+
     else:
         errors.append(
             f"Ce n'est pas la bonne valeur. Note la réponse donnée par ton algorithme pour chaque {challenge.strings['dataname']['nom']} et compte le nombre de différences avec les bonnes réponses.")
@@ -4097,7 +4153,10 @@ validation_question_score_fixe = MathadataValidateVariables({
             'tip': 'Compte dans le tableau le nombre d\'erreurs commmises. Il restera une opération mathématique à faire pour obtenir le pourcentage d\'erreur.'
         }, {
             'seconds': 100,
-            'tip': 'Il faut diviser par 10 pour otebnir la proportion d\'erreur parmi les 10 premières valeurs.'
+            'tip': 'Il faut diviser par 10 pour obtenir la proportion d\'erreur parmi les 10 premières valeurs.'
+        }, {
+            'seconds': 130,
+            'tip': 'Pour obtenir le pourcentage d\'erreur, il faut multiplier la proportion par 100.'
         }], success="")
 validation_score_fixe = MathadataValidate(success="")
 
@@ -4192,8 +4251,10 @@ validation_question_nombre_total = MathadataValidateVariables(get_names_and_valu
     }
 ])
 
-validation_execution_test_algorithme_faineant = MathadataValidate(success="", on_success=lambda a: print(f"Testez l'algorithme sur plusieurs {data(alt=True, plural=True)} avant de passer à la suite."))
-validation_execution_test_algorithme_ref = MathadataValidate(success="", on_success=lambda a: print(f"Testez l'algorithme sur plusieurs {data(alt=True, plural=True)} avant de passer à la suite."))
+validation_execution_test_algorithme_faineant = MathadataValidate(success="", on_success=lambda a: print(
+    f"Testez l'algorithme sur plusieurs {data(alt=True, plural=True)} avant de passer à la suite."))
+validation_execution_test_algorithme_ref = MathadataValidate(success="", on_success=lambda a: print(
+    f"Testez l'algorithme sur plusieurs {data(alt=True, plural=True)} avant de passer à la suite."))
 
 # Defini pour éviter l'erreur python par defaut si l'élève mets reponse = chat
 chat = 0
@@ -4229,7 +4290,7 @@ validation_question_faineant = MathadataValidateVariables(get_names_and_values=l
     }
 }, get_tips=lambda: [{
     'seconds': 30,
-    'tip': f"L'algorithme fainéant ne réfléchit pas. Il répond toujours la même chose peu importe {data('le', alt=True)}. Relis le texte au dessus pour voir ce qu'il répond."
+    'tip': f"L'algorithme fainéant ne réfléchit pas. Il répond toujours la même chose, peu importe {data('le', alt=True)}. Relis le texte au dessus pour voir ce qu'il répond."
 }],
                                                           success="", on_success=lambda answers: pretty_print_success(
         f"Bravo, {ac_fem('quelle', 'quel')} que soit {data('le', alt=True)} l'algorithme fainéant répond toujours {challenge.classes[0]} !"))
@@ -4507,6 +4568,94 @@ window.mathadata.mutationObserver = new MutationObserver((mutationsList, observe
 
 window.mathadata.mutationObserver.observe(document.body, { childList: true, subtree: true });
 
+// ============================================================================
+// Système de checkpoints générique pour sauvegarder les validations
+// ============================================================================
+
+window.mathadata.checkpoints = {
+    STORAGE_KEY: 'mathadata_checkpoints',
+
+    /**
+     * Sauvegarde un checkpoint avec ou sans données
+     * @param {string} checkpointId - Identifiant unique du checkpoint
+     * @param {*} data - Données à sauvegarder (optionnel). Si non fourni, sauvegarde true
+     *
+     * Exemples:
+     *   checkpoints.save('exo1')                    → {exo1: true}
+     *   checkpoints.save('exo2', {score: 10})       → {exo2: {score: 10}}
+     *   checkpoints.save('exo3', [1, 2, 3])         → {exo3: [1, 2, 3]}
+     */
+    save: function(checkpointId, data) {
+        const checkpoints = this.getAll();
+        checkpoints[checkpointId] = data !== undefined ? data : true;
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(checkpoints));
+    },
+
+    /**
+     * Vérifie si un checkpoint existe
+     * @param {string} checkpointId - Identifiant du checkpoint à vérifier
+     * @returns {boolean} true si le checkpoint existe (quelle que soit sa valeur)
+     */
+    check: function(checkpointId) {
+        const checkpoints = this.getAll();
+        return checkpointId in checkpoints;
+    },
+
+    /**
+     * Récupère les données d'un checkpoint spécifique
+     * @param {string} checkpointId - Identifiant du checkpoint
+     * @returns {*} Les données du checkpoint, ou undefined si n'existe pas
+     *
+     * Exemples:
+     *   checkpoints.get('exo1')    → true
+     *   checkpoints.get('exo2')    → {score: 10}
+     *   checkpoints.get('inexistant') → undefined
+     */
+    get: function(checkpointId) {
+        const checkpoints = this.getAll();
+        return checkpoints[checkpointId];
+    },
+
+    /**
+     * Récupère tous les checkpoints
+     * @returns {Object} Objet contenant tous les checkpoints
+     */
+    getAll: function() {
+        return JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '{}');
+    },
+
+    /**
+     * Supprime un checkpoint spécifique
+     * @param {string} checkpointId - Identifiant du checkpoint à supprimer
+     */
+    remove: function(checkpointId) {
+        const checkpoints = this.getAll();
+        delete checkpoints[checkpointId];
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(checkpoints));
+    },
+
+    /**
+     * Supprime tous les checkpoints
+     */
+    clear: function() {
+        localStorage.removeItem(this.STORAGE_KEY);
+    },
+
+    /**
+     * Génère un hash simple pour créer un ID de checkpoint (utilisé pour les QCM)
+     * @param {Object|string} data - Données à hasher
+     * @returns {string} Hash généré
+     */
+    hash: function(data) {
+        const str = typeof data === 'string' ? data : JSON.stringify(data);
+        let hash = 5381;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) + hash) + str.charCodeAt(i);
+        }
+        return 'cp_' + (hash >>> 0).toString(36);
+    }
+};
+
 window.mathadata.create_qcm = function(id, configInput) {
     if (typeof configInput === 'string') {
         configInput = JSON.parse(configInput);
@@ -4531,28 +4680,11 @@ window.mathadata.create_qcm = function(id, configInput) {
         configInput = { questions: configs };
     }
 
-    // Fonction de hashing simple pour la config
-    function hashConfig(config) {
-        // Créer une représentation déterministe de la config pour le hash
-        const configToHash = {
-            questions: config.questions || [config],
-        };
-        const str = JSON.stringify(configToHash);
-
-        // Simple hash function (DJB2)
-        let hash = 5381;
-        for (let i = 0; i < str.length; i++) {
-            hash = ((hash << 5) + hash) + str.charCodeAt(i);
-        }
-        return 'qcm_' + (hash >>> 0).toString(36);
-    }
-
-    // Générer le hash de cette config
-    const configHash = hashConfig(configInput);
+    // Générer un ID de checkpoint unique pour ce QCM
+    const checkpointId = 'qcm_' + window.mathadata.checkpoints.hash(configInput);
 
     // Vérifier si ce QCM a déjà été réussi
-    const completedQCMs = JSON.parse(localStorage.getItem('mathadata_completed_qcms') || '{}');
-    const isAlreadyCompleted = completedQCMs[configHash] === true;
+    const isAlreadyCompleted = window.mathadata.checkpoints.check(checkpointId);
 
     const container = document.getElementById(id);
     container.style.display = 'flex';
@@ -4679,13 +4811,12 @@ window.mathadata.create_qcm = function(id, configInput) {
             if (configInput.success) {
                 globalStatus.textContent = configInput.success;
             } else {
-                globalStatus.textContent = 'Bravo ! Vous pouvez passer à la suite.';
+                globalStatus.textContent = 'Bravo ! Tu peux passer à la suite.';
             }
             globalStatus.style.color = 'green';
 
             // Sauvegarder dans le localStorage que ce QCM a été réussi
-            completedQCMs[configHash] = true;
-            localStorage.setItem('mathadata_completed_qcms', JSON.stringify(completedQCMs));
+            window.mathadata.checkpoints.save(checkpointId);
 
             mathadata.pass_breakpoint();
         } else if (multipleQuestions) {
@@ -4697,7 +4828,7 @@ window.mathadata.create_qcm = function(id, configInput) {
     // Si le QCM a déjà été complété, afficher un message et passer le breakpoint automatiquement
     if (isAlreadyCompleted) {
         const globalStatus = document.getElementById(`${id}-qcm-global-status`);
-        globalStatus.textContent = '✓ Vous avez déjà réussi ce QCM précédemment. Vous pouvez continuer.';
+        globalStatus.textContent = '✓ Tu as déjà réussi ce QCM précédemment. Tu peux continuer.';
         globalStatus.style.color = 'green';
         globalStatus.style.fontStyle = 'italic';
         mathadata.pass_breakpoint();
@@ -4744,7 +4875,7 @@ def qcm_test():
 
 
 custom_carac_free_exemple_code = """
-    # Ajouter votre code ici
+    # Ajoute ton code ici
     
     
     
@@ -5151,4 +5282,577 @@ def toggle_stepbar():
 
 
 init_stepbar()
+
+
 # Change la couleur au démarage
+
+
+def exercice_association(questions_dict, answers_dict, question_generale="Associez chaque proposition à sa réponse"):
+    # Crée un exercice interactif d'association de propositions avec drag and drop.
+    # questions_dict: dictionnaire avec les questions (clés: question1, question2, etc.)
+    # answers_dict: dictionnaire avec les réponses (clés: answer1, answer2, etc.)
+    # question_generale: texte de la question générale affichée en haut
+    # validation_instance: instance de MathadataValidate (OBLIGATOIRE) à appeler quand toutes les associations sont correctes
+    # Les associations sont déterminées par les clés: question1 -> answer1, question2 -> answer2, etc.
+
+    import random
+    import base64
+
+    # Vérifier que les deux dictionnaires ont le même nombre d'éléments
+    if len(questions_dict) != len(answers_dict):
+        error_msg = f"Erreur: Le nombre de questions ({len(questions_dict)}) ne correspond pas au nombre de réponses ({len(answers_dict)})."
+        display(HTML(f'<div style="color: red; font-weight: bold; padding: 10px;">{error_msg}</div>'))
+        return
+
+    # Extraire les clés et les trier pour avoir un ordre cohérent
+    question_keys = sorted([k for k in questions_dict.keys() if k.startswith('question')])
+    answer_keys = sorted([k for k in answers_dict.keys() if k.startswith('answer')])
+
+    # Vérifier à nouveau avec les clés filtrées
+    if len(question_keys) != len(answer_keys):
+        error_msg = f"Erreur: Le nombre de questions ({len(question_keys)}) ne correspond pas au nombre de réponses ({len(answer_keys)})."
+        display(HTML(f'<div style="color: red; font-weight: bold; padding: 10px;">{error_msg}</div>'))
+        return
+
+    n = len(question_keys)
+
+    # Créer un ID unique pour cet exercice
+    exercise_id = uuid.uuid4().hex
+
+    # Randomiser l'ordre des questions (pas des réponses)
+    shuffled_question_keys = question_keys.copy()
+    random.shuffle(shuffled_question_keys)
+
+    # Préparer les données pour JavaScript
+    questions_data = {key: questions_dict[key] for key in shuffled_question_keys}
+    answers_data = {key: answers_dict[key] for key in answer_keys}
+    correct_associations = {f"question{i + 1}": f"answer{i + 1}" for i in range(n)}
+
+    # Convertir en JSON pour JavaScript
+    questions_json = json.dumps(questions_data)
+    answers_json = json.dumps(answers_data)
+    correct_json = json.dumps(correct_associations)
+
+    html_content = f"""
+    <style>
+        .mathadata-association-container {{
+            font-family: sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }}
+        .mathadata-association-container .mathadata-container {{
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+        .mathadata-association-container h1 {{
+            text-align: center;
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }}
+        .mathadata-association-container .mathadata-exercise-area {{
+            display: flex;
+            justify-content: space-between;
+            gap: 60px;
+            margin-top: 30px;
+        }}
+        .mathadata-association-container .mathadata-column {{
+            flex: 1;
+            min-width: 300px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }}
+        .mathadata-association-container .mathadata-column h2 {{
+            text-align: center;
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 20px;
+            width: 100%;
+        }}
+        .mathadata-association-container .mathadata-column > div[id$="-questions"],
+        .mathadata-association-container .mathadata-column > div[id$="-answers"] {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }}
+        .mathadata-association-container .mathadata-item {{
+            position: relative;
+            padding: 15px;
+            margin: 10px 0;
+            background: #f9f9f9;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            cursor: default;
+            transition: all 0.2s;
+            user-select: none;
+            width: 75%;
+        }}
+        .mathadata-association-container .mathadata-item:hover {{
+            background: #f0f0f0;
+        }}
+        .mathadata-association-container .mathadata-item.mathadata-connected {{
+            border-color: #4CAF50;
+            background: #e8f5e9;
+        }}
+        .mathadata-association-container .mathadata-item.mathadata-correct {{
+            border-color: #4CAF50;
+            background: #c8e6c9;
+        }}
+        .mathadata-association-container .mathadata-item.mathadata-incorrect {{
+            border-color: #f44336;
+            background: #ffcdd2;
+        }}
+        .mathadata-association-container .mathadata-circle {{
+            position: absolute;
+            right: -12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #4CAF50;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            z-index: 10;
+            cursor: pointer;
+        }}
+        .mathadata-association-container .mathadata-circle.mathadata-answer-circle {{
+            left: -12px;
+            right: auto;
+            background: #2196F3;
+        }}
+        .mathadata-association-container .mathadata-item-text {{
+            margin-right: 20px;
+            font-size: 85%;
+        }}
+        .mathadata-association-container .mathadata-item.mathadata-answer-item .mathadata-item-text {{
+            margin-left: 20px;
+            margin-right: 0;
+            font-size: 85%;
+        }}
+        .mathadata-association-container svg {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }}
+        .mathadata-association-container .mathadata-connections-layer {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2;
+        }}
+        .mathadata-association-container .mathadata-exercise-wrapper {{
+            position: relative;
+            min-height: 30px;
+        }}
+        .mathadata-association-container .mathadata-feedback {{
+            text-align: center;
+            margin-top: 10px;
+            margin-bottom: 5px;
+            padding: 8px;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 14px;
+        }}
+        .mathadata-association-container .mathadata-feedback.mathadata-correct {{
+            background: #c8e6c9;
+            color: #2e7d32;
+        }}
+        .mathadata-association-container .mathadata-feedback.mathadata-incorrect {{
+            background: #ffcdd2;
+            color: #c62828;
+        }}
+        .mathadata-association-container .mathadata-validation-button {{
+            display: block;
+            margin: 15px auto;
+            padding: 10px 25px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }}
+        .mathadata-association-container .mathadata-validation-button:hover {{
+            background: #45a049;
+        }}
+        .mathadata-association-container .mathadata-validation-button:active {{
+            background: #3d8b40;
+        }}
+        .mathadata-association-container .mathadata-validation-button:disabled {{
+            background: #cccccc;
+            color: #666666;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }}
+        .mathadata-association-container .mathadata-validation-button:disabled:hover {{
+            background: #cccccc;
+        }}
+    </style>
+    <div class="mathadata-association-container">
+        <div class="mathadata-container">
+            <h1>{question_generale}</h1>
+            <div class="mathadata-exercise-wrapper">
+                <svg id="{exercise_id}-svg" class="mathadata-connections-layer"></svg>
+                <div class="mathadata-exercise-area" id="{exercise_id}-area">
+                    <div class="mathadata-column">
+                        <h2>Questions</h2>
+                        <div id="{exercise_id}-questions"></div>
+                    </div>
+                    <div class="mathadata-column">
+                        <h2>Réponses</h2>
+                        <div id="{exercise_id}-answers"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="{exercise_id}-feedback" class="mathadata-feedback" style="display: none;"></div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button id="{exercise_id}-validate-btn" class="mathadata-validation-button">Valider</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        (function() {{
+            const exerciseId = '{exercise_id}';
+            const questions = {questions_json};
+            const answers = {answers_json};
+            const correctAssociations = {correct_json};
+            
+            const questionsContainer = document.getElementById(exerciseId + '-questions');
+            const answersContainer = document.getElementById(exerciseId + '-answers');
+            const svg = document.getElementById(exerciseId + '-svg');
+            const feedbackDiv = document.getElementById(exerciseId + '-feedback');
+            const validateButton = document.getElementById(exerciseId + '-validate-btn');
+            
+            // Stocker les associations actuelles
+            const associations = {{}};
+            const questionElements = {{}};
+            const answerElements = {{}};
+            
+            // Stocker les cercles pour le drag
+            const questionCircles = {{}};
+            const answerCircles = {{}};
+            let draggingCircle = null;
+            let tempLine = null;
+            let mouseX = 0;
+            let mouseY = 0;
+            
+            // Créer les éléments de questions
+            Object.keys(questions).forEach((key, index) => {{
+                const item = document.createElement('div');
+                item.className = 'mathadata-item mathadata-question-item';
+                item.id = exerciseId + '-q-' + key;
+                item.dataset.questionKey = key;
+
+                const circle = document.createElement('div');
+                circle.className = 'mathadata-circle';
+                circle.id = exerciseId + '-circle-q-' + key;
+                circle.dataset.questionKey = key;
+
+                const text = document.createElement('div');
+                text.className = 'mathadata-item-text';
+                text.textContent = questions[key];
+
+                item.appendChild(circle);
+                item.appendChild(text);
+                questionsContainer.appendChild(item);
+
+                questionElements[key] = item;
+                questionCircles[key] = circle;
+
+                // Gestionnaires d'événements pour le drag depuis le cercle
+                circle.addEventListener('mousedown', handleCircleMouseDown);
+            }});
+
+            // Créer les éléments de réponses
+            Object.keys(answers).forEach((key, index) => {{
+                const item = document.createElement('div');
+                item.className = 'mathadata-item mathadata-answer-item';
+                item.id = exerciseId + '-a-' + key;
+                item.dataset.answerKey = key;
+
+                const circle = document.createElement('div');
+                circle.className = 'mathadata-circle mathadata-answer-circle';
+                circle.id = exerciseId + '-circle-a-' + key;
+                circle.dataset.answerKey = key;
+
+                const text = document.createElement('div');
+                text.className = 'mathadata-item-text';
+                text.textContent = answers[key];
+
+                item.appendChild(circle);
+                item.appendChild(text);
+                answersContainer.appendChild(item);
+
+                answerElements[key] = item;
+                answerCircles[key] = circle;
+
+                // Gestionnaires d'événements pour le drag depuis le cercle
+                circle.addEventListener('mousedown', handleCircleMouseDown);
+            }});
+            
+            // Fonction pour obtenir la position d'un cercle
+            function getCirclePosition(circle) {{
+                const rect = circle.getBoundingClientRect();
+                const containerRect = svg.getBoundingClientRect();
+                return {{
+                    x: rect.left + rect.width / 2 - containerRect.left,
+                    y: rect.top + rect.height / 2 - containerRect.top
+                }};
+            }}
+            
+            // Fonction pour trouver le cercle le plus proche (sans contrainte de distance)
+            function findNearestCircle(x, y, excludeCircle) {{
+                let nearest = null;
+                let minDist = Infinity;
+                
+                // Chercher dans les cercles de réponses si on drag depuis une question
+                if (draggingCircle && draggingCircle.dataset.questionKey) {{
+                    Object.values(answerCircles).forEach(circle => {{
+                        if (circle === excludeCircle) return;
+                        const pos = getCirclePosition(circle);
+                        const dist = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
+                        if (dist < minDist) {{
+                            minDist = dist;
+                            nearest = circle;
+                        }}
+                    }});
+                }}
+                // Chercher dans les cercles de questions si on drag depuis une réponse
+                else if (draggingCircle && draggingCircle.dataset.answerKey) {{
+                    Object.values(questionCircles).forEach(circle => {{
+                        if (circle === excludeCircle) return;
+                        const pos = getCirclePosition(circle);
+                        const dist = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
+                        if (dist < minDist) {{
+                            minDist = dist;
+                            nearest = circle;
+                        }}
+                    }});
+                }}
+                
+                return nearest;
+            }}
+            
+            function handleCircleMouseDown(e) {{
+                e.preventDefault();
+                e.stopPropagation();
+                
+                draggingCircle = e.target;
+                
+                // Vérifier et supprimer les anciennes connexions
+                if (draggingCircle.dataset.questionKey) {{
+                    // Si on drag depuis un cercle de question, supprimer son association existante
+                    const questionKey = draggingCircle.dataset.questionKey;
+                    if (associations[questionKey]) {{
+                        delete associations[questionKey];
+                        // Mettre à jour les connexions visuelles
+                        updateConnections();
+                    }}
+                }} else if (draggingCircle.dataset.answerKey) {{
+                    // Si on drag depuis un cercle de réponse, trouver et supprimer l'association
+                    const answerKey = draggingCircle.dataset.answerKey;
+                    Object.keys(associations).forEach(qKey => {{
+                        if (associations[qKey] === answerKey) {{
+                            delete associations[qKey];
+                            // Mettre à jour les connexions visuelles
+                            updateConnections();
+                        }}
+                    }});
+                }}
+                
+                const startPos = getCirclePosition(draggingCircle);
+                
+                // Créer une ligne temporaire
+                tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                tempLine.setAttribute('x1', startPos.x);
+                tempLine.setAttribute('y1', startPos.y);
+                tempLine.setAttribute('x2', startPos.x);
+                tempLine.setAttribute('y2', startPos.y);
+                tempLine.setAttribute('stroke', '#666');
+                tempLine.setAttribute('stroke-width', '2');
+                tempLine.setAttribute('opacity', '0.8');
+                svg.appendChild(tempLine);
+                
+                // Ajouter les gestionnaires d'événements globaux
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+            }}
+            
+            function handleMouseMove(e) {{
+                if (!draggingCircle || !tempLine) return;
+                
+                const containerRect = svg.getBoundingClientRect();
+                mouseX = e.clientX - containerRect.left;
+                mouseY = e.clientY - containerRect.top;
+
+                // La ligne suit la souris
+                tempLine.setAttribute('x2', mouseX);
+                tempLine.setAttribute('y2', mouseY);
+            }}
+            
+            function handleMouseUp(e) {{
+                if (!draggingCircle || !tempLine) return;
+                
+                const containerRect = svg.getBoundingClientRect();
+                const mouseX = e.clientX - containerRect.left;
+                const mouseY = e.clientY - containerRect.top;
+                
+                // Vérifier si on est proche d'un cercle
+                const nearest = findNearestCircle(mouseX, mouseY, draggingCircle);
+                
+                if (nearest) {{
+                    // Créer l'association
+                    if (draggingCircle.dataset.questionKey) {{
+                        const questionKey = draggingCircle.dataset.questionKey;
+                        const answerKey = nearest.dataset.answerKey;
+                        
+                        // Supprimer l'ancienne association si elle existe
+                        if (associations[questionKey]) {{
+                            delete associations[questionKey];
+                        }}
+                        
+                        // Créer la nouvelle association
+                        associations[questionKey] = answerKey;
+                    }} else if (draggingCircle.dataset.answerKey) {{
+                        const answerKey = draggingCircle.dataset.answerKey;
+                        const questionKey = nearest.dataset.questionKey;
+                        
+                        // Supprimer l'ancienne association si elle existe
+                        Object.keys(associations).forEach(qKey => {{
+                            if (associations[qKey] === answerKey) {{
+                                delete associations[qKey];
+                            }}
+                        }});
+                        
+                        // Créer la nouvelle association
+                        associations[questionKey] = answerKey;
+                    }}
+                    
+                    // Mettre à jour l'affichage
+                    updateConnections();
+                }} else {{
+                    // Pas de connexion, supprimer la ligne temporaire
+                }}
+                
+                // Nettoyer
+                if (tempLine && tempLine.parentNode) {{
+                    tempLine.parentNode.removeChild(tempLine);
+                }}
+                tempLine = null;
+                draggingCircle = null;
+                
+                // Retirer les gestionnaires d'événements
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+            }}
+            
+            function updateConnections() {{
+                // Nettoyer le SVG (sauf la ligne temporaire si elle existe)
+                const tempLineToKeep = tempLine;
+                svg.innerHTML = '';
+                if (tempLineToKeep) {{
+                    svg.appendChild(tempLineToKeep);
+                }}
+                
+                // Dessiner les lignes de connexion entre les cercles
+                Object.keys(associations).forEach(questionKey => {{
+                    const answerKey = associations[questionKey];
+                    const questionCircle = questionCircles[questionKey];
+                    const answerCircle = answerCircles[answerKey];
+                    
+                    if (questionCircle && answerCircle) {{
+                        const qPos = getCirclePosition(questionCircle);
+                        const aPos = getCirclePosition(answerCircle);
+                        
+                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line.setAttribute('x1', qPos.x);
+                        line.setAttribute('y1', qPos.y);
+                        line.setAttribute('x2', aPos.x);
+                        line.setAttribute('y2', aPos.y);
+                        line.setAttribute('stroke', '#666');
+                        line.setAttribute('stroke-width', '2');
+                        // Ligne pleine (pas de stroke-dasharray)
+                        line.setAttribute('opacity', '0.8');
+                        
+                        svg.appendChild(line);
+                    }}
+                }});
+            }}
+            
+            function validateAssociations() {{
+                let allCorrect = true;
+                let allConnected = Object.keys(questions).length === Object.keys(associations).length;
+                
+                // Vérifier chaque association
+                Object.keys(associations).forEach(questionKey => {{
+                    const answerKey = associations[questionKey];
+                    const isCorrect = correctAssociations[questionKey] === answerKey;
+                    
+                    if (!isCorrect) {{
+                        allCorrect = false;
+                    }}
+                }});
+                
+                // Afficher le feedback
+                if (!allConnected) {{
+                    feedbackDiv.textContent = 'Veuillez associer toutes les questions aux réponses.';
+                    feedbackDiv.className = 'mathadata-feedback mathadata-incorrect';
+                    feedbackDiv.style.display = 'block';
+                }} else if (allCorrect) {{
+                    feedbackDiv.textContent = 'Bravo ! Toutes les associations sont correctes.';
+                    feedbackDiv.className = 'mathadata-feedback mathadata-correct';
+                    feedbackDiv.style.display = 'block';
+
+                    // Désactiver le bouton
+                    validateButton.disabled = true;
+
+                    console.log('call pass_breakpoint', mathadata.pass_breakpoint);
+                    mathadata.pass_breakpoint();
+                }} else {{
+                    feedbackDiv.textContent = 'Certaines associations sont incorrectes. Continuez !';
+                    feedbackDiv.className = 'mathadata-feedback mathadata-incorrect';
+                    feedbackDiv.style.display = 'block';
+                }}
+            }}
+            
+            // Ajouter l'événement sur le bouton de validation
+            validateButton.addEventListener('click', validateAssociations);
+            
+            // Mettre à jour les connexions lors du redimensionnement
+            window.addEventListener('resize', updateConnections);
+            
+            // Initialiser le SVG avec la bonne taille
+            function initSVG() {{
+                const wrapper = document.querySelector('.mathadata-exercise-wrapper');
+                const rect = wrapper.getBoundingClientRect();
+                svg.setAttribute('width', rect.width);
+                svg.setAttribute('height', rect.height);
+            }}
+            
+            // Attendre que le DOM soit chargé
+            setTimeout(() => {{
+                initSVG();
+                updateConnections();
+            }}, 100);
+        }})();
+    </script>
+"""
+
+    display(HTML(html_content))

@@ -45,7 +45,8 @@ strings = {
     ],
     "r_petite_caracteristique": 7,
     "r_grande_caracteristique": 2,
-    "train_size": "6 000",
+    "train_size": "6 073",
+    "train_size_approx": "6 000",
     "objectif_score_droite": 10,
     "objectif_score_droite_custom": 8,
     "pt_retourprobleme": "(40; 20)"
@@ -85,7 +86,7 @@ with open(d_train_path, 'rb') as f:
 with open(r_train_path, 'rb') as f:
     r_train = pickle.load(f)
 
-print(f"données chargées")
+pretty_print_success('Le chargement de la base de données s\'est déroulé à merveille ! Tu peux poursuivre en déroulant la page.')
 
 # VERSION 2/7 : 
 classes = [2, 7]
@@ -196,7 +197,7 @@ class Mnist(common.Challenge):
 
     def display_custom_selection(self, id):
         run_js(f'''
-            setTimeout(() => {{
+            mathadata.add_observer('{id}', () => {{
                 window.mathadata.setup_zone_selection('{id}', '{json.dumps(self.d_train[4:8].tolist())}')
                 const gif = document.createElement('img')
                 gif.id = 'selection-gif'
@@ -205,12 +206,12 @@ class Mnist(common.Challenge):
                 gif.style = 'width: 25%; height: auto; margin-inline: auto;'
                 const container = document.getElementById('{id}-selection')
                 container.appendChild(gif)
-            }}, 500)
+            }});
         ''')
 
     def display_custom_selection_2d(self, id):
         run_js(f'''
-            setTimeout(() => {{
+            mathadata.add_observer('{id}', () => {{
                 window.mathadata.setup_zone_selection_2d('{id}', '{json.dumps(self.d_train[4:8].tolist())}')
                 const gif = document.createElement('img')
                 gif.id = 'selection-gif'
@@ -219,7 +220,7 @@ class Mnist(common.Challenge):
                 gif.style = 'width: 25%; height: auto; margin-inline: auto;'
                 const container = document.getElementById('{id}')
                 container.appendChild(gif)
-            }}, 500)
+            }});
         ''')
 
     def caracteristique(self, d):
@@ -729,6 +730,9 @@ let zone1 = false;
 let zone2 = false;
 let zones = [[null, null], [null, null]];
 
+const zone1CheckpointId = 'mnist_zone_custom';
+const zone2CheckpointId = 'mnist_zones_custom_2d';
+
 document.addEventListener('mouseup', () => {
     isSelecting = false;
 });
@@ -819,8 +823,24 @@ function selectCells() {
         let python;
         if (zone1 || zone2) {
             python = `update_selected_2((${minRowIndex}, ${minColIndex}), (${maxRowIndex}, ${maxColIndex}), (${minRowIndex2}, ${minColIndex2}), (${maxRowIndex2}, ${maxColIndex2}))`;
+
+            mathadata.checkpoints.save(zone2CheckpointId, {
+                zone1: {
+                    A: [minRowIndex, minColIndex],
+                    B: [maxRowIndex, maxColIndex]
+                },
+                zone2: {
+                    A: [minRowIndex2, minColIndex2],
+                    B: [maxRowIndex2, maxColIndex2]
+                }
+            });
         } else {
             python = `update_selected((${minRowIndex}, ${minColIndex}), (${maxRowIndex}, ${maxColIndex}))`;
+
+            mathadata.checkpoints.save(zone1CheckpointId, {
+                A: [minRowIndex, minColIndex],
+                B: [maxRowIndex, maxColIndex]
+            });
         }
 
         window.mathadata.run_python(python, () => {
@@ -904,56 +924,82 @@ window.mathadata.affichage = (id, matrix, params) => {
 
 // affiche l'image avec les valeurs des pixels
 function affichage_tableau(id, matrix) {
-    const container = document.getElementById(id)
-    container.style.overflow = 'hidden'
-    container.style.display = 'flex'
-    container.style.alignItems = 'center'
-    container.style.justifyContent = 'center'
+    const container = document.getElementById(id);
+    container.style.overflow = 'hidden';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
     container.innerHTML = '';
 
-    const table = document.createElement('table')
-    table.classList.add('image-table')
-    table.classList.add('image-table-numbers')
-    table.style.width = '100%'
-    table.style.height = '100%'
+    const table = document.createElement('table');
+    table.style.borderCollapse = 'collapse';
+    table.style.width = '100%';
+    table.style.height = '100%';
+    table.style.fontFamily = 'monospace';
 
-    // Calculer la taille de police en fonction du nombre de lignes/colonnes
-    // Plus il y a de cellules, plus la police doit être petite
-    const numCols = matrix[0].length + 1; // +1 pour la colonne header
-    const numRows = matrix.length + 1; // +1 pour la ligne header
-    const cellSize = Math.min(100 / numCols, 100 / numRows); // pourcentage
-    // Taille de police proportionnelle à la taille de cellule
-    const fontSize = Math.max(6, Math.min(14, cellSize * 0.4)); // entre 6px et 14px
-    table.style.fontSize = fontSize + 'px';
+    // Dimensionnement typographique
+    const numCols = matrix[0].length + 1;
+    const numRows = matrix.length + 1;
+    const cellSize = Math.min(100 / numCols, 100 / numRows);
+    table.style.fontSize = Math.max(6, Math.min(14, cellSize * 0.4)) + 'px';
 
-    container.appendChild(table)
+    container.appendChild(table);
 
+    /* ===== EN-TÊTE COLONNES ===== */
     const thead = document.createElement('thead');
-    const corner_th = document.createElement('th');
-    corner_th.innerText = 'n°';
-    thead.appendChild(corner_th);
+    const headRow = document.createElement('tr');
+
+    const corner = document.createElement('th');
+    corner.innerText = '';
+    styleHeader(corner);
+    headRow.appendChild(corner);
+
     for (let col = 0; col < matrix[0].length; col++) {
         const th = document.createElement('th');
-        th.innerText = col + 1;
-        thead.appendChild(th);
+        th.innerText = col+1;
+        styleHeader(th);
+        headRow.appendChild(th);
     }
 
+    thead.appendChild(headRow);
     table.appendChild(thead);
+
+    /* ===== CORPS ===== */
+    const tbody = document.createElement('tbody');
+
     for (let row = 0; row < matrix.length; row++) {
         const tr = document.createElement('tr');
+
+        // En-tête ligne
         const th = document.createElement('th');
-        th.innerText = row + 1;
+        th.innerText = row+1;
+        styleHeader(th);
         tr.appendChild(th);
 
         for (let col = 0; col < matrix[row].length; col++) {
             const td = document.createElement('td');
-            const value = matrix[row][col];
-            td.innerText = value;
+            td.innerText = matrix[row][col];
+            td.style.border = '1px solid #ccc';
+            td.style.textAlign = 'center';
             tr.appendChild(td);
         }
-        table.appendChild(tr);
+
+        tbody.appendChild(tr);
     }
+
+    table.appendChild(tbody);
 }
+
+/* ===== STYLE STRUCTUREL ===== */
+function styleHeader(cell) {
+    cell.style.backgroundColor = '#f0f0f0';
+    cell.style.border = '2px solid #000';
+    cell.style.fontWeight = 'bold';
+    cell.style.textAlign = 'center';
+    cell.style.padding = '2px 4px';
+    cell.style.fontSize = '1.4em';
+}
+
     
 
 window.mathadata.affichage_image_et_pixels = (id, params) => {
@@ -1126,14 +1172,14 @@ window.mathadata.animation_moyenne = async (id, data) => {
 
 window.mathadata.setup_zone_selection = (id, matrixes) => {
     matrixes = JSON.parse(matrixes)
-    
+
     const container = document.getElementById(id)
     container.innerHTML = `
         <div id="${id}-selection">
             <div class="custom-images" id="${id}-images"></div>
         </div>
     `;
-    
+
     const imagesContainer = document.getElementById(`${id}-images`)
     window.mathadata.image_tables = [];
     for (let i = 0; i < matrixes.length; i++) {
@@ -1145,12 +1191,27 @@ window.mathadata.setup_zone_selection = (id, matrixes) => {
         window.mathadata.image_tables.push(window.mathadata.affichage(`${id}-image-${i}`, matrixes[i], {with_selection: true}))
     }
 
+    // Charger la zone sauvegardée si elle existe
+
+    const savedZone = window.mathadata.checkpoints.get(zone1CheckpointId);
+    if (savedZone && savedZone.A?.every(v => v !== null) && savedZone.B?.every(v => v !== null)) {
+        // Restaurer la zone sauvegardée
+        const firstTable = window.mathadata.image_tables[0];
+        if (firstTable && firstTable.rows) {
+            const startCell = firstTable.rows[savedZone.A[0]]?.cells[savedZone.A[1]];
+            const endCell = firstTable.rows[savedZone.B[0]]?.cells[savedZone.B[1]];
+            if (startCell && endCell) {
+                zones[0] = [startCell, endCell];
+            }
+        }
+    }
+
     selectCells(); // To show zones if reexecute
 }
 
 window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
     matrixes = JSON.parse(matrixes)
-    
+
     const container = document.getElementById(id)
     container.innerHTML = `
          <style>
@@ -1250,7 +1311,7 @@ window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
             <!-- Par défaut, Zone 1 est affichée -->
         </div>
 
-        
+
         </div>
     </div>
     `;
@@ -1265,7 +1326,7 @@ window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
         zone1 = !toggle.checked;
         zone2 = toggle.checked;
     })
-    
+
     const imagesContainer = document.getElementById(`${id}-images`)
     window.mathadata.image_tables = [];
     for (let i = 0; i < matrixes.length; i++) {
@@ -1275,6 +1336,32 @@ window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
         table.id = `${id}-image-${i}`
         imagesContainer.appendChild(table)
         window.mathadata.image_tables.push(window.mathadata.affichage(`${id}-image-${i}`, matrixes[i], {with_selection: true}))
+    }
+
+    // Charger les zones sauvegardées si elles existent
+    const savedZones = window.mathadata.checkpoints.get(zone2CheckpointId);
+    if (savedZones) {
+        const firstTable = window.mathadata.image_tables[0];
+        if (firstTable && firstTable.rows) {
+
+            if (savedZones.zone1.A?.every(v => v !== null) && savedZones.zone1.B?.every(v => v !== null)) {
+                // Restaurer zone 1
+                const start1 = firstTable.rows[savedZones.zone1.A[0]]?.cells[savedZones.zone1.A[1]];
+                const end1 = firstTable.rows[savedZones.zone1.B[0]]?.cells[savedZones.zone1.B[1]];
+                if (start1 && end1) {
+                    zones[0] = [start1, end1];
+                }
+            }
+            
+            if (savedZones.zone2.A?.every(v => v !== null) && savedZones.zone2.B?.every(v => v !== null)) {
+                // Restaurer zone 2
+                const start2 = firstTable.rows[savedZones.zone2.A[0]]?.cells[savedZones.zone2.A[1]];
+                const end2 = firstTable.rows[savedZones.zone2.B[0]]?.cells[savedZones.zone2.B[1]];
+                if (start2 && end2) {
+                    zones[1] = [start2, end2];
+                }
+            }
+        }
     }
 
     selectCells(); // To show zones if reexecute

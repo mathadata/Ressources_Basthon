@@ -14,6 +14,338 @@ else:
     from utilitaires_geo import *
     import utilitaires_geo as geo
 
+
+def tracer_20_points_droite(slider_p=False, slider_m=False, show_eq=False):
+    afficher_separation_line(show_slider_p=slider_p, show_slider_m=slider_m, show_equation=show_eq)
+
+
+def tracer_20_points_droite_p():
+    tracer_20_points_droite(slider_p=True, show_eq=True)
+
+
+def tracer_20_points_droite_pm():
+    tracer_20_points_droite(slider_p=True, slider_m=True, show_eq=True)
+
+
+def qcm_ordonnee_origine():
+    create_qcm({
+        'question': "Quelle est l\'ordonnée à l'origine ?",
+        'choices': ["L\'abscisse du point d'intersection de la droite avec l\'axe des x.",
+                    "L\'abscisse du point d'intersection de la droite avec l\'axe des y.",
+                    "L\'ordonnée du point d'intersection de la droite avec l\'axe des x.",
+                    "L\'ordonnée du point d'intersection de la droite avec l\'axe des y."],
+        'answer': "L\'ordonnée du point d'intersection de la droite avec l\'axe des y.",
+    })
+
+
+def qcm_pente():
+    create_qcm({
+        'question': 'Quelle droite a un coefficient directeur négatif ?',
+        'choices': ['d1', 'd2'],
+        'answer': 'd2',
+    })
+
+
+def tracer_10_points_droite(dataset=common.challenge.dataset_10_points, labels=common.challenge.labels_10_points):
+    c_train_par_population = compute_c_train_by_class(fonction_caracteristique=common.challenge.deux_caracteristiques,
+                                                      d_train=dataset, r_train=labels)
+
+    display_id = uuid.uuid4().hex
+
+    params = {
+        'points': c_train_par_population,
+        'droite': common.challenge.droite_10_points,
+        'hover': True,
+        'force_origin': True,
+        'equation_hide': True
+    }
+    params['droite']['avec_zones'] = True
+    params['droite']['mode'] = 'affine'
+
+    run_js(
+        f"mathadata.add_observer('{display_id}-chart', () => window.mathadata.tracer_points('{display_id}', '{json.dumps(params, cls=NpEncoder)}'))")
+
+    display(HTML(f'''
+        <canvas id="{display_id}-chart"></canvas>
+    '''))
+
+
+def tracer_points_droite(id_content=None, display_value="range", carac=None, initial_hidden=False, save=True,
+                         side_box=True):
+    if id_content is None:
+        id_content = uuid.uuid4().hex
+
+    display(HTML(f'''
+        <div id="{id_content}-container" style="{'visibility:hidden;' if initial_hidden else ''} max-width: 900px; margin: 0 auto;">
+            <div id="{id_content}-score-container" style="text-align: center; font-weight: bold; font-size: 1.5rem;">Pourcentage d'erreur : <span id="{id_content}-score">...</span></div>
+
+            <div style="display:flex; flex-direction:row; align-items:center; justify-content:center; gap:18px;">
+                <div style="flex:1; min-width:320px;">
+                    <canvas id="{id_content}-chart"></canvas>
+                </div>
+                <div id="{id_content}-slope-box-wrapper" style="display:{'flex' if side_box else 'none'}; align-items:center; justify-content:center;">
+                    <div id="{id_content}-slope-box" style="width:250px; height:180px; border:0; border-radius:0; background:transparent; display:flex; align-items:center; justify-content:center; position:relative;">
+                    </div>
+                </div>
+            </div>
+
+            <div id="{id_content}-inputs" style="display: flex; gap: 1rem; justify-content: center; flex-direction: {'column' if display_value == "range" else 'row'};">
+                <div>
+                    <label for="{id_content}-input-m" id="{id_content}-label-m" style="color: #239E28">m = </label>
+                    <input type="{display_value}" {display_value == "range" and 'min="0" max="5"'} value="2" step="0.1" id="{id_content}-input-m" style="color: #239E28">
+                </div>
+                <div>
+                    <label for="{id_content}-input-p" id="{id_content}-label-p" style="color: #FF0000">p = </label>
+                    <input type="{display_value}" {display_value == "range" and 'min="-10" max="10"'} value="0" step="0.1" id="{id_content}-input-p">
+                </div>
+            </div>
+        </div>
+    '''))
+
+    if carac is None:
+        carac = common.challenge.deux_caracteristiques
+
+    c_train_par_population = compute_c_train_by_class(fonction_caracteristique=carac)
+
+    params = {
+        'points': c_train_par_population,
+        'custom': carac == common.challenge.deux_caracteristiques_custom,
+        'hover': True,
+        'displayValue': display_value == "range",
+        'save': save,
+        'droite': {
+            'mode': 'affine'
+        },
+        'inputs': {
+            'm': True,
+            'p': True,
+        },
+        'param_colors': {
+            'm': '#239E28',
+            'p': '#FF0000'
+        },
+        'compute_score': True,
+        'equation_fixed_position': True,
+        'force_origin': True,
+        'side_box': side_box,
+    }
+
+    run_js(
+        f"mathadata.add_observer('{id_content}-container', () => window.mathadata.tracer_points('{id_content}', '{json.dumps(params, cls=NpEncoder)}'))")
+
+
+def create_graph(figsize=(figw_full, figw_full)):
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Enlever les axes de droites et du haut
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+
+    # Centrer les axes en (0,0)
+    ax.spines['left'].set_position(('data', 0))
+    ax.spines['bottom'].set_position(("data", 0))
+
+    # Afficher les flèches au bout des axes
+    ax.plot(1, 0, ">k", transform=ax.get_yaxis_transform(), clip_on=False)
+    ax.plot(0, 1, "^k", transform=ax.get_xaxis_transform(), clip_on=False)
+
+    # Nom des axex
+    ax.set_xlabel('$x$', loc='right')
+    ax.set_ylabel('$y$', loc='top', rotation='horizontal')
+
+    return fig, ax
+
+
+def tracer_droite(ax, m, p, x_min, x_max, color='black'):
+    # Ajouter la droite
+    x = np.linspace(x_min, x_max, 1000)
+    y = m * x + p
+    ax.plot(x, y, c=color)  # Ajout de la droite en noir
+
+    # Display the equation of the line
+    equation = f'$y = {m}x {"+" if p >= 0 else "-"} {abs(p)}$'
+    ax.text(20, 3, equation, color=color, verticalalignment='top', horizontalalignment='left')
+
+
+def tracer_exercice_classification(display_m_coords=False, point_b=False):
+    m = geo.input_values['m']
+    p = geo.input_values['p']
+
+    x = [pointA[0]]
+    y = [pointA[1]]
+
+    if point_b:
+        x = [pointB[0]]
+        y = [pointB[1]]
+
+    y += [m * k1 + p for k1 in x]
+    x += x
+
+    fig, ax = create_graph(figsize=(figw_full * 0.50, figw_full * 0.50))
+
+    # Définir les borne inf et sup des axes. On veut que le point (0,0) soit toujours sur le graphe
+    x_min, x_max = min(0, np.min(x) - 2, np.min(y) - 2), max(0, np.max(x) + 2, np.max(y) + 2)
+    x_max *= 1.2
+    mk2 = m * pointA[0] + p
+    if point_b:
+        mk2 = m * pointB[0] + p
+
+    ax.set_xlim((x_min, x_max))
+    ax.set_ylim((x_min, x_max))
+
+    # Set the ticks on the x-axis at intervals of 5
+    ax.set_xticks(np.arange(x_min, x_max, 5))
+
+    # Set the ticks on the y-axis at intervals of 5
+    # ax.set_yticks(np.arange(x_min, x_max, 5))
+    ax.set_yticks([round(mk2, 2)])
+    # remove the y axis ticks and labels
+    ax.yaxis.set_ticks_position('none')
+    ax.yaxis.set_ticklabels(['à calculer'])
+
+    labels = [f'A({pointA[0]}, {pointA[1]})', f'M({pointA[0]}, {round(mk2, 2)})' if display_m_coords else 'M(20, ?)']
+    if point_b:
+        labels = [f'B({pointB[0]}, {pointB[1]})',
+                  f'N({pointB[0]}, {round(mk2, 2)})' if display_m_coords else 'N(30, ?)']
+    colors = ['C4', 'C3']
+    for i in range(len(labels)):
+        # Draw a dotted line from the point to the x-axis
+        ax.axhline(y[i], xmin=0, xmax=x[i] / x_max, linestyle='dotted', color='gray')
+
+        # Draw a dotted line from the point to the y-axis
+        ax.axvline(x[i], ymin=0, ymax=y[i] / x_max, linestyle='dotted', color='gray')
+
+        ax.annotate(labels[i], (x[i] + 1, y[i]), va='center', color=colors[i])
+        ax.scatter(x[i], y[i], marker='+', c=colors[i])
+
+    tracer_droite(ax, m, p, x_min, x_max, color=colors[1])
+
+    return ax
+
+
+def exercice_calcul_au_dessus():
+    tracer_exercice_classification()
+    plt.show()
+    plt.close()
+
+
+def qcm_dessus():
+    create_qcm({
+        'question': "Est-ce que l\'ordonnée de M est plus petite ou plus grande que l\'ordonnée d'A ?",
+        'choices': ['plus petite', 'plus grande'],
+        'answer': 'plus petite',
+    })
+
+
+def qcm_dessus_dessous():
+    create_qcm({
+        'question': (
+            "Pour savoir si un point A(x<sub>A</sub>, y<sub>A</sub>) est au-dessus ou en-dessous d’une droite d’équation y = mx + p, que faut-il comparer ?"
+        ),
+        'choices': [
+            "Comparer y<sub>A</sub> avec px<sub>A</sub> + m.",
+            "Comparer x<sub>A</sub> avec y<sub>A</sub>.",
+            "Comparer y<sub>A</sub> avec mx<sub>A</sub> + p.",
+            "Comparer x<sub>A</sub> avec l'abscisse d'un point quelconque sur la droite."
+        ],
+        'answer': "Comparer y<sub>A</sub> avec mx<sub>A</sub> + p.",
+        'multiline': True,
+    })
+
+
+def exercice_calcul_au_dessous():
+    tracer_exercice_classification(point_b=True)
+    plt.show()
+    plt.close()
+
+
+def affichage_zones_custom(a1, b1, a2, b2):
+    common.challenge.affichage_2_cara(a1, b1, a2, b2, True)
+    tracer_points_droite(display_value="number", carac=common.challenge.deux_caracteristiques_custom, save=False)
+
+
+def afficher_customisation():
+    display_id = uuid.uuid4().hex
+    display(HTML(f'''
+        <div id="{display_id}"></div>
+    '''))
+    # Utilise display_custom_selection_2d si elle existe, sinon display_custom_selection
+    if hasattr(common.challenge, 'display_custom_selection_2d'):
+        common.challenge.display_custom_selection_2d(display_id)
+    else:
+        common.challenge.display_custom_selection(display_id)
+
+    tracer_points_droite(id_content=display_id, display_value="number",
+                         carac=common.challenge.deux_caracteristiques_custom,
+                         initial_hidden=True, save=False)
+
+    run_js(f'''
+        window.mathadata.on_custom_update = () => {{
+            window.mathadata.run_python('update_custom()', (points) => {{
+                mathadata.update_points('{display_id}', {{points}})
+
+                // AFFICHER LE GRAPH APRÈS LA SÉLECTION
+                document.getElementById('{display_id}-container').style.visibility = 'visible';
+            }})
+        }}
+    ''')
+
+
+def exercice_association_deux_droites():
+    exercice_association(
+        questions_dict={
+            'question1': ' Quelle droite a un coefficient directeur négatif ?',
+            'question2': ' Quelle droite a un coefficient directeur positif ?',
+            'question3': ' Quelle droite a un coefficient directeur nul ?',
+        },
+        answers_dict={
+            'answer1': 'La droite d2.',
+            'answer2': 'La droite d1.',
+            'answer3': 'La droite d3.',
+        },
+        question_generale="Associez chaque droite à sa pente",
+    )
+
+
+# JS
+
+def calculer_score_droite():
+    calculer_score_droite_geo(validate=common.challenge.objectif_score_droite)
+
+
+def calculer_score_custom_droite():
+    calculer_score_droite_geo(custom=True, validate=common.challenge.objectif_score_droite_custom,
+                              error_msg="Continue à chercher 2 zones pour avoir moins de " + str(
+                                  common.challenge.objectif_score_droite_custom) + "% d'erreur. Pense à changer les valeurs de m et p après avoir défini ta zone.")
+
+
+# Variables globales pour les valeurs des sliders et taux d'erreur
+slider_p_value = None
+slider_m_value = None
+error_score = None
+
+
+def update_slider_values(p_val, m_val, e_val):
+    """Fonction appelée par JavaScript pour mettre à jour les valeurs des sliders"""
+    global slider_p_value, slider_m_value, error_score
+    slider_p_value = p_val
+    slider_m_value = m_val
+    error_score = e_val
+
+
+listener_js = """
+<script>
+window.addEventListener('message', function(event) {
+    if (event.data.type === 'slider_values') {
+        // Appeler la fonction Python
+        mathadata.run_python(
+            'update_slider_values(' + event.data.p + ', ' + event.data.m + ', ' + event.data.e + ')'
+        );
+    }
+});
+</script>
+"""
+
 dataset_20_points = {
     "blue_pts": [[2, 15], [5, 9], [10, 18], [15, 15], [8, 11], [12, 12], [18, 8], [22, 22], [25, 19], [20, 24]],
     "orange_pts": [[5, 1], [5, 7], [10, 8], [15, 5], [20, 6], [25, 15], [8, 6], [12, 9], [18, 12], [14, 11]]}
@@ -213,7 +545,7 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
       }}
       .slope-box {{
           width: 250px;
-          height: 180px;
+          height: {height}px; 
           border: 4px solid black;
           border-radius: 20px;
           background-color: white;
@@ -231,21 +563,22 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
       <span style="color:{p_color}; font-weight:700;">p</span>
     </div>
     {score_div}
-    
+
     <div class="main-container">
         <div id="{box_id}" class="jxgbox" style="width:{width}px; height:{height}px;"></div>
-        
+
         <div id="slope-box-container" class="slope-box" style="display: {'flex' if show_slider_m else 'none'};">
-            <svg id="slope-svg" width="100%" height="100%" viewBox="0 0 250 180" style="overflow: visible;">
-                <line id="slope-base" stroke="black" stroke-width="4" stroke-linecap="round" />
-                <line id="slope-height" stroke="{m_color}" stroke-width="4" stroke-linecap="round" />
-                <line id="slope-hypo" stroke="purple" stroke-width="5" stroke-linecap="round" />
-                <text id="text-base" text-anchor="middle" font-weight="bold" font-size="16">5</text>
-                <text id="text-calc" text-anchor="start" font-weight="bold" font-size="16" fill="{m_color}"></text>
+            <svg id="slope-svg" width="100%" height="100%" viewBox="0 0 250 {height}" style="overflow: visible;">
+                <text x="125" y="25" text-anchor="middle" font-weight="bold" font-size="16">Calcul de la pente m</text>
+                <line id="slope-base" stroke="purple" stroke-width="4" stroke-linecap="round" />
+                <line id="slope-height" stroke="orange" stroke-width="4" stroke-linecap="round" />
+                <line id="slope-hypo" stroke="black" stroke-width="5" stroke-linecap="round" />
+                <text id="text-base" text-anchor="middle" font-weight="bold" font-size="16" fill="purple">10</text>
+                <text id="text-calc" text-anchor="start" font-weight="bold" font-size="16" fill="orange"></text>
+                <text id="text-formula" text-anchor="middle" font-weight="bold" font-size="16" fill="black" x="125" y="{height - 20}"></text>
             </svg>
         </div>
     </div>
-
     <script>
       (function() {{
         if (!window.JXG) {{
@@ -291,16 +624,16 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
         // computeScore pour le taux d'erreur
         const computeScore = () => {{
               const n = {blue_pts}.length;
-            
+
               // Points oranges incorrectement classés (au-dessus de la droite alors qu'ils devraient être en dessous)
               const errorsA = {orange_pts}.filter(([x, y]) => y >= currentM() * x + currentP()).length;
-            
+
               // Points bleus incorrectement classés (en dessous de la droite alors qu'ils devraient être au-dessus)
               const errorsB = {blue_pts}.filter(([x, y]) => y <= currentM() * x + currentP()).length;
-            
+
               const totalErrors = errorsA + errorsB;
               const totalPoints = 2 * n;
-            
+
               const errorPercentage = Math.round((totalErrors / totalPoints) * 10000) / 100; // en %
               const scoreEl = document.getElementById("{box_id}-score");
               if (scoreEl) scoreEl.innerHTML = `${{errorPercentage}}%`;
@@ -319,7 +652,10 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
         // grid and axes above shading
         board.create('grid', [], {{strokeColor:'#DCDCDC', strokeWidth:1, strokeOpacity:0.6}});
         board.create('axis', [[0,0],[1,0]], {{ name: 'Caractéristique x', ticks: {{minorTicks:0}}, strokeWidth: 1.2, layer: 4 }});
-        board.create('axis', [[0,0],[0,1]], {{ name: 'Caractéristique y', ticks: {{minorTicks:0}}, strokeWidth: 1.2, layer: 4 }});
+        board.create('axis', [[0,0],[0,1]], {{ name: 'Caractéristique y', ticks: {{minorTicks:0,label: {{
+            anchorX: 'right',  // Aligne le texte à droite du point d'ancrage
+            offset: [-10, 0]   // Décale de 10 pixels vers la gauche
+        }}}}, strokeWidth: 1.2, layer: 4 }});
         // slider horizontal extents - adapt to actual viewport
         var x_range = XMAX - XMIN;
         var x1 = XMIN + x_range * 0.15;  // 15% from left
@@ -369,7 +705,7 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
               {{fontSize:18, anchorX:'right', anchorY:'middle', color: 'black', layer:9, 
                 fontWeight: 'bold', fixed: true, highlight: false}});
 
-            s_m = board.create('slider', [[x1, y_single], [x2, y_single], [-5, m_fixed, 5]], {{
+            s_m = board.create('slider', [[x1, y_single], [x2, y_single], [-3, m_fixed, 3]], {{
               withLabel: false, name:'', 
               strokeColor: '{m_color}', fillColor: '{m_color}', 
               strokeWidth: 4, size: 8,
@@ -407,7 +743,7 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
                 fontWeight: 'bold', fixed: true, highlight: false}});
 
           // Sliders améliorés
-          s_m = board.create('slider', [[x1, y_m], [x2, y_m], [-5, m_fixed, 5]], {{
+          s_m = board.create('slider', [[x1, y_m], [x2, y_m], [-3, m_fixed, 3]], {{
             withLabel: false, name:'', 
             strokeColor: '{m_color}', fillColor: '{m_color}', 
             strokeWidth: 4, size: 8,
@@ -575,70 +911,123 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
           highlight: false
         }});
 
-        function updateSlopeViz() {{
-            var m = currentM();
-            var svg = document.getElementById('slope-svg');
-            if (!svg) return;
-            
-            var baseLine = document.getElementById('slope-base');
-            var heightLine = document.getElementById('slope-height');
-            var hypoLine = document.getElementById('slope-hypo');
-            var textBase = document.getElementById('text-base');
-            var textCalc = document.getElementById('text-calc');
-            
-            var unit = 20; 
-            var vizBase = 40; // Base visuelle en pixels
-            
-            // Calcul vertical
-            // Hauteur visuelle correspondante : h = vizBase * m
-            var hViz = vizBase * m;
-            
-            // Centrage
-            // Centre SVG = (125, 90) (pour box 250x180)
-            var startX = 60; // Marge gauche
-            var centerY = 90;
-            
-            var startY = centerY + hViz / 2;
-            
-            var Ax = startX;
-            var Ay = startY;
-            var Bx = Ax + vizBase;
-            var By = startY;
-            var Cx = Bx;
-            var Cy = startY - hViz;
-            
-            baseLine.setAttribute('x1', Ax);
-            baseLine.setAttribute('y1', Ay);
-            baseLine.setAttribute('x2', Bx);
-            baseLine.setAttribute('y2', By);
-            
-            heightLine.setAttribute('x1', Bx);
-            heightLine.setAttribute('y1', By);
-            heightLine.setAttribute('x2', Cx);
-            heightLine.setAttribute('y2', Cy);
-            
-            hypoLine.setAttribute('x1', Ax);
-            hypoLine.setAttribute('y1', Ay);
-            hypoLine.setAttribute('x2', Cx);
-            hypoLine.setAttribute('y2', Cy);
-            
-            textBase.setAttribute('x', (Ax + Bx)/2);
-            textBase.setAttribute('y', Ay + 20);
-            
-            textCalc.setAttribute('x', Bx + 10);
-            textCalc.setAttribute('y', (By + Cy)/2 + 5);
-            
-            var mDisp = parseFloat(m.toFixed(2));
-            var resDisp = parseFloat((5 * m).toFixed(2));
-            textCalc.textContent = "5 x " + mDisp + " = " + resDisp;
-        }}
-
         // Fonction pour envoyer les valeurs des sliders à Python
         function sendSliderValues() {{
           var p_val = currentP();
           var m_val = currentM();
           var e_val = currentE();
           window.parent.postMessage({{type:'slider_values', p: p_val, m: m_val, e: e_val}}, '*');
+        }}
+
+        function updateSlopeViz() {{
+            var m = currentM();
+            var svg = document.getElementById('slope-svg');
+            if (!svg) return;
+
+            var baseLine = document.getElementById('slope-base');
+            var heightLine = document.getElementById('slope-height');
+            var hypoLine = document.getElementById('slope-hypo');
+            var textBase = document.getElementById('text-base');
+            var textCalc = document.getElementById('text-calc');
+            var textFormula = document.getElementById('text-formula');
+
+            var unit = 10; 
+            var boardWidth = {width};
+            var xRange = XMAX - XMIN;
+            var pixelsPerUnit = boardWidth / xRange;
+            var vizBase = unit * pixelsPerUnit;
+
+            // Calcul vertical
+            var hViz = vizBase * m;
+
+            // Centrage
+            var startX = (250 - vizBase) / 2; 
+            var centerY = {height} / 2;
+            var startY = centerY + hViz / 2;
+            
+            if (startY > {height} - 40) startY = {height} - 40;
+
+            var Ax = startX;
+            var Ay = startY;
+            var Bx = Ax + vizBase;
+            var By = startY;
+            var Cx = Bx;
+            var Cy = startY - hViz;
+
+            baseLine.setAttribute('x1', Ax);
+            baseLine.setAttribute('y1', Ay);
+            baseLine.setAttribute('x2', Bx);
+            baseLine.setAttribute('y2', By);
+
+            heightLine.setAttribute('x1', Bx);
+            heightLine.setAttribute('y1', By);
+            heightLine.setAttribute('x2', Cx);
+            heightLine.setAttribute('y2', Cy);
+
+            hypoLine.setAttribute('x1', Ax);
+            hypoLine.setAttribute('y1', Ay);
+            hypoLine.setAttribute('x2', Cx);
+            hypoLine.setAttribute('y2', Cy);
+
+            textBase.setAttribute('x', (Ax + Bx)/2);
+            textBase.setAttribute('y', Ay + 20);
+            textBase.textContent = "10";
+
+            textCalc.setAttribute('x', Bx + 10);
+            textCalc.setAttribute('y', (By + Cy)/2 + 5);
+            
+            var mDisp = parseFloat(m.toFixed(2));
+            var hDisp = parseFloat((m * 10).toFixed(2));
+            textCalc.textContent = hDisp;
+
+            if (textFormula) {{
+                // Clear existing content
+                while (textFormula.firstChild) {{
+                    textFormula.removeChild(textFormula.firstChild);
+                }}
+                
+                // m (green)
+                var tspan1 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                tspan1.textContent = "m";
+                tspan1.setAttribute("fill", "{m_color}");
+                textFormula.appendChild(tspan1);
+
+                // = (black)
+                var tspanEq = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                tspanEq.textContent = " = ";
+                tspanEq.setAttribute("fill", "black");
+                textFormula.appendChild(tspanEq);
+
+                // hDisp (vertical, orange)
+                var tspan2 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                tspan2.textContent = hDisp;
+                tspan2.setAttribute("fill", "orange");
+                textFormula.appendChild(tspan2);
+
+                // / (black)
+                var tspan3 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                tspan3.textContent = " / ";
+                tspan3.setAttribute("fill", "black");
+                textFormula.appendChild(tspan3);
+
+                // 10 (horizontal, purple)
+                var tspan4 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                tspan4.textContent = "10";
+                tspan4.setAttribute("fill", "purple");
+                textFormula.appendChild(tspan4);
+
+                // = (black)
+                var tspan5 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                tspan5.textContent = " = ";
+                tspan5.setAttribute("fill", "black");
+                textFormula.appendChild(tspan5);
+
+                // mDisp (green)
+                var tspan6 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                tspan6.textContent = mDisp;
+                tspan6.setAttribute("fill", "{m_color}");
+                textFormula.appendChild(tspan6);
+            }}
         }}
 
         // Fonction de mise à jour complète
@@ -687,285 +1076,10 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
         # Largeur augmentée pour inclure la slope box (+250px + 40px padding/gap)
         iframe_width = width + 40
         if show_slider_m:
-            iframe_width += 270 # 250 box + 20 gap
-            
+            iframe_width += 270  # 250 box + 20 gap
+
         iframe_html = f'<div style="display:flex; justify-content:center;"><iframe src="{data_uri}" style="width:{iframe_width}px; height:{height + 90}px; border:none;"></iframe></div>'
         display(HTML(iframe_html))
-
-
-def tracer_20_points_droite(slider_p=False, slider_m=False, show_eq=False):
-    afficher_separation_line(show_slider_p=slider_p, show_slider_m=slider_m, show_equation=show_eq)
-
-
-def tracer_20_points_droite_p():
-    tracer_20_points_droite(slider_p=True, show_eq=True)
-
-
-def tracer_20_points_droite_pm():
-    tracer_20_points_droite(slider_p=True, slider_m=True, show_eq=True)
-
-
-def tracer_10_points_droite(dataset=common.challenge.dataset_10_points, labels=common.challenge.labels_10_points):
-    c_train_par_population = compute_c_train_by_class(fonction_caracteristique=common.challenge.deux_caracteristiques,
-                                                      d_train=dataset, r_train=labels)
-
-    display_id = uuid.uuid4().hex
-
-    params = {
-        'points': c_train_par_population,
-        'droite': common.challenge.droite_10_points,
-        'hover': True,
-        'force_origin': True,
-        'equation_hide': True
-    }
-    params['droite']['avec_zones'] = True
-    params['droite']['mode'] = 'affine'
-
-    run_js(
-        f"mathadata.add_observer('{display_id}-chart', () => window.mathadata.tracer_points('{display_id}', '{json.dumps(params, cls=NpEncoder)}'))")
-
-    display(HTML(f'''
-        <canvas id="{display_id}-chart"></canvas>
-    '''))
-
-
-def tracer_points_droite(id_content=None, display_value="range", carac=None, initial_hidden=False, save=True, side_box=True):
-    if id_content is None:
-        id_content = uuid.uuid4().hex
-
-    display(HTML(f'''
-        <div id="{id_content}-container" style="{'visibility:hidden;' if initial_hidden else ''} max-width: 900px; margin: 0 auto;">
-            <div id="{id_content}-score-container" style="text-align: center; font-weight: bold; font-size: 1.5rem;">Pourcentage d'erreur : <span id="{id_content}-score">...</span></div>
-
-            <div style="display:flex; flex-direction:row; align-items:center; justify-content:center; gap:18px;">
-                <div style="flex:1; min-width:320px;">
-                    <canvas id="{id_content}-chart"></canvas>
-                </div>
-                <div id="{id_content}-slope-box-wrapper" style="display:{'flex' if side_box else 'none'}; align-items:center; justify-content:center;">
-                    <div id="{id_content}-slope-box" style="width:250px; height:180px; border:0; border-radius:0; background:transparent; display:flex; align-items:center; justify-content:center; position:relative;">
-                    </div>
-                </div>
-            </div>
-
-            <div id="{id_content}-inputs" style="display: flex; gap: 1rem; justify-content: center; flex-direction: {'column' if display_value == "range" else 'row'};">
-                <div>
-                    <label for="{id_content}-input-m" id="{id_content}-label-m" style="color: #239E28">m = </label>
-                    <input type="{display_value}" {display_value == "range" and 'min="0" max="5"'} value="2" step="0.1" id="{id_content}-input-m" style="color: #239E28">
-                </div>
-                <div>
-                    <label for="{id_content}-input-p" id="{id_content}-label-p" style="color: #FF0000">p = </label>
-                    <input type="{display_value}" {display_value == "range" and 'min="-10" max="10"'} value="0" step="0.1" id="{id_content}-input-p">
-                </div>
-            </div>
-        </div>
-    '''))
-
-    if carac is None:
-        carac = common.challenge.deux_caracteristiques
-
-    c_train_par_population = compute_c_train_by_class(fonction_caracteristique=carac)
-
-    params = {
-        'points': c_train_par_population,
-        'custom': carac == common.challenge.deux_caracteristiques_custom,
-        'hover': True,
-        'displayValue': display_value == "range",
-        'save': save,
-        'droite': {
-            'mode': 'affine'
-        },
-        'inputs': {
-            'm': True,
-            'p': True,
-        },
-        'param_colors': {
-            'm': '#239E28',
-            'p': '#FF0000'
-        },
-        'compute_score': True,
-        'equation_fixed_position': True,
-        'force_origin': True,
-        'side_box': side_box,
-    }
-
-    run_js(
-        f"mathadata.add_observer('{id_content}-container', () => window.mathadata.tracer_points('{id_content}', '{json.dumps(params, cls=NpEncoder)}'))")
-
-
-def create_graph(figsize=(figw_full, figw_full)):
-    fig, ax = plt.subplots(figsize=figsize)
-
-    # Enlever les axes de droites et du haut
-    ax.spines['right'].set_visible(False)
-    ax.spines['top'].set_visible(False)
-
-    # Centrer les axes en (0,0)
-    ax.spines['left'].set_position(('data', 0))
-    ax.spines['bottom'].set_position(("data", 0))
-
-    # Afficher les flèches au bout des axes
-    ax.plot(1, 0, ">k", transform=ax.get_yaxis_transform(), clip_on=False)
-    ax.plot(0, 1, "^k", transform=ax.get_xaxis_transform(), clip_on=False)
-
-    # Nom des axex
-    ax.set_xlabel('$x$', loc='right')
-    ax.set_ylabel('$y$', loc='top', rotation='horizontal')
-
-    return fig, ax
-
-
-def tracer_droite(ax, m, p, x_min, x_max, color='black'):
-    # Ajouter la droite
-    x = np.linspace(x_min, x_max, 1000)
-    y = m * x + p
-    ax.plot(x, y, c=color)  # Ajout de la droite en noir
-
-    # Display the equation of the line
-    equation = f'$y = {m}x {"+" if p >= 0 else "-"} {abs(p)}$'
-    ax.text(20, 3, equation, color=color, verticalalignment='top', horizontalalignment='left')
-
-
-pointA = (20, 40)
-pointB = (30, 10)
-
-# Variables globales pour les valeurs des sliders et taux d'erreur
-slider_p_value = None
-slider_m_value = None
-error_score = None
-
-
-def update_slider_values(p_val, m_val, e_val):
-    """Fonction appelée par JavaScript pour mettre à jour les valeurs des sliders"""
-    global slider_p_value, slider_m_value, error_score
-    slider_p_value = p_val
-    slider_m_value = m_val
-    error_score = e_val
-
-
-listener_js = """
-<script>
-window.addEventListener('message', function(event) {
-    if (event.data.type === 'slider_values') {
-        // Appeler la fonction Python
-        mathadata.run_python(
-            'update_slider_values(' + event.data.p + ', ' + event.data.m + ', ' + event.data.e + ')'
-        );
-    }
-});
-</script>
-"""
-
-
-def tracer_exercice_classification(display_m_coords=False, point_b=False):
-    m = geo.input_values['m']
-    p = geo.input_values['p']
-
-    x = [pointA[0]]
-    y = [pointA[1]]
-
-    if point_b:
-        x = [pointB[0]]
-        y = [pointB[1]]
-
-    y += [m * k1 + p for k1 in x]
-    x += x
-
-    fig, ax = create_graph(figsize=(figw_full * 0.50, figw_full * 0.50))
-
-    # Définir les borne inf et sup des axes. On veut que le point (0,0) soit toujours sur le graphe
-    x_min, x_max = min(0, np.min(x) - 2, np.min(y) - 2), max(0, np.max(x) + 2, np.max(y) + 2)
-    x_max *= 1.2
-    mk2 = m * pointA[0] + p
-    if point_b:
-        mk2 = m * pointB[0] + p
-
-    ax.set_xlim((x_min, x_max))
-    ax.set_ylim((x_min, x_max))
-
-    # Set the ticks on the x-axis at intervals of 5
-    ax.set_xticks(np.arange(x_min, x_max, 5))
-
-    # Set the ticks on the y-axis at intervals of 5
-    # ax.set_yticks(np.arange(x_min, x_max, 5))
-    ax.set_yticks([round(mk2, 2)])
-    # remove the y axis ticks and labels
-    ax.yaxis.set_ticks_position('none')
-    ax.yaxis.set_ticklabels(['à calculer'])
-
-    labels = [f'A({pointA[0]}, {pointA[1]})', f'M({pointA[0]}, {round(mk2, 2)})' if display_m_coords else 'M(20, ?)']
-    if point_b:
-        labels = [f'B({pointB[0]}, {pointB[1]})',
-                  f'N({pointB[0]}, {round(mk2, 2)})' if display_m_coords else 'N(30, ?)']
-    colors = ['C4', 'C3']
-    for i in range(len(labels)):
-        # Draw a dotted line from the point to the x-axis
-        ax.axhline(y[i], xmin=0, xmax=x[i] / x_max, linestyle='dotted', color='gray')
-
-        # Draw a dotted line from the point to the y-axis
-        ax.axvline(x[i], ymin=0, ymax=y[i] / x_max, linestyle='dotted', color='gray')
-
-        ax.annotate(labels[i], (x[i] + 1, y[i]), va='center', color=colors[i])
-        ax.scatter(x[i], y[i], marker='+', c=colors[i])
-
-    tracer_droite(ax, m, p, x_min, x_max, color=colors[1])
-
-    return ax
-
-
-def exercice_calcul_au_dessus():
-    tracer_exercice_classification()
-    plt.show()
-    plt.close()
-
-
-def exercice_calcul_au_dessous():
-    tracer_exercice_classification(point_b=True)
-    plt.show()
-    plt.close()
-
-
-def affichage_zones_custom(a1, b1, a2, b2):
-    common.challenge.affichage_2_cara(a1, b1, a2, b2, True)
-    tracer_points_droite(display_value="number", carac=common.challenge.deux_caracteristiques_custom, save=False)
-
-
-def afficher_customisation():
-    display_id = uuid.uuid4().hex
-    display(HTML(f'''
-        <div id="{display_id}"></div>
-    '''))
-    # Utilise display_custom_selection_2d si elle existe, sinon display_custom_selection
-    if hasattr(common.challenge, 'display_custom_selection_2d'):
-        common.challenge.display_custom_selection_2d(display_id)
-    else:
-        common.challenge.display_custom_selection(display_id)
-
-    tracer_points_droite(id_content=display_id, display_value="number",
-                         carac=common.challenge.deux_caracteristiques_custom,
-                         initial_hidden=True, save=False)
-
-    run_js(f'''
-        window.mathadata.on_custom_update = () => {{
-            window.mathadata.run_python('update_custom()', (points) => {{
-                mathadata.update_points('{display_id}', {{points}})
-
-                // AFFICHER LE GRAPH APRÈS LA SÉLECTION
-                document.getElementById('{display_id}-container').style.visibility = 'visible';
-            }})
-        }}
-    ''')
-
-
-# JS
-
-def calculer_score_droite():
-    calculer_score_droite_geo(validate=common.challenge.objectif_score_droite)
-
-
-def calculer_score_custom_droite():
-    calculer_score_droite_geo(custom=True, validate=common.challenge.objectif_score_droite_custom,
-                              error_msg="Continuez à chercher 2 zones pour avoir moins de " + str(
-                                  common.challenge.objectif_score_droite_custom) + "% d'erreur. Pensez à changer les valeurs de m et p après avoir défini votre zone.")
 
 
 ### Validation
@@ -973,18 +1087,18 @@ def calculer_score_custom_droite():
 def function_validation_calculer_score_droite(errors, answers):
     """Valide que le score d'erreur est inférieur ou égal à l'objectif"""
     if geo.input_values is None or 'a' not in geo.input_values or 'b' not in geo.input_values or 'c' not in geo.input_values:
-        errors.append("Vous devez d'abord ajuster les paramètres de la droite dans le graphique ci-dessus.")
+        errors.append("Tu dois d'abord ajuster les paramètres de la droite dans le graphique ci-dessus.")
         return False
 
     score = compute_score(geo.input_values['a'], geo.input_values['b'], geo.input_values['c'], custom=False)
     objectif = common.challenge.objectif_score_droite
 
-    if score > objectif and score < 100 - objectif:
+    if objectif < score < 100 - objectif:
         errors.append(
-            f"Le pourcentage d'erreur est encore trop élevé. Continuez à ajuster les paramètres m et p pour obtenir moins de {objectif}% d'erreur.")
+            f"Le pourcentage d'erreur est encore trop élevé. Continue à ajuster les paramètres m et p pour obtenir moins de {objectif}% d'erreur.")
         return False
 
-    pretty_print_success(f"Bravo ! Vous avez trouvé une droite avec {round(score, 2)}% d'erreur.")
+    pretty_print_success(f"Bravo ! Tu as trouvé une droite avec {round(score, 2)}% d'erreur.")
     return True
 
 
@@ -1005,7 +1119,7 @@ def function_validation_equation(errors, answers):
     if not (isinstance(ordonnee_m, (int, float))):
         errors.append(
             "Les coordonnées de M doivent être des nombres. "
-            "Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
+            "Pour les nombres à virgule, utilise un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
 
     if ordonnee_m != m * pointA[0] + p:
@@ -1023,7 +1137,7 @@ def function_validation_equation_b(errors, answers):
     if not (isinstance(ordonnee_m, (int, float))):
         errors.append(
             "Les coordonnées de M doivent être des nombres. "
-            "Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
+            "Pour les nombres à virgule, utilise un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
 
     if ordonnee_m != m * pointB[0] + p:
@@ -1051,11 +1165,11 @@ def function_validation_score_droite_20(errors, answers):
     # Vérification si l'utilisateur a donné le nombre d'erreurs au lieu du pourcentage
     if user_answer == nb_erreurs:
         errors.append(
-            f"Ce n'est pas la bonne valeur. Vous avez donné le nombre d'erreurs ({nb_erreurs}) et non le pourcentage d'erreur.")
+            f"Ce n'est pas la bonne réponse. Tu as donné le nombre d'erreurs (points mal classés) au lieu du pourcentage d'erreur. ")
         return False
-    if user_answer == nb_erreurs/20:
+    if user_answer == nb_erreurs /20 : 
         errors.append(
-            f"Ce n'est pas la bonne valeur mais vous êtes sur la bonne voie. Vous avez donné la proportion d'erreurs sous forme de fraction ou d'un nombre décimal. Il reste une dernière opération pour donner comme réponse le pourcentage d'erreur sans le %.")
+            f"Tu es sur la bonne voie. Tu as bien donné la proportion mais on souhaite la réponse en pourcentage sans écrire le symbole %.")
         return False
     # Vérification de la réponse correcte
     if user_answer == pourcentage_erreur:
@@ -1065,7 +1179,7 @@ def function_validation_score_droite_20(errors, answers):
         else:
             # Détails sur les erreurs pour le message
             pretty_print_success(
-                f"Bravo, c'est la bonne réponse. Il y a une image de 7 au dessus de la droite et cinq images de 2 au dessus, donc {nb_erreurs} erreurs pour 20 images soit {pourcentage_erreur}%.")
+                f"Bravo, c'est la bonne réponse. Il y a une image de 7 au dessus de la droite et cinq images de 2 en dessous, donc {nb_erreurs} erreurs pour 20 images soit {pourcentage_erreur}%.")
         return True
     else:
         errors.append(
@@ -1078,13 +1192,13 @@ def function_validation_score_droite_p(errors, answers):
     if not (isinstance(user_answer, (int, float))):
         errors.append(
             "La valeur p doit être un nombre. "
-            "Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
+            "Pour les nombres à virgule, utilise un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
-    # On valide toujours, mais on adapte le message selon le score actuel
-    if error_score is not None and error_score > 15:
-        pretty_print_success(
-            "Bravo, tu as fourni une valeur de p correcte. Règle également p sur le graphique au-dessus.")
-        return True
+    if user_answer != -1:
+        errors.append(
+            "Le taux d'erreur peut être plus petit. "
+            "Utilise le curseur pour ajuster la valeur de p et réduire le taux d'erreur.")
+        return False
     pretty_print_success("Bravo, tu as trouvé la bonne valeur de p et la droite ayant cette ordonée à l'origine !")
     return True
 
@@ -1095,20 +1209,20 @@ def function_validation_score_droite_pm(errors, answers):
     if not (isinstance(user_answer_p, (int, float))):
         errors.append(
             "La valeur p doit être un nombre. "
-            "Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
+            "Pour les nombres à virgule, utilise un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
     if not (isinstance(user_answer_m, (int, float))):
         errors.append(
             "La valeur m doit être un nombre. "
-            "Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
+            "Pour les nombres à virgule, utilise un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
     err_return = ""
     if error_score != 5:
         err_return += "Le taux d'erreur peut arriver à 5%. Essaie encore.\n"
-    # if user_answer_p != round(slider_p_value):
-    #     err_return += f"Attention, la valeur de p n'est pas celle de la droite.\n"
-    # if user_answer_m != round(slider_m_value, 2):
-    #     err_return += f"Attention, la valeur de m n'est pas celle de la droite.\n"
+    if user_answer_p != round(slider_p_value):
+        err_return += f"Attention, la valeur de p n'est pas celle de la droite.\n"
+    if user_answer_m != round(slider_m_value, 2):
+        err_return += f"Attention, la valeur de m n'est pas celle de la droite.\n"
     if err_return != "":
         errors.append(err_return)
         return False
@@ -1122,12 +1236,12 @@ def function_validation_pente(errors, answers):
     if not (isinstance(user_answer_m1, (int, float))):
         errors.append(
             "La valeur m1 doit être un nombre. "
-            "Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
+            "Pour les nombres à virgule, utilise un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
     if not (isinstance(user_answer_m2, (int, float))):
         errors.append(
             "La valeur m2 doit être un nombre. "
-            "Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
+            "Pour les nombres à virgule, utilise un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
     cond1 = (user_answer_m1 != 1)
     cond2 = (user_answer_m2 != -0.5)
@@ -1146,66 +1260,6 @@ def function_validation_pente(errors, answers):
     return True
 
 
-def validate_qcm(nb_options, answer, errors, user_anwsers):
-    user_answer = user_anwsers['qcm']
-    if not (isinstance(user_answer, int)):
-        errors.append(
-            "La réponse doit être un nombre entier")
-        return False
-    if not 0 < user_answer < nb_options + 1:
-        errors.append(
-            f"La réponse doit être un nombre entre 1 et {nb_options}")
-        return False
-    if user_answer != answer:
-        errors.append("Mauvaise réponse")
-        return False
-    return True
-
-
-def function_validation_qcm_ordonnee_origine(errors, answers):
-    return validate_qcm(4, 4, errors, answers)
-
-
-def function_validation_qcm_dessus(errors, answers):
-    return validate_qcm(2, 1, errors, answers)
-
-
-def function_validation_qcm_dessous(errors, answers):
-    return validate_qcm(4, 3, errors, answers)
-
-
-def function_validation_qcm_choix_caracteristiques(errors, answers):
-    return validate_qcm(2, 2, errors, answers)
-
-
-def function_validation_question_pixel(errors, answers):
-    return validate_qcm(3, 3, errors, answers)
-
-
-def function_validation_exercice_association_deux_droites(errors, answers):
-    q1 = answers['q1_negatif']
-    q2 = answers['q2_positif']
-    q3 = answers['q3_nul']
-    if not (isinstance(q1, (int, float))):
-        errors.append(
-            "La valeur q1_negatif doit être le nombre d'une droite: 1, 2 ou 3.")
-        return False
-    if not (isinstance(q2, (int, float))):
-        errors.append(
-            "La valeur q2_positif doit être le nombre d'une droite: 1, 2 ou 3.")
-        return False
-    if not (isinstance(q3, (int, float))):
-        errors.append(
-            "La valeur q3_nul doit être le nombre d'une droite: 1, 2 ou 3.")
-        return False
-    if q1 != 2 or q2 != 1 or q3 != 3:
-        errors.append("Mauvaise réponse")
-        return False
-    return True
-
-
-validation_moyenne_carac_mauvaise = MathadataValidate(function_validation=validate_moyenne_carac)
-validation_moyenne_carac_meilleure = MathadataValidate(function_validation=validate_moyenne_carac)
 validation_question_equation = MathadataValidateVariables({
     'ordonnee_M': None},
     tips=[
@@ -1249,7 +1303,17 @@ validation_question_equation_dessous = MathadataValidateVariables({
 validation_question_score_droite_20 = MathadataValidateVariables({
     'erreur_20': None
 },
+    tips=[
+        {
+            'seconds': 10,
+            'trials': 1,
+            'operator': 'OR',
+            'tip': "Il y a 20 points en tout"
+        }
+    ],
     function_validation=function_validation_score_droite_20, success="")
+
+
 validation_question_score_droite_p = MathadataValidateVariables({
     'p': None
 },
@@ -1265,7 +1329,7 @@ validation_question_score_droite_pm = MathadataValidateVariables({
         },
         {
             'trials': 2,
-            'tip': 'Regardez l\'équation de la droite en bas du graphique : elle est de la forme y = mx + p. Vous pouvez lire directement les valeurs de m (la pente) et p (l\'ordonnée à l\'origine).'
+            'tip': 'Regardez l\'équation de la droite en bas du graphique : elle est de la forme y = m×x + p. Tu peux lire directement les valeurs de m (la pente) et p (l\'ordonnée à l\'origine).'
         },
         {
             'seconds': 30,
@@ -1297,22 +1361,3 @@ validation_question_pente = MathadataValidateVariables({
     ],
     function_validation=function_validation_pente, success="")
 validation_question_association_droite = MathadataValidate(success="Bravo, toutes les associations sont correctes !")
-
-validation_qcm_ordonnee_origine = MathadataValidateVariables(
-    {'qcm': None},
-    function_validation=function_validation_qcm_ordonnee_origine)
-validation_qcm_dessus = MathadataValidateVariables(
-    {'qcm': None},
-    function_validation=function_validation_qcm_dessus)
-validation_qcm_dessous = MathadataValidateVariables(
-    {'qcm': None},
-    function_validation=function_validation_qcm_dessous)
-validation_qcm_choix_caracteristiques = MathadataValidateVariables(
-    {'qcm': None},
-    function_validation=function_validation_qcm_choix_caracteristiques)
-validation_question_pixel = MathadataValidateVariables(
-    {'qcm': None},
-    function_validation=function_validation_question_pixel)
-validation_exercice_association_deux_droites = MathadataValidateVariables(
-    {'q1_negatif': None, 'q2_positif': None, 'q3_nul': None},
-    function_validation=function_validation_exercice_association_deux_droites)

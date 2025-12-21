@@ -1,8 +1,9 @@
-from IPython.display import display  # Pour afficher des DataFrames avec display(df)
-import pandas as pd
+import sys
+import base64
+import mimetypes
 import os
 import sys
-import warnings, base64, json, os, mimetypes
+import warnings
 
 try:
     from sklearn.linear_model import LogisticRegression
@@ -64,10 +65,11 @@ def tracer_2_points():
     display(df)
     return
 
+
 ### PLACER 2 POINTS ###
 
 def placer_caracteristiques(html_title="Calcul des caractéristiques", left_width=None, images=None,
-                            expected_points_a=None, expected_points_b=None):
+                            expected_points_a=None, expected_points_b=None, preplace_points_a=False):
     """
     Render the JSXGraph iframe in a Jupyter notebook cell and show a 2x2 image grid
     to the left. Accepts expected_points_A and expected_points_B as dicts:
@@ -101,6 +103,8 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
     else:
         images = list(images)[:4] + [None] * max(0, 4 - len(images))
 
+    instance_id = uuid.uuid4().hex
+
     def to_data_uri_if_local(src):
         if src is None:
             return None
@@ -120,8 +124,16 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
     images_json = json.dumps(images_prepared)
 
     # pass the dicts through to JS as objects
-    expected_json_a = json.dumps(expected_points_a)
-    expected_json_b = json.dumps(expected_points_b)
+    expected_json_a = json.dumps(expected_points_a, sort_keys=True)
+    expected_json_b = json.dumps(expected_points_b, sort_keys=True)
+
+    checkpoint_payload = {
+        "type": "placer_caracteristiques",
+        "title": html_title,
+        "expected_points_a": expected_points_a,
+        "expected_points_b": expected_points_b,
+    }
+    checkpoint_payload_json = json.dumps(checkpoint_payload, sort_keys=True, ensure_ascii=False)
 
     if left_width is None:
         left_w_px = int(round(left_ratio * width))
@@ -216,6 +228,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
           // expectedPoints are JS objects: { label: [x,y], ... }
           var expectedPointsA = EXPECTED_A_PLACEHOLDER;
           var expectedPointsB = EXPECTED_B_PLACEHOLDER;
+          var preplaceGroupA = PREPLACE_A_PLACEHOLDER;
           var matchTol = MATCH_TOL_PLACEHOLDER;
           var clickDeleteTol = CLICK_DELETE_TOL_PLACEHOLDER;
           var defaultColor = "DEFAULT_COLOR_PLACEHOLDER";
@@ -333,22 +346,37 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
                 fillColor: matchedColorA,
                 strokeColor: matchedColorA,
                 name: res.label,
-                withLabel: true
+                withLabel: true,
+                fixed: true,
+                frozen: true,
+                highlight: false,
+                showInfobox: false
               });
+              // Marquer comme point validé (non-interactif)
+              pt.isMatched = true;
             } else if (res && res.group === 'B') {
               pt.setAttribute({
                 fillColor: matchedColorB,
                 strokeColor: matchedColorB,
                 name: res.label,
-                withLabel: true
+                withLabel: true,
+                fixed: true,
+                frozen: true,
+                highlight: false,
+                showInfobox: false
               });
+              // Marquer comme point validé (non-interactif)
+              pt.isMatched = true;
             } else {
               pt.setAttribute({
                 fillColor: defaultColor,
                 strokeColor: defaultColor,
                 name: 'Mauvais point',
-                withLabel: true
+                withLabel: true,
+                fixed: false,
+                frozen: false
               });
+              pt.isMatched = false;
               // Schedule auto-deletion after 2 seconds for bad points
               setTimeout(function() {
                 try {
@@ -414,8 +442,28 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
             }
           });
 
-          // store only user-created points
-          var userPoints = [];
+	          // store user-created points (and optionally preplaced expected points)
+	          var userPoints = [];
+
+	          // Optionnel : préplacer les points du groupe A (ex: A et B en bleu)
+	          if (preplaceGroupA) {
+	            try {
+	              for (var label in expectedPointsA) {
+	                if (!Object.prototype.hasOwnProperty.call(expectedPointsA, label)) continue;
+	                var coords = expectedPointsA[label];
+	                var p0 = board.create('point', coords, {
+	                  withLabel: false, size: 6, name: '',
+	                  snapToGrid: true, snapSizeX: GRID_STEP, snapSizeY: GRID_STEP
+	                });
+	                if (typeof p0.snapToGrid === 'function') p0.snapToGrid(true);
+	                userPoints.push(p0);
+	                updatePointColorAndLabel(p0);
+	              }
+	              sendPointsToParent();
+	            } catch (e) {
+	              console.error('Error preplacing group A points', e);
+	            }
+	          }
 
           function sendPointsToParent() {
             try {
@@ -455,6 +503,11 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
               var nearbyIdx = findNearbyUserPointIndex(raw);
               if (nearbyIdx !== -1) {
                 var p = userPoints[nearbyIdx];
+                // Si le point est validé (bon point), ne rien faire (pas de suppression, pas de copie)
+                if (p && p.isMatched) {
+                  return;
+                }
+                // Sinon, suppression classique du point cliqué
                 if (board.objectsList.indexOf(p) !== -1) board.removeObject(p);
                 userPoints.splice(nearbyIdx, 1);
                 sendPointsToParent();
@@ -485,6 +538,8 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
               // drag: enforce snapping & colour/label update
               p.on('drag', function() {
                 try {
+                  // Empêcher tout déplacement si le point est validé
+                  if (this.isMatched) { return; }
                   var s = snapCoords([this.X(), this.Y()]);
                   this.moveTo(JXG.COORDS_BY_USER, s);
                   updatePointColorAndLabel(this);
@@ -495,6 +550,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
               // up: final snap & update
               p.on('up', function() {
                 try {
+                  if (this.isMatched) { return; }
                   var s = snapCoords([this.X(), this.Y()]);
                   this.moveTo(JXG.COORDS_BY_USER, s);
                   updatePointColorAndLabel(this);
@@ -537,6 +593,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
     page = page.replace("IFRAME_TITLE_PLACEHOLDER", html_title)
     page = page.replace("EXPECTED_A_PLACEHOLDER", expected_json_a)
     page = page.replace("EXPECTED_B_PLACEHOLDER", expected_json_b)
+    page = page.replace("PREPLACE_A_PLACEHOLDER", "true" if preplace_points_a else "false")
     page = page.replace("MATCH_TOL_PLACEHOLDER", str(match_tolerance))
     page = page.replace("CLICK_DELETE_TOL_PLACEHOLDER", str(click_delete_tolerance))
     page = page.replace("DEFAULT_COLOR_PLACEHOLDER", default_color)
@@ -548,48 +605,101 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
     page_bytes = page.encode('utf-8')
     page_b64 = base64.b64encode(page_bytes).decode('ascii')
     data_uri = f"data:text/html;base64,{page_b64}"
-    iframe_html = f'<iframe id="jsxframe" src="{data_uri}" style="width:{width}px; height:{iframe_height}px; border:none;" sandbox="allow-scripts allow-same-origin"></iframe>'
+    iframe_html = f"""
+    <div id="{instance_id}-wrapper" style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+      <div id="{instance_id}-status" style="text-align:center; font-weight:bold; min-height:1.5rem;"></div>
+      <iframe id="{instance_id}-jsxframe" src="{data_uri}" style="width:{width}px; height:{iframe_height}px; border:none;" sandbox="allow-scripts allow-same-origin"></iframe>
+    </div>
+    """
 
-    listener_script = """
-    (function(){
-      var hidden = document.getElementById('jsx_points_hidden');
-      if (!hidden) {
+    listener_script = f"""
+    (function(){{
+      const instanceId = {json.dumps(instance_id)};
+      const statusEl = document.getElementById(instanceId + '-status');
+
+      const checkpointPayload = {checkpoint_payload_json};
+      const checkpointId = (window.mathadata && window.mathadata.checkpoints)
+        ? ('placer_points_' + window.mathadata.checkpoints.hash(checkpointPayload))
+        : null;
+
+      function setStatus(text, color, italic) {{
+        if (!statusEl) return;
+        statusEl.textContent = text || '';
+        statusEl.style.color = color || '';
+        statusEl.style.fontStyle = italic ? 'italic' : 'normal';
+      }}
+
+      function tryRunPython(code) {{
+        try {{
+          if (window.mathadata && typeof window.mathadata.run_python === 'function') {{
+            window.mathadata.run_python(code);
+            return;
+          }}
+          if (window.Jupyter && Jupyter.notebook && Jupyter.notebook.kernel) {{
+            Jupyter.notebook.kernel.execute(code);
+          }}
+        }} catch (e) {{
+          console.error('tryRunPython error', e);
+        }}
+      }}
+
+      function tryPassBreakpoint() {{
+        try {{
+          if (window.mathadata && typeof window.mathadata.pass_breakpoint === 'function') {{
+            window.mathadata.pass_breakpoint();
+          }}
+        }} catch (e) {{
+          console.error('tryPassBreakpoint error', e);
+        }}
+      }}
+
+      let alreadyPassed = false;
+
+      // Si l'exercice a déjà été validé, afficher un message et passer automatiquement.
+      if (checkpointId && window.mathadata && window.mathadata.checkpoints && window.mathadata.checkpoints.check(checkpointId)) {{
+        setStatus('✓ Tu as déjà réussi cet exercice précédemment. Tu peux continuer.', 'green', true);
+        alreadyPassed = true;
+        tryRunPython("set_exercice_droite_carac_ok()");
+        tryPassBreakpoint();
+      }}
+
+      var hidden = document.getElementById(instanceId + '_jsx_points_hidden');
+      if (!hidden) {{
         hidden = document.createElement('div');
-        hidden.id = 'jsx_points_hidden';
+        hidden.id = instanceId + '_jsx_points_hidden';
         hidden.style.display = 'none';
         document.body.appendChild(hidden);
-      }
-      window.addEventListener('message', function(e) {
-        try {
+      }}
+
+      window.addEventListener('message', function(e) {{
+        try {{
           var data = e.data;
-          if (data && data.type === 'jxg_points') {
+          if (data && data.type === 'jxg_points') {{
             hidden.textContent = JSON.stringify(data.points || []);
-            if (window.Jupyter && Jupyter.notebook && Jupyter.notebook.kernel) {
+            if (window.Jupyter && Jupyter.notebook && Jupyter.notebook.kernel) {{
               var code = "jsx_points = " + JSON.stringify(data.points || []) + "\\n";
               Jupyter.notebook.kernel.execute(code);
-            } else {
+            }} else {{
               console.log('jsx_points received (kernel injection not available) — stored in hidden DOM element.');
-            }
-          } else if (data && data.type === 'all_points_matched') {
-            if (data.status === true) {
-              console.log('All expected points matched - notifying Python');
-              if (window.Jupyter && Jupyter.notebook && Jupyter.notebook.kernel) {
-                Jupyter.notebook.kernel.execute("set_exercice_droite_carac_ok()");
-                console.log('Python function set_exercice_droite_carac_ok() executed');
-              } else {
-                console.log('Jupyter kernel not available - cannot update Python variable');
-              }
-            } else if (data.status === false) {
-              console.log('Not all expected points matched - resetting Python');
-              if (window.Jupyter && Jupyter.notebook && Jupyter.notebook.kernel) {
-                Jupyter.notebook.kernel.execute("reset_exercice_droite_carac()");
-                console.log('Python function reset_exercice_droite_carac() executed');
-              }
-            }
-          }
-        } catch (err) { console.error('Listener error', err); }
-      }, false);
-    })();
+            }}
+          }} else if (data && data.type === 'all_points_matched') {{
+            if (data.status === true) {{
+              if (!alreadyPassed) {{
+                setStatus('Bravo ! Tu as bien placé les points. Tu peux continuer.', 'green', false);
+                if (checkpointId && window.mathadata && window.mathadata.checkpoints) {{
+                  window.mathadata.checkpoints.save(checkpointId);
+                }}
+                alreadyPassed = true;
+                tryPassBreakpoint();
+              }}
+              tryRunPython("set_exercice_droite_carac_ok()");
+            }} else if (data.status === false) {{
+              tryRunPython("reset_exercice_droite_carac()");
+            }}
+          }}
+        }} catch (err) {{ console.error('Listener error', err); }}
+      }}, false);
+    }})();
     """
 
     with warnings.catch_warnings():
@@ -597,11 +707,14 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
         display(HTML(iframe_html))
         run_js(listener_script)
 
+
 moyenne_carac = False
+
 
 def reset_exercice_droite_carac():
     global moyenne_carac
     moyenne_carac = False
+
 
 def mauvaises_caracteristiques():
     reset_exercice_droite_carac()
@@ -617,13 +730,14 @@ def mauvaises_caracteristiques():
         expected_points_a={'A': [120, 90], 'B': [135, 105]},  # mettre les valeurs pour 2
         expected_points_b={'C': [120, 105], 'D': [130, 90]},  # mettre les valeurs pour 7
         images=similar_image_caracteristics,
+        preplace_points_a=True,
     )
 
 
 def meilleures_caracteristiques(custom=True):
     reset_exercice_droite_carac()
     if custom:
-        title = "Des meilleurs caractéristiques"
+        title = "Des meilleures caractéristiques"
         different_image_caracteristics = [
             files_url + "image_2_5x3_180_differentiante.png",
             files_url + "image_2_5x3_210-180_differentiante.png",
@@ -646,6 +760,7 @@ def meilleures_caracteristiques(custom=True):
         expected_points_a=exp_a,  # mettre les valeurs pour 2
         expected_points_b=exp_b,  # mettre les valeurs pour 7
         images=different_image_caracteristics,
+        preplace_points_a=True,
     )
 
 
@@ -675,10 +790,10 @@ def tracer_200_points(nb=200):
     '''))
 
 
-def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save=True, normal=None, directeur=False,
-                                 reglage_normal=False, initial_values=None):
-    if id is None:
-        id = uuid.uuid4().hex
+def tracer_points_droite_vecteur(id_content=None, carac=None, initial_hidden=False, save=True, normal=None, directeur=False,
+                                 reglage_normal=False, initial_values=None, sliders=False, interception_point=True):
+    if id_content is None:
+        id_content = uuid.uuid4().hex
 
     if normal is None:
         normal = False
@@ -694,6 +809,7 @@ def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save
         'hover': True,
         'displayValue': False,
         'save': save,
+        'equation_hide': True,
         'vecteurs': {
             'directeur': directeur,
             'normal': normal,
@@ -707,6 +823,8 @@ def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save
         },
         'compute_score': True,
         'initial_values': initial_values,
+        'force_origin': True,
+        'interception_point': interception_point,
     }
 
     if reglage_normal:
@@ -715,6 +833,7 @@ def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save
     else:
         params['inputs']['ux'] = True
         params['inputs']['uy'] = True
+
     # default values
     ux = 5
     uy = 10
@@ -723,27 +842,133 @@ def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save
     nx = 10
     ny = -5
 
+    if initial_values:
+        ux = initial_values.get('ux', ux)
+        uy = initial_values.get('uy', uy)
+        xa = initial_values.get('xa', xa)
+        ya = initial_values.get('ya', ya)
+        nx = initial_values.get('nx', nx)
+        ny = initial_values.get('ny', ny)
+
+    # Ensure JS receives the complete set of values
+    if params.get('initial_values') is None:
+        params['initial_values'] = {}
+    params['initial_values'].update({
+        'ux': ux, 'uy': uy, 'xa': xa, 'ya': ya, 'nx': nx, 'ny': ny
+    })
+
     run_js(
-        f"mathadata.add_observer('{id}-container', () => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
+        f"mathadata.add_observer('{id_content}-container', () => window.mathadata.tracer_points('{id_content}', '{json.dumps(params, cls=NpEncoder)}'))")
 
     # Mise en place du conteneur pour le graphique
-    display(HTML(f'''
+    if sliders:
+        display(HTML(f'''
+            <div id="{id_content}-container" style="{'visibility:hidden;' if initial_hidden else ''}">
+                <div id="{id_content}-score-container"
+                    style="text-align:center; font-weight:bold; font-size:2rem;">
+                    Pourcentage d'erreur : <span id="{id_content}-score">...</span>
+                </div>
+
+                <canvas id="{id_content}-chart"></canvas>
+
+                <div id="{id_content}-inputs"
+                     style="display:flex; flex-direction:column; gap:2rem; align-items:center;">
+                
+                    <!-- Ligne 1 -->
+                    <div style="display:flex; flex-direction:row; gap:2rem; justify-content:center;">
+                        <div style="
+                            display:{'flex' if (directeur and not reglage_normal) else 'none'};
+                            flex-direction:row; gap:1.5rem;">
+                            <div>
+                                <label style="color: green;">x<sub>u</sub> =
+                                    <span id="{id_content}-ux-val">{ux}</span>
+                                </label>
+                                <input type="range"
+                                       id="{id_content}-input-ux"
+                                       value="{ux}" min="-20" max="20" step="0.1"
+                                       oninput="document.getElementById('{id_content}-ux-val').textContent=this.value;">
+                            </div>
+                            <div>
+                                <label style="color: firebrick;">y<sub>u</sub> =
+                                    <span id="{id_content}-uy-val">{uy}</span>
+                                </label>
+                                <input type="range"
+                                       id="{id_content}-input-uy"
+                                       value="{uy}" min="-20" max="20" step="0.1"
+                                       oninput="document.getElementById('{id_content}-uy-val').textContent=this.value;">
+                            </div>
+                        </div>
+                
+                        <div style="
+                            display:{'flex' if reglage_normal else 'none'};
+                            flex-direction:row; gap:1.5rem;">
+                            <div>
+                                <label>⃗n<sub>x</sub> =
+                                    <span id="{id_content}-nx-val">{nx}</span>
+                                </label>
+                                <input type="range"
+                                       id="{id_content}-input-nx"
+                                       value="{nx}" min="-100" max="100" step="1"
+                                       oninput="document.getElementById('{id_content}-nx-val').textContent=this.value;">
+                            </div>
+                            <div>
+                                <label>⃗n<sub>y</sub> =
+                                    <span id="{id_content}-ny-val">{ny}</span>
+                                </label>
+                                <input type="range"
+                                       id="{id_content}-input-ny"
+                                       value="{ny}" min="0" max="88" step="1"
+                                       oninput="document.getElementById('{id_content}-ny-val').textContent=this.value;">
+                            </div>
+                        </div>
+                    </div>
+                
+                    <!-- Ligne 2 -->
+                    <div style="display:flex; flex-direction:row; gap:2rem; justify-content:center;">
+                        <div>
+                            <label>x<sub>A</sub> =
+                                <span id="{id_content}-xa-val">{xa}</span>
+                            </label>
+                            <input type="range"
+                                   id="{id_content}-input-xa"
+                                   value="{xa}" min="0" max="88" step="1"
+                                   oninput="document.getElementById('{id_content}-xa-val').textContent=this.value;">
+                        </div>
+                        <div>
+                            <label>y<sub>A</sub> =
+                                <span id="{id_content}-ya-val">{ya}</span>
+                            </label>
+                            <input type="range"
+                                   id="{id_content}-input-ya"
+                                   value="{ya}" min="0" max="88" step="1"
+                                   oninput="document.getElementById('{id_content}-ya-val').textContent=this.value;">
+                        </div>
+                    </div>
+                
+                </div>
+
+
+                </div>
+            </div>
+            '''))
+    else:
+        display(HTML(f'''
         <!-- Conteneur pour afficher le taux d'erreur -->
-        <div id="{id}-container" style="{'visibility:hidden;' if initial_hidden else ''}">
-            <div id="{id}-score-container"
+        <div id="{id_content}-container" style="{'visibility:hidden;' if initial_hidden else ''}">
+            <div id="{id_content}-score-container"
                 style="
                 text-align: center;
                 font-weight: bold;
                 font-size: 2rem;
                 ">
-                Pourcentage d'erreur : <span id="{id}-score">...</span>
+                Pourcentage d'erreur : <span id="{id_content}-score">...</span>
             </div>
 
             <!-- Zone canvas pour tracer le graphique -->
-            <canvas id="{id}-chart"></canvas>
+            <canvas id="{id_content}-chart"></canvas>
 
             <!-- Conteneur pour les champs d'entrée -->
-            <div id="{id}-inputs"
+            <div id="{id_content}-inputs"
                 style="
                 display: flex;
                 gap: 2rem;
@@ -758,18 +983,18 @@ def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save
                     ">
                     <!-- Paramètre ux -->
                     <div>
-                        <label for="{id}-input-ux" id="{id}-label-ux">x<sub>u</sub> = </label>
+                        <label for="{id_content}-input-ux" id="{id_content}-label-ux">x<sub>u</sub> = </label>
                         <input type="number"
-                            id="{id}-input-ux"
+                            id="{id_content}-input-ux"
                             value="{ux}"
                             step="1"
                             style="width: 50px; height: 25px; font-size: 12px;">
                     </div>
                     <!-- Paramètre uy -->
                     <div>
-                        <label for="{id}-input-uy" id="{id}-label-uy">y<sub>u</sub> = </label>
+                        <label for="{id_content}-input-uy" id="{id_content}-label-uy">y<sub>u</sub> = </label>
                         <input type="number"
-                            id="{id}-input-uy"
+                            id="{id_content}-input-uy"
                             value="{uy}"
                             step="1"
                             style="width: 50px; height: 25px; font-size: 12px;">
@@ -784,18 +1009,18 @@ def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save
                     ">
                     <!-- Paramètre a -->
                     <div>
-                        <label for="{id}-input-nx" id="{id}-label-nx">\u20D7n<sub>x</sub> = </label>
+                        <label for="{id_content}-input-nx" id="{id_content}-label-nx">\u20D7n<sub>x</sub> = </label>
                         <input type="number"
-                            id="{id}-input-nx"
+                            id="{id_content}-input-nx"
                             value="{nx}"
                             step="1"
                             style="width: 50px; height: 25px; font-size: 12px;">
                     </div>
                     <!-- Paramètre b -->
                     <div>
-                        <label for="{id}-input-ny" id="{id}-label-ny">\u20D7n<sub>y</sub> = </label>
+                        <label for="{id_content}-input-ny" id="{id_content}-label-ny">\u20D7n<sub>y</sub> = </label>
                         <input type="number"
-                            id="{id}-input-ny"
+                            id="{id_content}-input-ny"
                             value="{ny}"
                             step="1"
                             style="width: 50px; height: 25px; font-size: 12px;">
@@ -805,18 +1030,18 @@ def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save
                 <!-- Paramètre x_A -->
                 <div style="display: flex; flex-direction: row; gap: 1.5rem;">
                     <div>
-                        <label for="{id}-input-xa" id="{id}-label-xa">x<sub>A</sub> = </label>
+                        <label for="{id_content}-input-xa" id="{id_content}-label-xa">x<sub>A</sub> = </label>
                         <input type="number"
-                            id="{id}-input-xa"
+                            id="{id_content}-input-xa"
                             value="{xa}"
                             step="1"
                             style="width: 50px; height: 25px; font-size: 12px;">
                     </div>
                     <!-- Paramètre y_A -->
                     <div>
-                        <label for="{id}-input-ya" id="{id}-label-ya">y<sub>A</sub> = </label>
+                        <label for="{id_content}-input-ya" id="{id_content}-label-ya">y<sub>A</sub> = </label>
                         <input type="number"
-                            id="{id}-input-ya"
+                            id="{id_content}-input-ya"
                             value="{ya}"
                             step="1"
                             style="width: 50px; height: 25px; font-size: 12px;">
@@ -828,9 +1053,15 @@ def tracer_points_droite_vecteur(id=None, carac=None, initial_hidden=False, save
 
 
 def tracer_points_droite_vecteur_directeur(initial_values=None):
-    if initial_values is None:
-        initial_values = {'ux': 5, 'uy': 10, 'xa': 50, 'ya': 80}
-    tracer_points_droite_vecteur(directeur=True, initial_values=initial_values)
+    # Valeurs par défaut spécifiques pour cet exercice
+    defaults = {'ux': 5, 'uy': 10, 'xa': 20, 'ya': 10}
+
+    if initial_values:
+        # On fusionne les valeurs utilisateur avec les défauts spécifiques
+        defaults.update(initial_values)
+
+    tracer_points_droite_vecteur(directeur=True, initial_values=defaults, sliders=True, interception_point=False)
+
 
 def update_custom():
     c_train_par_population = compute_c_train_by_class(
@@ -1061,8 +1292,11 @@ def get_best_score(method='utra-fast'):
     return erreur, params
 
 
-# JS
+pointA = (20, 40)
+pointB = (30, 10)
 
+
+# JS
 run_js('''
     if (localStorage.getItem('input-values')) {
         mathadata.run_python(`set_input_values('${localStorage.getItem("input-values")}')`)
@@ -1154,8 +1388,15 @@ run_js('''
     }
 
     window.mathadata.getLineEquationStr = function(a, b, c) {
-        return `${a}x ${b < 0 ? '-' : '+'} ${Math.abs(b)}y ${c < 0 ? '-' : '+'} ${Math.abs(c)} = 0`
+        const round2 = v => Math.round((v + Number.EPSILON) * 100) / 100;
+    
+        a = round2(a);
+        b = round2(b);
+        c = round2(c);
+    
+        return `${a}x ${b < 0 ? '-' : '+'} ${Math.abs(b)}y ${c < 0 ? '-' : '+'} ${Math.abs(c)} = 0`;
     }
+
 
     window.mathadata.tracer_2_points = function(id, params) {
         params = JSON.parse(params);
@@ -1287,7 +1528,7 @@ run_js('''
           params = JSON.parse(params);
       }
 
-      const {points, droite, vecteurs, centroides, additionalPoints, hideClasses, hover, inputs, initial_values, displayValue, save, custom, compute_score, drag, force_origin, equation_hide, param_colors, equation_fixed_position, side_box = true } = params;
+      const {points, droite, vecteurs, centroides, additionalPoints, hideClasses, hover, inputs, initial_values, displayValue, save, custom, compute_score, drag, force_origin, equation_hide, param_colors, equation_fixed_position, side_box = true , interception_point = true} = params;
         // points: tableau des données en entrée sous forme de coordonnées (deux éléments, les points des 2 et les points des 7) [[[x,y],[x,y],...] , [[x,y],[x,y],...]]
         // droite: la droite à afficher (objet)
         // vecteurs: vecteurs à afficher pour le bouger (normal ou directeur)
@@ -1305,6 +1546,7 @@ run_js('''
         // equation_fixed_position: bool: fixe l'équation dans le coin inférieur droit au lieu de la dessiner le long de la droite
         // inputs: objet avec les inputs à afficher et gérer (ux, uy, xa, ya, nx, ny, a, b, c)
         // initial_values: valeurs initiales des inputs (certaines valeurs peuvent etre fixées auquel cas il y a une valeur initiale mais pas d'input)
+        // interception_point: affiche le point d'interception avec l'axe des ordonnées
         
       const getColoredEquation = (m, p, colors) => {
         if (!colors || (!colors.m && !colors.p)) {
@@ -1366,13 +1608,15 @@ run_js('''
       // Slope box (optionnel)
       const slopeBox = side_box ? document.getElementById(`${id}-slope-box`) : null;
       if (slopeBox && !slopeBox.dataset.init) {
+        slopeBox.style.border = 'none'; // Remove border if any
         slopeBox.innerHTML = `
           <svg id="${id}-slope-svg" width="100%" height="100%" viewBox="0 0 250 180" style="overflow: visible;">
-              <line id="${id}-slope-base" stroke="black" stroke-width="4" stroke-linecap="round" />
-              <line id="${id}-slope-height" stroke="${param_colors?.m || '#239E28'}" stroke-width="4" stroke-linecap="round" />
-              <line id="${id}-slope-hypo" stroke="purple" stroke-width="5" stroke-linecap="round" />
-              <text id="${id}-text-base" text-anchor="middle" font-weight="bold" font-size="16">5</text>
-              <text id="${id}-text-calc" text-anchor="start" font-weight="bold" font-size="16" fill="${param_colors?.m || '#239E28'}"></text>
+              <line id="${id}-slope-base" stroke="purple" stroke-width="4" stroke-linecap="round" />
+              <line id="${id}-slope-height" stroke="orange" stroke-width="4" stroke-linecap="round" />
+              <line id="${id}-slope-hypo" stroke="black" stroke-width="5" stroke-linecap="round" />
+              <text id="${id}-text-base" text-anchor="middle" font-weight="bold" font-size="16" fill="purple">10</text>
+              <text id="${id}-text-calc" text-anchor="start" font-weight="bold" font-size="16" fill="orange"></text>
+              <text id="${id}-text-formula" text-anchor="middle" font-weight="bold" font-size="16" fill="black" x="125" y="160"></text>
           </svg>
         `;
         slopeBox.dataset.init = '1';
@@ -1395,17 +1639,37 @@ run_js('''
         const hypoLine = document.getElementById(`${id}-slope-hypo`);
         const textBase = document.getElementById(`${id}-text-base`);
         const textCalc = document.getElementById(`${id}-text-calc`);
+        const textFormula = document.getElementById(`${id}-text-formula`);
         if (!baseLine || !heightLine || !hypoLine || !textBase || !textCalc) return;
 
         const mVal = getSlope() ?? 0;
-        const basePx = 80; // 5 unités => 80px
-        const Ax = 40;
-        const Ay = 100;
-        const Bx = Ax + basePx;
+        
+        // Dynamic width calculation
+        let vizBase = 80; 
+        const chart = mathadata.charts[`${id}-chart`];
+        let boxHeight = 180;
+
+        if (chart) {
+            const chartArea = chart.chartArea;
+            const scales = chart.scales;
+            if (chartArea && scales && scales.x) {
+                const graphWidthPixels = chartArea.width;
+                const xRange = scales.x.max - scales.x.min;
+                if (xRange > 0) {
+                    vizBase = (10 / xRange) * graphWidthPixels;
+                }
+            }
+        }
+
+        const centerY = boxHeight / 2;
+        const hViz = vizBase * mVal;
+        
+        const Ax = 125 - vizBase / 2;
+        const Ay = centerY + hViz / 2;
+        const Bx = 125 + vizBase / 2;
         const By = Ay;
-        const hPx = basePx * mVal;
         const Cx = Bx;
-        const Cy = By - hPx;
+        const Cy = Ay - hViz;
 
         baseLine.setAttribute('x1', Ax);
         baseLine.setAttribute('y1', Ay);
@@ -1429,8 +1693,39 @@ run_js('''
         textCalc.setAttribute('y', (By + Cy) / 2 + 5);
 
         const mDisp = parseFloat(mVal.toFixed(2));
-        const resDisp = parseFloat((5 * mVal).toFixed(2));
-        textCalc.textContent = `5 x ${mDisp} = ${resDisp}`;
+        const resDisp = parseFloat((10 * mVal).toFixed(2));
+        textCalc.textContent = resDisp;
+
+        if (textFormula) {
+            // Position dynamique de la formule pour éviter le chevauchement
+            // Ay est la coordonnée Y de la base du triangle (le bas du triangle si m > 0)
+            // On place le texte un peu en dessous de Ay
+            // Si m < 0, Ay est le haut du triangle, mais le triangle descend vers Cy.
+            // Dans ce cas, le bas du triangle est Cy.
+            // Donc on prend le max(Ay, Cy) pour trouver le point le plus bas du triangle.
+            
+            const triangleBottomY = Math.max(Ay, Cy);
+            const formulaY = Math.max(160, triangleBottomY + 60); // Au moins 160, ou plus bas si nécessaire
+            textFormula.setAttribute('y', formulaY);
+
+            textFormula.textContent = "";
+            const mColor = param_colors?.m || '#239E28';
+            var parts = [
+                {text: "m", color: mColor},
+                {text: " = ", color: "black"},
+                {text: resDisp, color: "orange"},
+                {text: " / ", color: "black"},
+                {text: "10", color: "purple"},
+                {text: " = ", color: "black"},
+                {text: mDisp, color: mColor}
+            ];
+            parts.forEach(function(p) {
+                var ts = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                ts.textContent = p.text;
+                ts.setAttribute("fill", p.color);
+                textFormula.appendChild(ts);
+            });
+        }
       };
       
       const plugins = [];
@@ -1454,6 +1749,7 @@ run_js('''
       });
       
       let max, min;
+      let start_ux, start_uy;
       let droiteDatasetIndex;
       let yInterceptDatasetIndex;
       let centroid1DatasetIndex, centroid2DatasetIndex;
@@ -1470,6 +1766,10 @@ run_js('''
             points.forEach((set, index) => {
             datasets[index].data = set.map(([x, y]) => ({ x, y }))
             })
+            
+            // Update start_ux and start_uy based on new min/max
+            start_ux = Math.round((max + min) / 2 / 10) * 10
+            start_uy = Math.round((min + 10) / 10) * 10
         } else { // pour appeler depuis le callback dragData sans changer les coordonnées des points
             points = datasets.slice(0, 2).map(d => d.data).map(d => d.map(({x, y}) => [x, y]))
         }
@@ -1510,6 +1810,16 @@ run_js('''
             datasets[yInterceptDatasetIndex].data = interceptData ? [interceptData] : [];
         }
 
+        if (uDatasetIndex) {
+            datasets[uDatasetIndex].data = [{ x: start_ux, y: start_uy }, { x: start_ux + values.ux, y: start_uy + values.uy }]
+        }
+        if (nDatasetIndex) {
+            datasets[nDatasetIndex].data = [{ x: values.xa, y: values.ya }, { x: values.xa + values.nx, y: values.ya + values.ny }]
+        }
+        if (aDatasetIndex) {
+            datasets[aDatasetIndex].data = [{ x: values.xa, y: values.ya }]
+        }
+
         const chart = mathadata.charts[`${id}-chart`]
         if (chart) {
           chart.options.scales.x.min = min
@@ -1533,8 +1843,6 @@ run_js('''
         }
       })
 
-      const start_ux = Math.round((max + min) / 2 / 10) * 10
-      const start_uy = Math.round((min + 10) / 10) * 10
       let uDatasetIndex, nDatasetIndex, aDatasetIndex;
       if (vecteurs) {
         const {normal, directeur} = vecteurs;
@@ -1545,7 +1853,7 @@ run_js('''
           datasets.push({
               type: 'line',
               data: [],
-              borderColor: 'red',
+              borderColor: 'purple',
               borderWidth: 2,
               pointRadius: 0,
               pointHitRadius: 0,
@@ -1553,7 +1861,7 @@ run_js('''
           }); 
           vectorParams.push({
             datasetIndex: datasets.length - 1,
-            color: 'red',
+            color: 'purple',
             label: '\u20D7u',
             id: 'directeur',
           })
@@ -1565,7 +1873,7 @@ run_js('''
           datasets.push({
               type: 'line',
               data: [],
-              borderColor: 'blue',
+              borderColor: 'brown',
               borderWidth: 2,
               pointRadius: 0,
               pointHitRadius: 0,
@@ -1573,7 +1881,7 @@ run_js('''
           });
           vectorParams.push({
             datasetIndex: datasets.length - 1,
-            color: 'blue',
+            color: 'brown',
             label: '\u20D7n',
             id: 'normal',
           })
@@ -1940,18 +2248,20 @@ run_js('''
           }
 
           // Ordonnée à l'origine (point rouge sur l'axe des ordonnées)
-          const initialIntercept = getYInterceptPoint(values);
-          datasets.push({
-              label: "Ordonnée à l'origine",
-              data: initialIntercept ? [initialIntercept] : [],
-              backgroundColor: 'red',
-              borderColor: 'red',
-              pointStyle: 'circle',
-              pointRadius: 6,
-              pointHoverRadius: 6,
-              order: 2,
-          });
-          yInterceptDatasetIndex = datasets.length - 1;
+          if (interception_point) {
+              const initialIntercept = getYInterceptPoint(values);
+              datasets.push({
+                  label: "Ordonnée à l'origine",
+                  data: initialIntercept ? [initialIntercept] : [],
+                  backgroundColor: 'red',
+                  borderColor: 'red',
+                  pointStyle: 'circle',
+                  pointRadius: 6,
+                  pointHoverRadius: 6,
+                  order: 2,
+              });
+              yInterceptDatasetIndex = datasets.length - 1;
+          }
         }
 
       if (additionalPoints) {
@@ -2247,31 +2557,6 @@ run_js('''
     }
 ''')
 
-# TODO
-# run_js("""
-#     // Create a MutationObserver instance
-#     const observer = new MutationObserver(function(mutations) {
-#         console.log("working")
-#         mutations.forEach(function(mutation) {
-#             mutation.addedNodes.forEach(function(node) {
-#                 console.log("node added")
-#                 console.log(node)
-#                 // Check if the added node is an element with the specified ID
-#                 if (node.id === "container_chart") {
-#                     console.log("setup charts")
-#                     Jupyter.notebook.kernel.execute("setup_charts()")
-#                 } else if (node.id === "container_chart_custom") {
-#                     console.log("setup charts 2")
-#                     Jupyter.notebook.kernel.execute("setup_charts_2()")
-#                 }
-#             });
-#         });
-#     });
-
-#     // Start observing the document for mutations
-#     observer.observe(document, { childList: true, subtree: true });
-# """)
-
 input_values = {}
 
 
@@ -2296,7 +2581,7 @@ def compute_score_json(a, b, c, custom=False):
     return json.dumps({'error': error})
 
 
-def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banque=True, success_msg=None):
+def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banque=True, success_msg=None, animation=True):
     global input_values
 
     if custom:
@@ -2313,10 +2598,10 @@ def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banqu
         above = common.challenge.r_petite_caracteristique
         below = common.challenge.r_grande_caracteristique
 
-    if validate is not None and base_score >= validate and base_score <= 100 - validate:
+    if validate is not None and validate <= base_score <= 100 - validate:
         if error_msg is None:
             print_error(
-                f"Vous pourrez passer à la suite quand vous aurez un pourcentage d'erreur de moins de {validate}%.")
+                f"Tu pourras passer à la suite quand tu auras un pourcentage d'erreur de moins de {validate}%.")
         else:
             print_error(error_msg)
 
@@ -2328,13 +2613,22 @@ def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banqu
         if (validate is not None and score * 100 <= validate) or (
                 has_variable('superuser') and get_variable('superuser') == True):
             if success_msg is None:
-                pretty_print_success("Bravo, vous pouvez passer à la suite.")
+                pretty_print_success("Bravo, tu peux passer à la suite.")
             else:
                 print(success_msg)
             pass_breakpoint()
 
     calculer_score(algorithme, cb=cb,
-                   banque=banque)
+                   banque=banque, animation=animation)
+
+
+def qcm_choix_caracteristiques():
+    create_qcm({
+        'question': 'Quelles zones choisir pour mieux distinguer les 2 de 7 ?',
+        'choices': ['1er choix', '2ème choix'],
+        'answer': '2ème choix',
+    })
+
 
 
 ### Validation
@@ -2450,7 +2744,7 @@ def function_validation_score_droite(errors, answers):
     # Vérification si l'utilisateur a donné le nombre d'erreurs au lieu du pourcentage
     if user_answer == nb_erreurs:
         errors.append(
-            f"Ce n'est pas la bonne valeur. Vous avez donné le nombre d'erreurs ({nb_erreurs}) et non le pourcentage d'erreur.")
+            f"Ce n'est pas la bonne valeur. Tu as donné le nombre d'erreurs ({nb_erreurs}) et non le pourcentage d'erreur.")
         return False
 
     # Vérification de la réponse correcte
@@ -2483,7 +2777,7 @@ validation_question_couleur = MathadataValidateVariables({
                 'value': {
                     'in': common.challenge.classes,
                 },
-                'else': f"classe_points_bleus n'a pas la bonne valeur. Vous devez répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}."
+                'else': f"classe_points_bleus n'a pas la bonne valeur. Tu dois répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}."
             }
         ]
     },
@@ -2494,12 +2788,20 @@ validation_question_couleur = MathadataValidateVariables({
                 'value': {
                     'in': common.challenge.classes,
                 },
-                'else': f"classe_points_oranges n'a pas la bonne valeur. Vous devez répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}."
+                'else': f"classe_points_oranges n'a pas la bonne valeur. Tu dois répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}."
             }
         ]
     }
-})
+}, tips=[
+    {
+        'seconds': 15,
+        'trials': 1,
+        'operator': 'OR',
+        'tip': f"Il faut répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}"
+    }
+])
 
+validation_execution_placer_2_points = MathadataValidate(success="")
 validation_execution_10_points = MathadataValidate(success="")
 validation_execution_20_points = MathadataValidate(success="")
 validation_question_score_droite = MathadataValidateVariables({
@@ -2508,43 +2810,43 @@ validation_question_score_droite = MathadataValidateVariables({
     function_validation=function_validation_score_droite,
     success="")
 validation_execution_tracer_points_droite = MathadataValidate(success="")
-validation_score_droite = MathadataValidate(success="Bien joué, vous pouvez passer à la partie suivante.")
+validation_execution_tracer_points_droite_c = MathadataValidate(success="")
+validation_execution_tracer_points_droite_a_b = MathadataValidate(success="")
+validation_score_droite = MathadataValidate(success="Bien joué, tu peux passer à la partie suivante.")
+validation_execution_mauvaises_caracteristiques = MathadataValidate(success="")
+validation_execution_meilleures_caracteristiques = MathadataValidate(success="")
 validation_score_droite_custom = MathadataValidate(
-    success="Bravo, vous pouvez continuer à essayer d'améliorer votre score. Il est possible de faire seulement 3% d'erreur.")
+    success="Bravo, tu peux continuer à essayer d'améliorer ton score. Il est possible de faire seulement 3% d'erreur.")
 validation_execution_scatter_caracteristiques_ripou = MathadataValidate(success="")
 validation_execution_afficher_customisation = MathadataValidate(success="")
 
 
 def function_validation_carac(errors, answers):
-    point_7 = answers['caracteristiques_7']
-    point_2 = answers['caracteristiques_2']
+    moyenne_haut_2 = answers['x_2']
+    moyenne_bas_2 = answers['y_2']
 
-    if not check_coordinates(point_2, errors) or not check_coordinates(point_7, errors):
-        return False
     error_str = "Réessaie, il y a des erreurs dans les coordonnées des caractéristiques :\n"
     len_start = len(error_str)
-    if point_7[0] != 100:
-        error_str += "L'abscisse de 7 est incorrecte.\n"
-    if point_7[1] != 60:
-        error_str += "L'ordonnée de 7 est incorrecte.\n"
-    if point_2[0] != 140:
+    if moyenne_haut_2 != 140:
         error_str += "L'abscisse de 2 est incorrecte.\n"
-    if point_2[1] != 140:
+    if moyenne_bas_2 != 140:
         error_str += "L'ordonnée de 2 est incorrecte."
     if len(error_str) > len_start:
         errors.append(error_str)
         return False
     return True
 
+
 validation_carac = MathadataValidateVariables({
-    'caracteristiques_7': None,
-    'caracteristiques_2': None
+    'x_2': None,
+    'y_2': None
 }, function_validation=function_validation_carac)
 
 
 def set_exercice_droite_carac_ok():
     global moyenne_carac
     moyenne_carac = True
+
 
 def validate_moyenne_carac(errors, answers):
     if moyenne_carac:
@@ -2553,4 +2855,29 @@ def validate_moyenne_carac(errors, answers):
         errors.append("Réponds d'abord à la question ci-dessus en plaçant les points sur le graphe.")
         return False
 
-validation_placer_2_points = MathadataValidate(function_validation=validate_moyenne_carac)
+chat = 'chat'
+Chat = 'Chat'
+
+def function_validation_cartesienne_determinante(errors, answers):
+    a = answers['a']
+    if not isinstance(a, (int, float, str)):
+        errors.append("La valeur de a doit être un nombre. Si tu veux passer à la suite, répond 'chat'")
+        return False
+    if a == chat or a == 'chat' or a == 'Chat':
+        pretty_print_success("Pas de galère, on continue")
+        return True
+    if a != 5:
+        errors.append("La valeur de a est incorrecte. Réessaie. Si tu veux passer à la suite, répond 'chat'")
+        return False
+    pretty_print_success("Bravo, tu peux passer à la suite.")
+    return True
+
+validation_placer_2_points = MathadataValidate(function_validation=validate_moyenne_carac,success="Bravo tu as bien placé les points !")
+
+validation_moyenne_carac_mauvaise = MathadataValidate(function_validation=validate_moyenne_carac)
+validation_moyenne_carac_meilleure = MathadataValidate(function_validation=validate_moyenne_carac)
+
+validation_question_cartesienne_determinant = MathadataValidateVariables({
+    'a' : None,
+}, function_validation= function_validation_cartesienne_determinante
+, success="")
