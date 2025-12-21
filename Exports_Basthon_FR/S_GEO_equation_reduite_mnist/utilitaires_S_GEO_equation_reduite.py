@@ -226,7 +226,12 @@ def tracer_exercice_classification(display_m_coords=False, point_b=False):
 def exercice_calcul_au_dessus():
     tracer_exercice_classification()
     plt.show()
-    plt.close()
+    try:
+        plt.close()
+    except AttributeError as e:
+        # Workaround for matplotlib_pyodide/basthon backend: closing can fail if the DOM canvas was already destroyed.
+        if "parentNode" not in str(e):
+            raise
 
 
 def qcm_dessus():
@@ -256,7 +261,12 @@ def qcm_dessus_dessous():
 def exercice_calcul_au_dessous():
     tracer_exercice_classification(point_b=True)
     plt.show()
-    plt.close()
+    try:
+        plt.close()
+    except AttributeError as e:
+        # Workaround for matplotlib_pyodide/basthon backend: closing can fail if the DOM canvas was already destroyed.
+        if "parentNode" not in str(e):
+            raise
 
 
 def affichage_zones_custom(a1, b1, a2, b2):
