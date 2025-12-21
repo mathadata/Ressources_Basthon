@@ -69,7 +69,7 @@ def tracer_2_points():
 ### PLACER 2 POINTS ###
 
 def placer_caracteristiques(html_title="Calcul des caractéristiques", left_width=None, images=None,
-                            expected_points_a=None, expected_points_b=None):
+                            expected_points_a=None, expected_points_b=None, preplace_points_a=False):
     """
     Render the JSXGraph iframe in a Jupyter notebook cell and show a 2x2 image grid
     to the left. Accepts expected_points_A and expected_points_B as dicts:
@@ -228,6 +228,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
           // expectedPoints are JS objects: { label: [x,y], ... }
           var expectedPointsA = EXPECTED_A_PLACEHOLDER;
           var expectedPointsB = EXPECTED_B_PLACEHOLDER;
+          var preplaceGroupA = PREPLACE_A_PLACEHOLDER;
           var matchTol = MATCH_TOL_PLACEHOLDER;
           var clickDeleteTol = CLICK_DELETE_TOL_PLACEHOLDER;
           var defaultColor = "DEFAULT_COLOR_PLACEHOLDER";
@@ -441,8 +442,28 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
             }
           });
 
-          // store only user-created points
-          var userPoints = [];
+	          // store user-created points (and optionally preplaced expected points)
+	          var userPoints = [];
+
+	          // Optionnel : préplacer les points du groupe A (ex: A et B en bleu)
+	          if (preplaceGroupA) {
+	            try {
+	              for (var label in expectedPointsA) {
+	                if (!Object.prototype.hasOwnProperty.call(expectedPointsA, label)) continue;
+	                var coords = expectedPointsA[label];
+	                var p0 = board.create('point', coords, {
+	                  withLabel: false, size: 6, name: '',
+	                  snapToGrid: true, snapSizeX: GRID_STEP, snapSizeY: GRID_STEP
+	                });
+	                if (typeof p0.snapToGrid === 'function') p0.snapToGrid(true);
+	                userPoints.push(p0);
+	                updatePointColorAndLabel(p0);
+	              }
+	              sendPointsToParent();
+	            } catch (e) {
+	              console.error('Error preplacing group A points', e);
+	            }
+	          }
 
           function sendPointsToParent() {
             try {
@@ -572,6 +593,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
     page = page.replace("IFRAME_TITLE_PLACEHOLDER", html_title)
     page = page.replace("EXPECTED_A_PLACEHOLDER", expected_json_a)
     page = page.replace("EXPECTED_B_PLACEHOLDER", expected_json_b)
+    page = page.replace("PREPLACE_A_PLACEHOLDER", "true" if preplace_points_a else "false")
     page = page.replace("MATCH_TOL_PLACEHOLDER", str(match_tolerance))
     page = page.replace("CLICK_DELETE_TOL_PLACEHOLDER", str(click_delete_tolerance))
     page = page.replace("DEFAULT_COLOR_PLACEHOLDER", default_color)
@@ -708,6 +730,7 @@ def mauvaises_caracteristiques():
         expected_points_a={'A': [120, 90], 'B': [135, 105]},  # mettre les valeurs pour 2
         expected_points_b={'C': [120, 105], 'D': [130, 90]},  # mettre les valeurs pour 7
         images=similar_image_caracteristics,
+        preplace_points_a=True,
     )
 
 
