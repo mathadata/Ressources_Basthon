@@ -13,6 +13,7 @@ import importlib.util
 from zipfile import ZipFile
 from io import BytesIO
 from math import sqrt
+import html
 import requests
 
 # permet de charger les fichiers matlab (*.mat)
@@ -113,20 +114,46 @@ d_train, r_train, d_animation = load_data(source=DATASET, local=LOCAL)
 # Import des strings pour lire l'export dans jupyter - A FAIRE AVANT IMPORT utilitaires_common
 
 strings = {
-    "dataname": "cas",
-    "dataname_plural": "cas",
-    "feminin": False,
-    "contraction": False,
-    "classes": ["Normal", "ALARMANT"],
+    "dataname": {
+        "nom": "enregistrement cardiaque",
+        "pluriel": "enregistrements cardiaques",
+        "feminin": False,
+        "contraction": True,
+        "nom_alt": "enregistrement",
+        "pluriel_alt": "enregistrements",
+        "feminin_alt": False,
+        "contraction_alt": True,
+    },
+    "classes": [
+        {
+            "nom": "Normal",
+            "pluriel": "Normal",
+            "feminin": False,
+            "contraction": False,
+            "nom_alt": "cas normal",
+            "pluriel_alt": "cas normaux",
+            "feminin_alt": False,
+        },
+        {
+            "nom": "ALARMANT",
+            "pluriel": "ALARMANT",
+            "feminin": False,
+            "contraction": False,
+            "nom_alt": "cas alarmant",
+            "pluriel_alt": "cas alarmants",
+            "feminin_alt": False,
+        }
+    ],
     "r_petite_caracteristique": "Normal",
     "r_grande_caracteristique": "ALARMANT",
-    "train_size": int(round(len(d_train), -2)),  # arrondi à la dizaine
+    "train_size_approx": str(round(len(d_train), -2)),  # arrondi à la dizaine
+    "train_size": str(len(d_train)),
     "objectif_score_droite": 21,
     "objectif_score_droite_custom": 10,
     "pt_retourprobleme": "(40; 20)"
 }
 
-classes = strings['classes']
+classes = ['Normal', 'ALARMANT']
 
 #Nouvelle variable pour checker la validation de l'exercice de classification
 exercice_classification_ok = False
@@ -151,7 +178,7 @@ class Foetus(common.Challenge):
         self.r_train = r_train
         self.d = d
         self.d2 = d2
-        self.classes = strings['classes']
+        self.classes = classes
         self.r_petite_caracteristique = strings['r_petite_caracteristique']
         self.r_grande_caracteristique = strings['r_grande_caracteristique']
         self.vmin = 100
@@ -159,7 +186,7 @@ class Foetus(common.Challenge):
 
         # STATS
         # Moyenne histogramme
-        self.carac_explanation = f"C'est la bonne réponse ! Les foetus {classes[1]} ont souvent une fréquence cardiaque avec plus de baisses que les foetus {classes[0]}. C'est pourquoi leur caractéristique est souvent plus grande."
+        self.carac_explanation = f"C'est la bonne réponse ! Les cas alarmants ont souvent une fréquence cardiaque avec plus de baisses que les cas normaux. C'est pourquoi leur caractéristique est souvent plus grande."
 
         # GEO
         # Tracer 10 points
@@ -199,7 +226,7 @@ class Foetus(common.Challenge):
         data = np.concatenate([d_sain, d_malade])
         labels = [self.classes[0]] * len(d_sain) + [self.classes[1]] * len(d_malade)
 
-        run_js(f"setTimeout(() => window.mathadata.setup_zone_selection('{id}', '{json.dumps(data, cls=NpEncoder)}', '{json.dumps(labels, cls=NpEncoder)}'), 500)")
+        run_js(f"mathadata.add_observer('{id}', () => window.mathadata.setup_zone_selection('{id}', '{json.dumps(data, cls=NpEncoder)}', '{json.dumps(labels, cls=NpEncoder)}'))")
 
     def display_custom_selection_2d(self, id):
         self.display_custom_selection(id)
@@ -270,7 +297,7 @@ class Foetus(common.Challenge):
     #     return (0,0)
 
     def cb_custom_score(self, score):
-        if score < 0.2:
+        if score < 0.2 or (has_variable('superuser') and get_variable('superuser') == True):
             # Avant de passer au bac à sable, on retire les NaN de d_train
             self.remplacer_d_train_sans_nan()
             return True
@@ -418,11 +445,117 @@ def affichage_10_frequences():
     #display(dligne)
     display(dtranspose)
 
+def afficher_interface_teachable():
+    
+    #Affiche l'interface HTML Teachable Machine dans le notebook via une Iframe.
+    #Gère les permissions micro et l'isolation CSS.
+    
+    # 1. Construction du chemin vers le fichier (situé à la racine par rapport aux utilitaires)
+    path_html = os.path.join(parent_dir, 'interface_eleve.html')
+
+    # 2. Vérification de l'existence
+    if not os.path.exists(path_html):
+        print_error(f"Fichier introuvable : {path_html}")
+        return
+
+    # 3. Lecture du contenu
+    try:
+        with open(path_html, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+    except Exception as e:
+        print_error(f"Erreur de lecture du fichier : {e}")
+        return
+
+    # 4. Échappement des guillemets pour l'attribut srcdoc HTML. C'est crucial pour que le HTML ne casse pas l'attribut de l'iframe
+    html_content_safe = html_content.replace('"', '&quot;')
+
+    # 5. Affichage via IPython.display.HTML.Et aussi, L'attribut allow="microphone" est obligatoire pour que Chrome/Firefox autorisent l'accès de ce que j'ai compris!!!
+    display(HTML(f'''
+        <div style="width: 100%; display: flex; justify-content: center; margin-top: 20px;">
+            <iframe 
+                srcdoc="{html_content_safe}"
+                width="100%" 
+                height="650px" 
+                style="border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);"
+                allow="microphone"
+            ></iframe>
+        </div>
+    '''))
+
 def update_custom_epsilon(epsilon):
     common.challenge.custom_epsilon = epsilon
 
 def exercice_classification():
     id = uuid.uuid4().hex
+    [random_order, d1, d2] = get_exercice_data()
+
+    run_js(f"""
+    mathadata.add_observer('{id}', () => {{
+        const labelCount = document.getElementById('{id}-count')
+        const radios_1 = document.getElementsByName('{id}-1-input')
+        const radios_2 = document.getElementsByName('{id}-2-input')
+        const submit = document.getElementById('{id}-submit')
+
+        // Vérifions si l'exercice est déjà terminé
+
+        if(localStorage.getItem('exercice_classification_ok') === 'true') {{
+            labelCount.style.color = 'green';
+            labelCount.innerHTML = "Bravo ! L'exercice est terminé, vous pouvez passer à la suite"
+            submit.style.display = 'none'
+        }}
+
+
+        function syncRadios(selectedRadios, otherRadios) {{
+            selectedRadios.forEach(radio => {{
+                radio.addEventListener('change', () => {{
+                    const selectedValue = parseInt(radio.value)
+                    otherRadios.forEach(r => {{
+                        r.checked = (parseInt(r.value) !== selectedValue)
+                    }})
+                }})
+            }})
+        }}
+
+        syncRadios(radios_1, radios_2)
+        syncRadios(radios_2, radios_1)
+
+
+        let countBonEchantillon = 0
+        submit.addEventListener('click', () => {{
+            const selected_1 = parseInt(Array.from(radios_1).find(r => r.checked).value)
+            const selected_2 = parseInt(Array.from(radios_2).find(r => r.checked).value)
+
+            if (selected_1 === selected_2) {{
+                alert('Les deux échantillons doivent être de classes différentes')
+                return
+            }}
+
+            if (selected_1 === window.mathadata.exercice_classification_order[0]) {{
+                if (countBonEchantillon < 4) {{
+                    countBonEchantillon++
+                    labelCount.style.color = 'green';
+                    labelCount.innerHTML = 'Bravo ! Vous avez trouvé le foetus malade, il vous reste <span style="font-size: 2em;">' + (5 - countBonEchantillon) + '</span> paires à classifier !';
+                }} else {{
+                    labelCount.style.color = 'green';
+                    labelCount.innerHTML = "Bravo ! L'exercice est terminé, vous pouvez passer à la suite"
+                    localStorage.setItem('exercice_classification_ok', 'true')
+                    window.mathadata.run_python('set_exercice_classification_ok()');
+                    submit.style.display = 'none'
+                    return
+                }}
+                window.mathadata.run_python('get_exercice_data_json()', (res) => {{
+                    window.mathadata.exercice_classification('{id}', res[0], res[1], res[2])
+                }})
+            }} else {{
+                labelCount.style.color = 'red';
+                labelCount.innerHTML=('Mauvaise réponse, réessayez !')
+            }}
+        }})
+
+        window.mathadata.exercice_classification('{id}', {random_order.tolist()}, '{json.dumps(d1, cls=NpEncoder)}', '{json.dumps(d2, cls=NpEncoder)}')
+    }})
+    """)
+
     display(HTML(f'''
         <div id="{id}" style="display: flex; gap: 2rem;">
             <div style="flex: 1; display: flex; flex-direction: column; gap: 1rem; align-items: center;">
@@ -448,75 +581,6 @@ def exercice_classification():
         <button id="{id}-submit" type="button">Valider</button>
     '''))
 
-    run_js(f"""
-    setTimeout(() => {{
-        const labelCount = document.getElementById('{id}-count')
-        const radios_1 = document.getElementsByName('{id}-1-input')
-        const radios_2 = document.getElementsByName('{id}-2-input')
-        const submit = document.getElementById('{id}-submit')
-
-        // Vérifions si l'exercice est déjà terminé
-
-        if(localStorage.getItem('exercice_classification_ok') === 'true') {{
-            labelCount.style.color = 'green';
-            labelCount.innerHTML = "Bravo ! L'exercice est terminé, vous pouvez passer à la suite"
-            submit.style.display = 'none'   
-        }}
-
-
-        function syncRadios(selectedRadios, otherRadios) {{
-            selectedRadios.forEach(radio => {{
-                radio.addEventListener('change', () => {{
-                    const selectedValue = parseInt(radio.value)
-                    otherRadios.forEach(r => {{
-                        r.checked = (parseInt(r.value) !== selectedValue)
-                    }})
-                }})
-            }})
-        }}
-
-        syncRadios(radios_1, radios_2)
-        syncRadios(radios_2, radios_1)
-
-        
-        let countBonEchantillon = 0
-        submit.addEventListener('click', () => {{
-            const selected_1 = parseInt(Array.from(radios_1).find(r => r.checked).value)
-            const selected_2 = parseInt(Array.from(radios_2).find(r => r.checked).value)
-
-            if (selected_1 === selected_2) {{
-                alert('Les deux échantillons doivent être de classes différentes')
-                return
-            }}
-            
-            if (selected_1 === window.mathadata.exercice_classification_order[0]) {{
-                if (countBonEchantillon < 4) {{
-                    countBonEchantillon++
-                    labelCount.style.color = 'green'; 
-                    labelCount.innerHTML = 'Bravo ! Vous avez trouvé le foetus malade, il vous reste <span style="font-size: 2em;">' + (5 - countBonEchantillon) + '</span> paires à classifier !';
-                }} else {{
-                    labelCount.style.color = 'green';
-                    labelCount.innerHTML = "Bravo ! L'exercice est terminé, vous pouvez passer à la suite"
-                    localStorage.setItem('exercice_classification_ok', 'true')
-                    window.mathadata.run_python('set_exercice_classification_ok()');
-                    submit.style.display = 'none'
-                    return
-                }}
-                window.mathadata.run_python('get_exercice_data_json()', (res) => {{
-                    window.mathadata.exercice_classification('{id}', res[0], res[1], res[2])
-                }})
-            }} else {{
-                labelCount.style.color = 'red';
-                labelCount.innerHTML=('Mauvaise réponse, réessayez !')
-            }}
-        }})
-    }}, 500)
-    """)
-
-    
-    [random_order, d1, d2] = get_exercice_data()
-    run_js(f"setTimeout(() => window.mathadata.exercice_classification('{id}', {random_order.tolist()}, '{json.dumps(d1, cls=NpEncoder)}', '{json.dumps(d2, cls=NpEncoder)}'), 500)")
-
 def get_exercice_data():
     random_order = np.random.permutation(2)
 
@@ -530,8 +594,12 @@ def get_exercice_data_json():
 
 def animation_battement():
     id = uuid.uuid4().hex
+
+    run_js(
+        f"mathadata.add_observer('{id}', () => window.mathadata.animation_battement('{id}', '{json.dumps(d_animation, cls=NpEncoder)}'))")
+
     display(HTML(f'''
-    <div style="display: flex; flex-direction: column; gap: 1rem; align-items: center;">
+    <div id="{id}" style="display: flex; flex-direction: column; gap: 1rem; align-items: center;">
         <canvas id="{id}-chart"></canvas>
         <div>Temps : <span id="{id}-time">0</span>  -  Fréquence : <span id="{id}-freq">120</span></div>
         <div style="display: flex; gap: 1rem;">
@@ -562,11 +630,11 @@ def animation_battement():
                 pauseBtn.style.display = 'none';
             }}
 
-            const event = new CustomEvent('animation-state-change', {{ 
-                detail: {{ 
-                    id: id, 
-                    isPlaying: window.animationState[id].isPlaying 
-                }} 
+            const event = new CustomEvent('animation-state-change', {{
+                detail: {{
+                    id: id,
+                    isPlaying: window.animationState[id].isPlaying
+                }}
             }});
             window.dispatchEvent(event);
         }}
@@ -585,8 +653,6 @@ def animation_battement():
         }})();
     </script>
     '''))
-    run_js(
-        f"setTimeout(() => window.mathadata.animation_battement('{id}', '{json.dumps(d_animation, cls=NpEncoder)}'), 500)")
 
 def set_v_limits(vmin, vmax):
     common.challenge.vmin = vmin
@@ -685,6 +751,8 @@ run_js("""
                 }]
             },
             options: {
+                responsive: true,
+                maintainAspectRatio: true,
                 scales: {
                     x: {
                         title: {
@@ -732,6 +800,21 @@ run_js("""
 
         // Si le container est petit, exécuter ceci , hehehee et bien cela nous aidera bien pour l'animation tapis algo.
         if (small) {
+            // Pour les petits containers (animations), on veut un aspect ratio fixe et compact
+            config.options.responsive = true;
+            config.options.maintainAspectRatio = true;
+            config.options.aspectRatio = 1.3; // Ratio largeur/hauteur plus compact pour éviter le crop
+
+            // Réduire drastiquement les paddings pour maximiser l'espace de données
+            config.options.layout = {
+                padding: {
+                    left: 5,
+                    right: 5,
+                    top: 5,
+                    bottom: 5
+                }
+            };
+
             // Cacher les titres d'axes
             if (config.options.scales && config.options.scales.x && config.options.scales.x.title) {
                 config.options.scales.x.title.display = false
@@ -740,11 +823,23 @@ run_js("""
                 config.options.scales.y.title.display = false
             }
 
-            // Cacher la line de la grid et les ticks
+            // Cacher la grid et minimiser les ticks
             config.options.scales.x.grid = { display: false }
             config.options.scales.y.grid = { display: false }
-            config.options.scales.x.ticks = { display: false, maxTicksLimit: 2 }
-            config.options.scales.y.ticks = { display: false, maxTicksLimit: 2 }
+            config.options.scales.x.ticks = {
+                display: false,
+                maxTicksLimit: 2,
+                padding: 0
+            }
+            config.options.scales.y.ticks = {
+                display: false,
+                maxTicksLimit: 2,
+                padding: 0
+            }
+
+            // Réduire les bordures des axes
+            config.options.scales.x.border = { display: true, width: 1 }
+            config.options.scales.y.border = { display: true, width: 1 }
 
             // Désactiver le zoom et le pan
             if (config.options.plugins && config.options.plugins.zoom) {
@@ -847,10 +942,7 @@ run_js("""
 
         if (!container.innerHTML) {
             container.innerHTML = `
-                <div style="height: 100%; width: 100%; display: flex; flex-direction: column; justify-content: center; gap: 1rem">
                     <canvas id="${id}-chart"></canvas>
-                    ${mode === 2 ? `<canvas id="${id}-histo"></canvas>` : ''}
-                </div>
             `
         }
 
@@ -878,7 +970,7 @@ run_js("""
         // Use offsetWidth/offsetHeight (not getBoundingClientRect) for notebook environment compatibility
         const width = container.offsetWidth || container.clientWidth || 0
         const height = container.offsetHeight || container.clientHeight || 0
-        const isContainerSmall = Math.min(width, height) < 100
+        const isContainerSmall = Math.min(width, height) < 150
 
         window.mathadata.affichage_chart(`${id}-chart`, data, with_selection, true, isContainerSmall)
         if (with_selection) {
@@ -923,8 +1015,27 @@ run_js("""
         window.mathadata.exercice_classification_order = random_order
     }
 
-    window.mathadata.animation_battement = (id, values) => {
+        window.mathadata.animation_battement = (id, values) => {
         values = JSON.parse(values);
+
+        // --- Gestion des instances audio multiples ---
+        // 1. Initialiser le registre global si besoin
+        window.mathadata.audioInstances = window.mathadata.audioInstances || {};
+        
+        // 2. Arrêter TOUTES les instances audio existantes pour éviter les superpositions
+        //    (car on ne veut probablement qu'un seul son de coeur à la fois dans le notebook)
+        Object.keys(window.mathadata.audioInstances).forEach(key => {
+            const instance = window.mathadata.audioInstances[key];
+            if (instance) {
+                try {
+                    instance.pause();
+                    instance.currentTime = 0; // Rembobiner
+                } catch(e) { console.error("Erreur stop audio:", e); }
+                window.mathadata.audioInstances[key] = null;
+            }
+        });
+        // ---------------------------------------------
+
         window.mathadata.affichage_chart(`${id}-chart`, values, false, true); // 1er false pour ne pas afficher la sélection, 2ème true pour zoomer par défaut
         const chart = window.mathadata.charts[`${id}-chart`];   
         
@@ -1018,6 +1129,18 @@ run_js("""
         chart.update();
         
         const time_up_interval = setInterval(() => {
+            // Vérification de sécurité : si l'élément DOM a disparu, on arrête tout
+            if (!document.getElementById(`${id}-heart`)) {
+                clearInterval(time_up_interval);
+                if (next_beat_to) clearTimeout(next_beat_to);
+                // Nettoyage de l'audio associé à cet ID spécifique
+                if (window.mathadata.audioInstances[id]) {
+                    window.mathadata.audioInstances[id].pause();
+                    window.mathadata.audioInstances[id] = null;
+                }
+                return;
+            }
+
             if (play) {
                 time_ms = Math.min(time_ms + 100, values.length * 1000);
                 chart.update('none');
@@ -1032,28 +1155,55 @@ run_js("""
         
         const heart = document.getElementById(`${id}-heart`);
         const animationTime = 200;
+        // Utilisation de files/ pour le chemin local Jupyter classique, 
+        // ou chemin relatif simple si supporté.
+        //const audio = new Audio(`files/audios_anim/normal/normal_000.wav`);
+        //TODO: changer le chemin pour le fichier audio local si besoin.
         const audio = new Audio(`${mathadata.files_url}/heartbeat-loop-96879.mp3`);
+        
+        // Enregistrement de la NOUVELLE instance
+        window.mathadata.audioInstances[id] = audio;
+
         audio.addEventListener('error', () => {
             console.error('[audio] ERREUR : Impossible de charger l’audio.');
             alert("⚠️ ATTENTION: Le fichier audio du battement de coeur n’a pas pu être chargé. Continuez l'exercice sans audio ou réexécutez la cellule pour réessayer.");
             return;
         });
         const beat = () => {
+            // Vérification de sécurité DOM
+            if (!document.getElementById(`${id}-heart`)) {
+                 if (next_beat_to) clearTimeout(next_beat_to);
+                 return;
+            }
+
             if (!play) return;
+            
             if (index < intervals.length) {
                 next_beat_to = setTimeout(beat, intervals[index++]);
             } else {
                 next_beat_to = null;
             }
-            audio.pause();
-            audio.currentTime = 0;
-            audio.play();
+            
+            // Jouer le son
+            try {
+                audio.pause();
+                audio.currentTime = 0;
+                audio.play().catch(e => {
+                    // Ignorer les erreurs d'interaction utilisateur (ex: autoplay bloqué)
+                    // console.log("Audio play prevented:", e); 
+                });
+            } catch (e) {
+                console.error("Audio error:", e);
+            }
+            
             heart.classList.add('heart-animate');
             setTimeout(() => heart.classList.remove('heart-animate'), animationTime);
         };
         
         document.getElementById(`${id}-pause`).addEventListener('click', () => {
             play = false;
+            if (next_beat_to) clearTimeout(next_beat_to); // Stop immédiat de la boucle
+            audio.pause(); // Stop immédiat du son en cours
         });
         
         document.getElementById(`${id}-play`).addEventListener('click', () => {
@@ -1433,7 +1583,7 @@ def validate_caracteristique(errors, answers):
         return False
     
     if x == count * 10:
-        pretty_print_success(f"Bravo ! Il y a {count} valeurs avec une fréquence cardiaque inférieure à {v} soit {x}% du temps total.")
+        pretty_print_success(f"Bravo ! Il y a {count} valeur(s) avec une fréquence cardiaque inférieure à {v} soit {x}% du temps total.")
         return True
     
     errors.append(f"Ce n'est pas la bonne réponse. La caractéristique est le pourcentage de valeurs avec une fréquence cardiaque inférieure à {v}.")
@@ -1479,7 +1629,17 @@ validation_execution_exercice_classification = common.MathadataValidate(success=
 
 validation_question_caracteristique = common.MathadataValidateVariables({
     'x': None
-}, function_validation=validate_caracteristique, success="")
+}, function_validation=validate_caracteristique,  tips=[
+        {
+            'seconds': 30,
+            'tip': 'Compte dans le tableau le nombre de fréquences cardiaques inférieures à 100)'
+        }, {
+            'seconds': 60,
+            'tip': 'Il faut diviser le nombre de fréquences inférieures à 100 par le nombre total de fréquences pour obtenir la proportion.'
+        }, {
+            'seconds': 100,
+            'tip': 'Pour obtenir la caractéristique il faut calculer la valeur suivante : (nombre de fréquences inférieures à 100) / 10 * 100).'
+        }], success="")
 
 validation_affichage_banque_ecart_type = common.MathadataValidate(success="")
 
