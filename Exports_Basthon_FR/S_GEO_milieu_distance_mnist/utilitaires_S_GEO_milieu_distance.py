@@ -22,22 +22,23 @@ else:
 
 def tracer_6000_points():
     id = uuid.uuid4().hex
-    display(HTML(f'''
-            <canvas id="{id}-chart"></canvas>
-    '''))
-    
+
     c_train_par_population = compute_c_train_by_class(fonction_caracteristique=common.challenge.deux_caracteristiques, d_train=common.challenge.d_train, r_train=common.challenge.r_train)
     params = {
         'points': c_train_par_population,
         'additionalPoints': {
             'A': [27,60],
             'B': [55,32],
-            'C': [65,61]    
+            'C': [65,61]
         },
         'hover': True,
     }
-    
-    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
+
+    run_js(f"mathadata.add_observer('{id}-chart', () => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
+
+    display(HTML(f'''
+            <canvas id="{id}-chart"></canvas>
+    '''))
 
 
 def tracer_10_points_droite():
@@ -47,10 +48,7 @@ def tracer_10_points_droite():
     c_train_par_population = compute_c_train_by_class(fonction_caracteristique=common.challenge.deux_caracteristiques, d_train=data, r_train=labels)
 
     id = uuid.uuid4().hex
-    display(HTML(f'''
-            <canvas id="{id}-chart"></canvas>
-    '''))
-    
+
     params = {
         'points': c_train_par_population,
         'centroides': {},
@@ -59,8 +57,12 @@ def tracer_10_points_droite():
         },
         'drag': True,
     }
-    
-    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
+
+    run_js(f"mathadata.add_observer('{id}-chart', () => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
+
+    display(HTML(f'''
+            <canvas id="{id}-chart"></canvas>
+    '''))
 
 
 def tracer_10_points_centroides():
@@ -70,8 +72,7 @@ def tracer_10_points_centroides():
     c_train_par_population = compute_c_train_by_class(fonction_caracteristique=common.challenge.deux_caracteristiques, d_train=data, r_train=labels)
 
     id = uuid.uuid4().hex
-    display(HTML(f'<canvas id="{id}-chart"></canvas>'))
-    
+
     params = {
         'points': c_train_par_population,
         'centroides': {},
@@ -79,24 +80,20 @@ def tracer_10_points_centroides():
           'type': 'distance',
         }
     }
-    
-    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
+
+    run_js(f"mathadata.add_observer('{id}-chart', () => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
+
+    display(HTML(f'<canvas id="{id}-chart"></canvas>'))
 
 
 def tracer_points_centroides(id=None, carac=None, droite=False, initial_hidden=False):
     if id is None:
         id = uuid.uuid4().hex
     score_div = f'<div id="{id}-score-container" style="text-align: center; font-weight: bold; font-size: 2rem;">Pourcentage d\'erreur : <span id="{id}-score">...</span></div>'
-    display(HTML(f'''
-        <div id="{id}-container" style="{'visibility:hidden;' if initial_hidden else ''}">
-            {droite and score_div}
-            <canvas id="{id}-chart"></canvas>
-        </div>
-    '''))
-    
+
     if carac is None:
         carac = common.challenge.deux_caracteristiques
-    
+
     c_train_par_population = compute_c_train_by_class(fonction_caracteristique=carac)
 
     params = {
@@ -107,8 +104,15 @@ def tracer_points_centroides(id=None, carac=None, droite=False, initial_hidden=F
         'droite': droite,
         'compute_score': True,
     }
-    
-    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
+
+    run_js(f"mathadata.add_observer('{id}-container', () => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
+
+    display(HTML(f'''
+        <div id="{id}-container" style="{'visibility:hidden;' if initial_hidden else ''}">
+            {droite and score_div}
+            <canvas id="{id}-chart"></canvas>
+        </div>
+    '''))
 
 
     
@@ -439,7 +443,7 @@ validation_question_score_droite = MathadataValidateVariables({
             },
             {
                 'value': 2,
-                'if': "Ce n'est pas la bonne valeur. Vous avez donné le nombre d'erreurs et non le pourcentage d'erreur."
+                'if': "Ce n'est pas la bonne valeur. Tu as donné le nombre d'erreurs et non le pourcentage d'erreur."
             }
         ]
     }
@@ -458,7 +462,7 @@ validation_question_classes = MathadataValidateVariables({
     success="Bien joué ! Ce n'était pas facile de voir que le point C est un 2. Il aurait très bien pu être un 7.")
 
 # Exécuter la validation
-validation_execution_classes = MathadataValidate(success="Les classes des points sont correctes; vous pouvez passer à la suite.")
+validation_execution_classes = MathadataValidate(success="Les classes des points sont correctes; tu peux passer à la suite.")
 validation_deplacement_horizontal = MathadataValidateVariables(
     {
         'deplacement_horizontal_2': 1.5,
@@ -515,12 +519,12 @@ validation_distance_point_moyen = MathadataValidateVariables({
                 'value': {
                     'in': [2, 7],
                 },
-                'else': "classe_P n'a pas la bonne valeur. Vous devez répondre par 2 ou 7."
+                'else': "classe_P n'a pas la bonne valeur. Tu dois répondre par 2 ou 7."
             }
         ]
     }
 },
-    success="Bien joué, vous pouvez passer à la suite")
+    success="Bien joué, tu peux passer à la suite")
 
 validation_execution_10_points_droite = MathadataValidate(success="")
 

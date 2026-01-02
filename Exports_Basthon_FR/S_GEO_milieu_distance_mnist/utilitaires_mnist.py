@@ -15,14 +15,38 @@ from utilitaires_common import *
 # from scipy.spatial import Voronoi, voronoi_plot_2d
 
 strings = {
-    "dataname": "image",
-    "dataname_plural": "images",
-    "feminin": True,
-    "contraction": True,
-    "classes": [2, 7],
+    "dataname": {
+        "nom": "image",
+        "pluriel": "images",
+        "feminin": True,
+        "contraction": True,
+    },
+    "classes": [
+        {
+            "nom": "2",
+            "pluriel": "2",
+            "feminin": False,
+            "contraction": False,
+            "nom_alt": "image de 2",
+            "pluriel_alt": "images de 2",
+            "feminin_alt": True,
+            "contraction_alt": True,
+        },
+        {
+            "nom": "7",
+            "pluriel": "7",
+            "feminin": False,
+            "contraction": False,
+            "nom_alt": "image de 7",
+            "pluriel_alt": "images de 7",
+            "feminin_alt": True,
+            "contraction_alt": True,
+        }
+    ],
     "r_petite_caracteristique": 7,
     "r_grande_caracteristique": 2,
-    "train_size": "6 000",
+    "train_size": "6 073",
+    "train_size_approx": "6 000",
     "objectif_score_droite": 10,
     "objectif_score_droite_custom": 8,
     "pt_retourprobleme": "(40; 20)"
@@ -62,7 +86,7 @@ with open(d_train_path, 'rb') as f:
 with open(r_train_path, 'rb') as f:
     r_train = pickle.load(f)
 
-print(f"données chargées")
+pretty_print_success('Le chargement de la base de données s\'est déroulé à merveille ! Tu peux poursuivre en déroulant la page.')
 
 # VERSION 2/7 : 
 classes = [2, 7]
@@ -74,7 +98,7 @@ d_train_par_population = [d_train[r_train == k] for k in classes]
 d = d_train[10, :, :].copy()
 d2 = d_train[2, :, :].copy()
 
-#10 images en tableau format 3x3
+# 10 images en tableau format 3x3
 d_train_simple = [
     [[195, 195, 195], [0, 190, 1], [190, 0, 0]],
     [[255, 76, 132], [18, 240, 59], [101, 37, 200]],
@@ -173,7 +197,7 @@ class Mnist(common.Challenge):
 
     def display_custom_selection(self, id):
         run_js(f'''
-            setTimeout(() => {{
+            mathadata.add_observer('{id}', () => {{
                 window.mathadata.setup_zone_selection('{id}', '{json.dumps(self.d_train[4:8].tolist())}')
                 const gif = document.createElement('img')
                 gif.id = 'selection-gif'
@@ -182,12 +206,12 @@ class Mnist(common.Challenge):
                 gif.style = 'width: 25%; height: auto; margin-inline: auto;'
                 const container = document.getElementById('{id}-selection')
                 container.appendChild(gif)
-            }}, 500)
+            }});
         ''')
 
     def display_custom_selection_2d(self, id):
         run_js(f'''
-            setTimeout(() => {{
+            mathadata.add_observer('{id}', () => {{
                 window.mathadata.setup_zone_selection_2d('{id}', '{json.dumps(self.d_train[4:8].tolist())}')
                 const gif = document.createElement('img')
                 gif.id = 'selection-gif'
@@ -196,7 +220,7 @@ class Mnist(common.Challenge):
                 gif.style = 'width: 25%; height: auto; margin-inline: auto;'
                 const container = document.getElementById('{id}')
                 container.appendChild(gif)
-            }}, 500)
+            }});
         ''')
 
     def caracteristique(self, d):
@@ -233,7 +257,7 @@ class Mnist(common.Challenge):
         return (k1, k2)
 
     def cb_custom_score(self, score):
-        if score < 0.1:
+        if score < 0.1 or (has_variable('superuser') and get_variable('superuser') == True):
             return True
         elif score < 0.3:
             pretty_print_success(
@@ -456,6 +480,46 @@ def affichage_tableau(image, a=None, b=None):
     return
 
 
+def affichage_image_et_pixels(image=None):
+    if image is None:
+        image = d
+
+    id = uuid.uuid4().hex
+
+    # Données pour affichage "dessin"
+    params = {
+        'd': image,
+    }
+
+    run_js(
+        f"""mathadata.add_observer('{id}', () => mathadata.affichage_image_et_pixels('{id}', '{json.dumps(params, cls=NpEncoder)}'));""")
+
+    # Création du conteneur parent avec 2 div
+    display(
+        HTML(f'''
+        <div id="{id}" style="display:flex; gap: 20px; margin: 20px 0; justify-content: center;">
+            <div id="{id}-data" style="width: 48%; aspect-ratio: 1;">
+                <!-- Zone affichage -->
+            </div>
+            <div id="{id}-tab" style="width: 48%; aspect-ratio: 1; overflow: auto; background: white; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <!-- Zone tab -->
+            </div>
+        </div>
+        ''')
+    )
+
+
+image_3x3 = np.array([
+    [100, 200, 250],
+    [0, 200, 0],
+    [150, 0, 0]
+])
+
+
+def afficher_image_3x3():
+    affichage_image_et_pixels(image_3x3)
+
+
 # Moyenne
 def moyenne(liste):
     arr = np.array(liste)
@@ -544,31 +608,95 @@ def affichage_trois(data=None):
     """)
 
 
+def qcm_carac_moyenne():
+    id = "qcm-carac-moyenne-question-html"
+
+    image_indexes = [958, 2015]
+    carac1 = common.challenge.caracteristique(common.challenge.d_train[image_indexes[0]])
+    carac2 = common.challenge.caracteristique(common.challenge.d_train[image_indexes[1]])
+    diff = carac1 - carac2
+    
+    if abs(diff) < 5: # Au cas où l'ordre du dataset change, correction générique
+        answer_index = 3  # On ne peut pas savoir
+    elif diff > 0:
+        # Image A a plus grande caractéristique
+        answer_index = 0 
+    else:
+        # Image B a plus grande caractéristique
+        answer_index = 1
+        # Même caractéristique
+
+    run_js(f"""mathadata.add_observer('{id}', () => {{
+        console.log('{json.dumps(common.challenge.d, cls=NpEncoder)}');
+        mathadata.affichage("{id}-qcm-image-A", {json.dumps(common.challenge.d_train[image_indexes[0]], cls=NpEncoder)});
+        mathadata.affichage("{id}-qcm-image-B", {json.dumps(common.challenge.d_train[image_indexes[1]], cls=NpEncoder)});
+    }})""")
+
+    html = f"""
+        <div id="{id}" style="display: flex; flex-direction: column; gap: 2rem; justify-content: center; align-items: center;">
+            <p>Parmi les deux images suivantes, laquelle a la plus grande caractéristique ?</p>
+            <div style="display: flex; gap: 4rem; justify-content: center; align-items: center;">
+                <div style="text-align: center;">
+                    <h4 style="margin-bottom: 1rem;">Image A</h4>
+                    <div id="{id}-qcm-image-A" style="width: 250px; aspect-ratio: 1;"></div>
+                </div>
+                <div style="text-align: center;">
+                    <h4 style="margin-bottom: 1rem;">Image B</h4>
+                    <div id="{id}-qcm-image-B" style="width: 250px; aspect-ratio: 1;"></div>
+                </div>
+            </div>
+        </div> 
+    """
+    
+    create_qcm({
+        'question_html': html,
+        'choices': ["L'image A", "L'image B", "Les deux images ont la même caractéristique", "On ne peut pas savoir"],
+        'answer_index': answer_index,
+        'multiline': True,
+        'success': "En effet, l'image B a plus de pixels blancs donc une moyenne plus haute.",
+    })
+
 # JS
 
 styles = '''
     .image-table {
-        aspect-ratio: 1;
+        width: 100%;
         height: 100%;
-        margin: auto !important;
+        margin: 0 !important;
         border-width: 0;
-        margin: 0;
         border-collapse: collapse;
         border-spacing: 0;
-        table-layout: fixed; /* Ensures uniform cell sizing */
+        table-layout: fixed;
     }
-    
+
     .image-table tr {
-        height: calc(1 / 28 * 100%);
+        height: calc(100% / 28);
     }
     
-    .image-table td {
-        width: calc(1 / 28 * 100%);
+    .image-table td, .image-table th {
+        width: min(calc(1 / 28 * 100%), 30px);
         aspect-ratio: 1;
         padding: 0;
         margin: 0;
         border: none;
         position: relative;
+    }
+
+    .image-table-numbers td, .image-table-numbers th {
+        text-align: center;
+        vertical-align: middle;
+        overflow: hidden;
+        border: 1px solid #e8e8e8;
+        box-sizing: border-box;
+        padding: 0;
+        line-height: 1;
+        white-space: nowrap;
+    }
+
+    .image-table-numbers th {
+        background: #f5f5f5;
+        font-weight: bold;
+        border: 1px solid #ccc !important;
     }
 
     .image-table-selection td:hover {
@@ -595,12 +723,15 @@ run_js(f"""
     document.head.appendChild(style);
 """)
 
-run_js("""
+run_js(r"""
 let isSelecting = false;
 
 let zone1 = false;
 let zone2 = false;
 let zones = [[null, null], [null, null]];
+
+const zone1CheckpointId = 'mnist_zone_custom';
+const zone2CheckpointId = 'mnist_zones_custom_2d';
 
 document.addEventListener('mouseup', () => {
     isSelecting = false;
@@ -692,8 +823,24 @@ function selectCells() {
         let python;
         if (zone1 || zone2) {
             python = `update_selected_2((${minRowIndex}, ${minColIndex}), (${maxRowIndex}, ${maxColIndex}), (${minRowIndex2}, ${minColIndex2}), (${maxRowIndex2}, ${maxColIndex2}))`;
+
+            mathadata.checkpoints.save(zone2CheckpointId, {
+                zone1: {
+                    A: [minRowIndex, minColIndex],
+                    B: [maxRowIndex, maxColIndex]
+                },
+                zone2: {
+                    A: [minRowIndex2, minColIndex2],
+                    B: [maxRowIndex2, maxColIndex2]
+                }
+            });
         } else {
             python = `update_selected((${minRowIndex}, ${minColIndex}), (${maxRowIndex}, ${maxColIndex}))`;
+
+            mathadata.checkpoints.save(zone1CheckpointId, {
+                A: [minRowIndex, minColIndex],
+                B: [maxRowIndex, maxColIndex]
+            });
         }
 
         window.mathadata.run_python(python, () => {
@@ -775,16 +922,266 @@ window.mathadata.affichage = (id, matrix, params) => {
     }
 }
 
+// affiche l'image avec les valeurs des pixels
+function affichage_tableau(id, matrix) {
+    const container = document.getElementById(id);
+    container.style.overflow = 'hidden';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    container.innerHTML = '';
+
+    const table = document.createElement('table');
+    table.style.borderCollapse = 'collapse';
+    table.style.width = '100%';
+    table.style.height = '100%';
+    table.style.fontFamily = 'monospace';
+
+    // Dimensionnement typographique
+    const numCols = matrix[0].length + 1;
+    const numRows = matrix.length + 1;
+    const cellSize = Math.min(100 / numCols, 100 / numRows);
+    table.style.fontSize = Math.max(6, Math.min(14, cellSize * 0.4)) + 'px';
+
+    container.appendChild(table);
+
+    /* ===== EN-TÊTE COLONNES ===== */
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+
+    const corner = document.createElement('th');
+    corner.innerText = '';
+    styleHeader(corner);
+    headRow.appendChild(corner);
+
+    for (let col = 0; col < matrix[0].length; col++) {
+        const th = document.createElement('th');
+        th.innerText = col+1;
+        styleHeader(th);
+        headRow.appendChild(th);
+    }
+
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    /* ===== CORPS ===== */
+    const tbody = document.createElement('tbody');
+
+    for (let row = 0; row < matrix.length; row++) {
+        const tr = document.createElement('tr');
+
+        // En-tête ligne
+        const th = document.createElement('th');
+        th.innerText = row+1;
+        styleHeader(th);
+        tr.appendChild(th);
+
+        for (let col = 0; col < matrix[row].length; col++) {
+            const td = document.createElement('td');
+            td.innerText = matrix[row][col];
+            td.style.border = '1px solid #ccc';
+            td.style.textAlign = 'center';
+            tr.appendChild(td);
+        }
+
+        tbody.appendChild(tr);
+    }
+
+    table.appendChild(tbody);
+}
+
+window.mathadata.affichage_tableau = affichage_tableau;
+
+/* ===== STYLE STRUCTUREL ===== */
+function styleHeader(cell) {
+    cell.style.backgroundColor = '#f0f0f0';
+    cell.style.border = '2px solid #000';
+    cell.style.fontWeight = 'bold';
+    cell.style.textAlign = 'center';
+    cell.style.padding = '2px 4px';
+    cell.style.fontSize = '1.4em';
+}
+
+    
+
+window.mathadata.affichage_image_et_pixels = (id, params) => {
+    if (typeof params === 'string') {
+        params = JSON.parse(params)
+    }
+    
+    const { d } = params;
+    mathadata.affichage(id + '-data', d);
+    affichage_tableau(id + '-tab', d);
+}
+
+window.mathadata.animation_moyenne = async (id, data) => {
+    const container = document.getElementById(id);
+    const table = container.querySelector('table');
+    const cells = Array.from(table.querySelectorAll('td'));
+
+    if (!data) {
+        data = await mathadata.run_python_async('get_data(0)');
+    }
+
+    // Rendre le container position relative pour l'overlay
+    const originalPosition = container.style.position;
+    container.style.position = 'relative';
+
+    const totalPixels = 28 * 28;
+    const flatData = data.flat();
+
+    // Phase 0 : Afficher toutes les valeurs d'un coup en fadeIn
+    cells.forEach((cell, i) => {
+        const value = flatData[i];
+        cell.style.fontSize = '6px';
+        cell.style.fontWeight = 'bold';
+        cell.style.textAlign = 'center';
+        cell.style.color = value > 127 ? 'rgba(0, 0, 0, 0)' : 'rgba(255, 255, 255, 0)';
+        cell.style.transition = 'color 1000ms ease';
+        cell.innerText = value;
+    });
+
+    requestAnimationFrame(() => {
+        cells.forEach((cell, i) => {
+            const value = flatData[i];
+            cell.style.color = value > 127 ? 'rgba(0, 0, 0, 1)' : 'rgba(255, 255, 255, 1)';
+        });
+    });
+
+    // Pause pour voir toutes les valeurs
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Créer le conteneur d'affichage avec somme à gauche et count à droite
+    const displayContainer = document.createElement('div');
+    displayContainer.style.position = 'absolute';
+    displayContainer.style.left = '50%';
+    displayContainer.style.top = '50%';
+    displayContainer.style.transform = 'translate(-50%, -50%)';
+    displayContainer.style.display = 'flex';
+    displayContainer.style.alignItems = 'center';
+    displayContainer.style.gap = '20px';
+    displayContainer.style.fontSize = '28px';
+    displayContainer.style.fontWeight = 'bold';
+    displayContainer.style.color = '#fff';
+    displayContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+    displayContainer.style.padding = '20px 30px';
+    displayContainer.style.borderRadius = '12px';
+    displayContainer.style.zIndex = '1000';
+    container.appendChild(displayContainer);
+
+    // Somme à gauche
+    const sumDisplay = document.createElement('div');
+    sumDisplay.textContent = '0';
+    displayContainer.appendChild(sumDisplay);
+
+    // Zone pour le symbole diviser (initialement vide)
+    const dividerDisplay = document.createElement('div');
+    dividerDisplay.style.fontSize = '32px';
+    dividerDisplay.style.opacity = '0';
+    displayContainer.appendChild(dividerDisplay);
+
+    // Compteur à droite
+    const countDisplay = document.createElement('div');
+    countDisplay.textContent = '0';
+    displayContainer.appendChild(countDisplay);
+
+    let sum = 0;
+    let count = 0;
+    const initialDelay = 15;  // Début: 15ms par pixel
+    const minDelay = 0.5;     // Fin: 0.5ms par pixel
+    const accelerationFactor = 1.08;
+
+    // Phase 1 : Parcours rapide avec "+" qui tombent
+    for (let i = 0; i < cells.length; i++) {
+        const cell = cells[i];
+        const value = flatData[i];
+
+        // Calculer le délai avec accélération
+        const delay = Math.max(minDelay, initialDelay / Math.pow(accelerationFactor, i / 50));
+
+        // Créer le symbole "+" qui pop
+        const plusSign = document.createElement('div');
+        plusSign.textContent = '+';
+        plusSign.style.position = 'absolute';
+        plusSign.style.fontSize = '14px';
+        plusSign.style.fontWeight = 'bold';
+        plusSign.style.color = '#ff4444';
+        plusSign.style.pointerEvents = 'none';
+        plusSign.style.top = '50%';
+        plusSign.style.left = '50%';
+        plusSign.style.transform = 'translate(-50%, -50%) scale(0)';
+        plusSign.style.transition = 'transform 200ms ease-out, opacity 400ms ease-out';
+        plusSign.style.zIndex = '10';
+        plusSign.style.opacity = '1';
+        cell.appendChild(plusSign);
+
+        // Animation de pop
+        requestAnimationFrame(() => {
+            plusSign.style.transform = 'translate(-50%, -50%) scale(1.5)';
+        });
+
+        // Ajouter à la somme et au compteur
+        sum += value;
+        count++;
+        sumDisplay.textContent = Math.round(sum);
+        countDisplay.textContent = count;
+
+        // Faire disparaître en fondu après 200ms
+        setTimeout(() => {
+            plusSign.style.opacity = '0';
+            plusSign.style.transform = 'translate(-50%, -50%) scale(1)';
+            // Supprimer après le fade out
+            setTimeout(() => plusSign.remove(), 400);
+        }, 200);
+
+        await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    // Phase 2 : Faire apparaître le symbole diviser
+    await new Promise(resolve => setTimeout(resolve, 400));
+    dividerDisplay.textContent = '÷';
+    dividerDisplay.style.transition = 'opacity 400ms ease';
+    dividerDisplay.style.opacity = '1';
+
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    // Phase 3 : Transformer en résultat final
+    const moyenne = sum / totalPixels;
+    const moyenneColor = Math.round(moyenne);
+
+    // Masquer le layout somme/count et afficher le résultat
+    displayContainer.style.backgroundColor = `rgb(${moyenneColor}, ${moyenneColor}, ${moyenneColor})`;
+    displayContainer.style.color = moyenneColor > 127 ? '#000' : '#fff';
+    displayContainer.style.flexDirection = 'column';
+    displayContainer.style.gap = '10px';
+    sumDisplay.textContent = 'Moyenne';
+    sumDisplay.style.fontSize = '18px';
+    dividerDisplay.style.display = 'none';
+    countDisplay.textContent = moyenne.toFixed(1);
+    countDisplay.style.fontSize = '32px';
+
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
+    // Nettoyer
+    displayContainer.remove();
+
+    // Enlever toutes les valeurs affichées
+    cells.forEach(cell => {
+        cell.innerText = '';
+    });
+    container.style.position = originalPosition;
+}
+
 window.mathadata.setup_zone_selection = (id, matrixes) => {
     matrixes = JSON.parse(matrixes)
-    
+
     const container = document.getElementById(id)
     container.innerHTML = `
         <div id="${id}-selection">
             <div class="custom-images" id="${id}-images"></div>
         </div>
     `;
-    
+
     const imagesContainer = document.getElementById(`${id}-images`)
     window.mathadata.image_tables = [];
     for (let i = 0; i < matrixes.length; i++) {
@@ -796,12 +1193,27 @@ window.mathadata.setup_zone_selection = (id, matrixes) => {
         window.mathadata.image_tables.push(window.mathadata.affichage(`${id}-image-${i}`, matrixes[i], {with_selection: true}))
     }
 
+    // Charger la zone sauvegardée si elle existe
+
+    const savedZone = window.mathadata.checkpoints.get(zone1CheckpointId);
+    if (savedZone && savedZone.A?.every(v => v !== null) && savedZone.B?.every(v => v !== null)) {
+        // Restaurer la zone sauvegardée
+        const firstTable = window.mathadata.image_tables[0];
+        if (firstTable && firstTable.rows) {
+            const startCell = firstTable.rows[savedZone.A[0]]?.cells[savedZone.A[1]];
+            const endCell = firstTable.rows[savedZone.B[0]]?.cells[savedZone.B[1]];
+            if (startCell && endCell) {
+                zones[0] = [startCell, endCell];
+            }
+        }
+    }
+
     selectCells(); // To show zones if reexecute
 }
 
 window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
     matrixes = JSON.parse(matrixes)
-    
+
     const container = document.getElementById(id)
     container.innerHTML = `
          <style>
@@ -901,7 +1313,7 @@ window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
             <!-- Par défaut, Zone 1 est affichée -->
         </div>
 
-        
+
         </div>
     </div>
     `;
@@ -916,7 +1328,7 @@ window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
         zone1 = !toggle.checked;
         zone2 = toggle.checked;
     })
-    
+
     const imagesContainer = document.getElementById(`${id}-images`)
     window.mathadata.image_tables = [];
     for (let i = 0; i < matrixes.length; i++) {
@@ -926,6 +1338,32 @@ window.mathadata.setup_zone_selection_2d = (id, matrixes) => {
         table.id = `${id}-image-${i}`
         imagesContainer.appendChild(table)
         window.mathadata.image_tables.push(window.mathadata.affichage(`${id}-image-${i}`, matrixes[i], {with_selection: true}))
+    }
+
+    // Charger les zones sauvegardées si elles existent
+    const savedZones = window.mathadata.checkpoints.get(zone2CheckpointId);
+    if (savedZones) {
+        const firstTable = window.mathadata.image_tables[0];
+        if (firstTable && firstTable.rows) {
+
+            if (savedZones.zone1.A?.every(v => v !== null) && savedZones.zone1.B?.every(v => v !== null)) {
+                // Restaurer zone 1
+                const start1 = firstTable.rows[savedZones.zone1.A[0]]?.cells[savedZones.zone1.A[1]];
+                const end1 = firstTable.rows[savedZones.zone1.B[0]]?.cells[savedZones.zone1.B[1]];
+                if (start1 && end1) {
+                    zones[0] = [start1, end1];
+                }
+            }
+            
+            if (savedZones.zone2.A?.every(v => v !== null) && savedZones.zone2.B?.every(v => v !== null)) {
+                // Restaurer zone 2
+                const start2 = firstTable.rows[savedZones.zone2.A[0]]?.cells[savedZones.zone2.A[1]];
+                const end2 = firstTable.rows[savedZones.zone2.B[0]]?.cells[savedZones.zone2.B[1]];
+                if (start2 && end2) {
+                    zones[1] = [start2, end2];
+                }
+            }
+        }
     }
 
     selectCells(); // To show zones if reexecute
@@ -949,27 +1387,70 @@ function isBoardBlack(board) {
 window.mathadata.interface_data_gen = (id) => {
     const container = document.getElementById(id);
     const table_id = id + '-table';
-    
+
     container.innerHTML = `
         <div>
-            <table id="${table_id}" class="image-table" style="height: 300px"></table>
+            <table id="${table_id}" class="image-table" style="height: 300px; aspect-ratio: 1;"></table>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 1rem; align-items: center; justify-content: center; height: 100%">
-            <p style="margin-bottom: 2rem; font-size: 14px; text-align: center; max-width: 400px;">Maintenez appuyé et passez la souris sur le tableau noir pour dessiner un chiffre.</p>
-            <div>
-                <label for="gomme" style="margin-right: 10px">Gomme</label>
-                <input type="checkbox" class="toggle" id="gomme">
+        <div style="display: flex; flex-direction: column; gap: 1.5rem; align-items: center; justify-content: center; height: 100%">
+            <p style="font-size: 13px; color: #666; text-align: center; max-width: 280px; margin: 0; line-height: 1.5;">
+                Cliquez sur la zone noir et déplacez la souris pour dessiner
+            </p>
+
+            <!-- Switch Dessin/Gomme -->
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; align-items: center;">
+                <label style="font-size: 14px; font-weight: 500; color: #333;">Mode</label>
+                <div style="display: flex; align-items: center; gap: 0.5rem; background: #f5f5f5; padding: 0.5rem 0.75rem; border-radius: 8px;">
+                    <span id="${id}-mode-label-draw" style="font-size: 13px; font-weight: 600; color: #667eea;">Dessin</span>
+                    <label style="position: relative; display: inline-block; width: 50px; height: 26px; margin: 0;">
+                        <input type="checkbox" id="${id}-gomme" style="opacity: 0; width: 0; height: 0;">
+                        <span id="${id}-switch-bg" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #667eea; transition: 0.3s; border-radius: 26px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);"></span>
+                        <span id="${id}-switch-btn" style="position: absolute; content: ''; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: 0.3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></span>
+                    </label>
+                    <span id="${id}-mode-label-erase" style="font-size: 13px; color: #999;">Gomme</span>
+                </div>
             </div>
-            <button style="height: 50px; width: 100px; display: flex; justify-content: center; align-items: center; background-color: #B20F0F; border: none; border-radius: 5px; cursor: pointer; margin: 10px 0">Tout effacer</button>
+
+            <!-- Bouton Effacer tout -->
+            <button id="${id}-reset" class="mathadata-button" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; padding: 12px 24px; font-size: 14px;">
+                Tout effacer
+            </button>
         </div>
     `;
 
     const table = document.getElementById(table_id);
-    
-    const toggleGomme = document.getElementById('gomme');
-    const resetButton = container.querySelector('button');
+    const toggleGomme = document.getElementById(`${id}-gomme`);
+    const resetButton = document.getElementById(`${id}-reset`);
+    const modeLabelDraw = document.getElementById(`${id}-mode-label-draw`);
+    const modeLabelErase = document.getElementById(`${id}-mode-label-erase`);
+    const switchBg = document.getElementById(`${id}-switch-bg`);
+    const switchBtn = document.getElementById(`${id}-switch-btn`);
 
-    container.style = 'display:flex; justify-content: space-around; align-items: center;';
+    // Style du container (restauré de l'original)
+    container.style = 'display:flex; justify-content: space-around; align-items: center; gap: 2rem;';
+
+    // Gérer le changement de mode visuel
+    toggleGomme.addEventListener('change', () => {
+        if (toggleGomme.checked) {
+            // Mode gomme
+            modeLabelDraw.style.color = '#999';
+            modeLabelDraw.style.fontWeight = '400';
+            modeLabelErase.style.color = '#ff6b6b';
+            modeLabelErase.style.fontWeight = '600';
+            // Changer la couleur du switch
+            switchBg.style.backgroundColor = '#ff6b6b';
+            switchBtn.style.left = '27px';
+        } else {
+            // Mode dessin
+            modeLabelDraw.style.color = '#667eea';
+            modeLabelDraw.style.fontWeight = '600';
+            modeLabelErase.style.color = '#999';
+            modeLabelErase.style.fontWeight = '400';
+            // Changer la couleur du switch
+            switchBg.style.backgroundColor = '#667eea';
+            switchBtn.style.left = '3px';
+        }
+    });
 
     // Création de la table avec des cellules initialement noires
     for (let row = 0; row < 28; row++) {
@@ -1105,42 +1586,41 @@ def validate_algo(errors, answers):
     return True
 
 
-def validate_pixel_noir(errors, answers):
-    if d[17][15] is Ellipsis:
-        errors.append("Tu n'as pas remplacé les ...")
-        return False
-    answers['pixel'] = int(d[17][15])
-    if d[17][15] == 0:
-        return True
-    elif d[17][15] == 254:
-        errors.append("Tu n'as pas changé la valeur du pixel, il vaut toujours 254")
-    else:
-        errors.append(
-            "Tu as bien changé la valeur mais ce n'est pas la bonne. Relis l'énoncé pour voir la valeur à donner pour un pixel noir.")
-    return False
+def question_pixel():
+    value = 210
+    create_qcm({
+        'question_html': f"A votre avis, quelle est la valeur associée à ce pixel ?<br/><div style='width: 60px; height: 60px; background-color: rgb({value}, {value}, {value}); margin: 10px auto; border: 1px solid black;'></div>",
+        'choices': ['10', '110', str(value)],
+        'answer': str(value)
+    })
 
 
 validation_execution_affichage = MathadataValidate(success="")
-validation_question_pixel = MathadataValidateVariables({
-    'pixel': {
-        'value': int(d[18, 15]),
-        'errors': [
-            {
-                'value': {
-                    'min': 0,
-                    'max': 255
-                },
-                'else': "Ta réponse n'est pas bonne. Les pixels peuvent uniquement avoir des valeurs entre 0 et 255."
-            },
-            {
-                'value': int(d[15, 18]),
-                'if': "Attention ! Les coordonnées sont données en (ligne, colonne)."
-            }
-        ]
-    }
-})
-validation_question_pixel_noir = MathadataValidate(success="Bravo, le pixel est devenu noir.",
-                                                   function_validation=validate_pixel_noir)
+
+validation_question_nb_pixels = MathadataValidateVariables({
+    'nb_pixels': d.shape[0] * d.shape[1],
+}, tips=[{
+    'seconds': 10,
+    'tip': "Pour connaître le nombre de pixels dans une image, il faut multiplier le nombre de lignes par le nombre de colonnes."
+}, {
+    'seconds': 30,
+    'trials': 2,
+    'tip': "Les images ont 28 lignes et 28 colonnes."
+}],
+    success="Bravo, les images ont 28 lignes et 28 colonnes, donc elles contiennent 28 X 28 = 784 pixels.")
+
+validation_execution_afficher_image_3x3 = MathadataValidate(success="")
+validation_question_moyenne_3x3 = MathadataValidateVariables({
+    'x': np.mean(image_3x3),
+}, tips=[{
+    'tip': "Pour calculer la moyenne des pixels, il faut additionner les valeurs de tous les pixels puis diviser par le nombre total de pixels."
+}, {
+    'seconds': 60,
+    'trials': 2,
+    'tip': f"La somme des valeurs des pixels de l'image est {np.sum(image_3x3)}."
+}],
+    success=f"Bravo, la caractéristique vaut {np.sum(image_3x3)} / {np.size(image_3x3)} = {np.mean(image_3x3)}")
+
 validation_question_moyenne = MathadataValidateVariables({'moyenne_zone_4pixels': np.mean(d[14:16, 15:17])},
                                                          success="Bravo, la moyenne vaut en effet (142 + 154 + 0 + 0) / 4 = 74")
 validation_question_moyenne_triple = MathadataValidateVariables({'moyenne_pixels': np.mean(d_simple)},
@@ -1261,7 +1741,7 @@ validation_question_affichage_trois = MathadataValidateVariables({
     }
 })
 
-#Stockage valeur zones custom proposés
+# Stockage valeur zones custom proposés
 A_2 = (7, 2)  # <- coordonnées du point A1
 B_2 = (9, 25)  # <- coordonnées du point B1
 A_1 = (14, 2)  # <- coordonnées du point A2
@@ -1302,3 +1782,277 @@ validation_caracteristique_ligne_et_affichage = MathadataValidateFunction(
     expected=lambda: [caracteristique_ligne_correction(d) for d in common.challenge.d_train[0:100]],
     on_success=on_success_affichage_histograme
 )
+
+
+# -------------------------------------------------------------------------
+# NOUVEAUX EXERCICES : COMPRÉHENSION DES ZONES (4x3)
+# -------------------------------------------------------------------------
+
+# Données simplifiées 4x3
+img_2_4x3 = np.array([
+    [0, 255, 255],
+    [0, 0, 255],
+    [0, 255, 0],
+    [255, 255, 255]
+])
+
+img_7_4x3 = np.array([
+    [255, 255, 255],
+    [0, 0, 255],
+    [0, 255, 0],
+    [0, 255, 0]
+])
+
+def setup_interactive_line_js():
+    # Injection du code JS nécessaire pour la droite interactive simplifiée (version Chart.js "Native")
+    run_js("""
+    window.mathadata.setup_simple_line = (id, targets, labels, callback_python) => {
+        const chartId = id + '-chart';
+        
+        // Configuration pour tracer_droite_carac
+        // On veut tracer l'axe, mais pas afficher les points tout de suite
+        const params = {
+            c_train: targets, // Les valeurs cibles (juste pour définir min/max axe)
+            labels: [0, 1],   // Classe 0 (2) et Classe 1 (7)
+            afficherPoints: false
+        };
+
+        // Utiliser la fonction existante pour initialiser le graphique (même style que l'exercice officiel)
+        window.mathadata.tracer_droite_carac(chartId, params);
+        const chart = window.mathadata.charts[chartId];
+        
+        // État du jeu
+        let currentTargetIndex = 0; // 0 pour Image 2, 1 pour Image 7
+        const statusEl = document.getElementById(id + '-feedback');
+        
+        // Messages
+        const updateStatus = () => {
+            if (currentTargetIndex >= targets.length) {
+                statusEl.textContent = "Bravo ! C'est correct.";
+                statusEl.style.color = "green";
+                // Désactiver l'interaction
+                chart.options.onClick = null;
+                // Validation Python
+                window.mathadata.run_python(callback_python + '()');
+            } else {
+                const currentLabel = labels[currentTargetIndex];
+                statusEl.textContent = `Clique sur l'axe pour placer la moyenne de l'${currentLabel}.`;
+                statusEl.style.color = "#333";
+            }
+        };
+        
+        updateStatus();
+
+        // Interaction Click
+        chart.options.onClick = (e) => {
+            const canvasPosition = Chart.helpers.getRelativePosition(e, chart);
+            const dataX = chart.scales.x.getValueForPixel(canvasPosition.x);
+            
+            const target = targets[currentTargetIndex];
+            
+            // Tolérance de 5 unités (comme avant)
+            if (Math.abs(dataX - target) < 5) {
+                // Succès : Ajouter le point au dataset
+                // Dataset 0 = Classe 0 (Bleu/2), Dataset 1 = Classe 1 (Orange/7)
+                // On suppose que targets[0] est pour classe 0 et targets[1] pour classe 1
+                const datasetIndex = currentTargetIndex; 
+                
+                chart.data.datasets[datasetIndex].data.push({x: target, y: 0});
+                chart.update();
+                
+                currentTargetIndex++;
+                updateStatus();
+            } else {
+                // Erreur
+                statusEl.textContent = `Ce n'est pas la bonne moyenne (tu as cliqué sur ${dataX.toFixed(1)}). Recalcule et réessaie !`;
+                statusEl.style.color = "red";
+                
+                // Petit feedback visuel temporaire (point rouge erreur)
+                // On peut réutiliser la logique d'erreur de l'exercice officiel ou faire simple
+                const errorDatasetIndex = chart.data.datasets.length; // Nouveau dataset temporaire
+                chart.data.datasets.push({
+                    label: 'Erreur',
+                    data: [{x: dataX, y: 0}],
+                    pointRadius: 4,
+                    pointBackgroundColor: 'red',
+                    pointBorderColor: 'red'
+                });
+                chart.update();
+                
+                setTimeout(() => {
+                    chart.data.datasets.splice(errorDatasetIndex, 1);
+                    chart.update();
+                }, 1000);
+            }
+        };
+    };
+    """)
+
+exo_moy_globale_ok = False
+exo_moy_zone_ok = False
+
+def set_exo_moy_globale_ok():
+    global exo_moy_globale_ok
+    exo_moy_globale_ok = True
+
+def set_exo_moy_zone_ok():
+    global exo_moy_zone_ok
+    exo_moy_zone_ok = True
+
+def _afficher_exercice_interactif(id, titre, zone_coords=None, callback_ok="set_exo_moy_globale_ok"):
+    # Calcul des moyennes cibles
+    if zone_coords:
+        # Zone spécifique
+        # zone_coords = (row_start, row_end, col_start, col_end) (inclusif/exclusif style python slice ?)
+        # Disons indices inclusifs pour CSS, slicing python exclusif pour le calcul
+        r1, r2, c1, c2 = zone_coords
+        targets = [np.mean(img_2_4x3[r1:r2, c1:c2]), np.mean(img_7_4x3[r1:r2, c1:c2])]
+        zone_css = {
+            'r_min': r1, 'r_max': r2-1, # indices inclusifs pour JS
+            'c_min': c1, 'c_max': c2-1
+        }
+    else:
+        # Global
+        targets = [np.mean(img_2_4x3), np.mean(img_7_4x3)]
+        zone_css = None
+
+    setup_interactive_line_js()
+
+    instruction_zone = "de la zone rouge" if zone_coords else "de toute l'image"
+
+    display(HTML(f'''
+    <div id="{id}" style="border: 1px solid #ddd; padding: 20px; border-radius: 8px; background: #f9f9f9;">
+        <h3 style="margin-top:0; text-align: center;">{titre}</h3>
+        <p style="text-align: center; margin-bottom: 20px; font-size: 1.1em;">
+            Calcule la moyenne des pixels {instruction_zone} et place le résultat sur l'axe ci-dessous.
+        </p>
+        <div style="display: flex; gap: 40px; justify-content: center; margin: 20px 0;">
+            <div style="text-align: center;">
+                <strong>Image 2</strong>
+                <div style="display: flex; gap: 10px; margin-top: 10px; justify-content: center;">
+                    <div id="{id}-tab-0" style="width: 180px; aspect-ratio: 1;"></div>
+                    <div id="{id}-img-0" style="width: 180px; aspect-ratio: 1;"></div>
+                </div>
+            </div>
+            <div style="text-align: center;">
+                <strong>Image 7</strong>
+                <div style="display: flex; gap: 10px; margin-top: 10px; justify-content: center;">
+                    <div id="{id}-tab-1" style="width: 180px; aspect-ratio: 1;"></div>
+                    <div id="{id}-img-1" style="width: 180px; aspect-ratio: 1;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="background: white; border: 1px solid #ccc; border-radius: 4px; padding: 10px;">
+            <canvas id="{id}-chart" style="width: 100%; height: 100px;"></canvas>
+        </div>
+        <p id="{id}-feedback" style="min-height: 20px; margin-top: 10px; text-align: center; font-weight: bold;"></p>
+    </div>
+    '''))
+    
+    run_js(f"""
+        // Affichage des images
+        const img2 = {json.dumps(img_2_4x3.tolist())};
+        const img7 = {json.dumps(img_7_4x3.tolist())};
+        
+        // Timeout pour s'assurer que le DOM est prêt et affichage_tableau dispo
+        setTimeout(() => {{
+            // Affichage Tableaux
+            if (window.mathadata.affichage_tableau) {{
+                window.mathadata.affichage_tableau('{id}-tab-0', img2);
+                window.mathadata.affichage_tableau('{id}-tab-1', img7);
+            }}
+
+            // Affichage Images Graphiques
+            // On utilise window.mathadata.affichage définie plus haut
+            if (window.mathadata.affichage) {{
+                window.mathadata.affichage('{id}-img-0', img2, {{}});
+                window.mathadata.affichage('{id}-img-1', img7, {{}});
+            }}
+            
+            // Application de la zone rouge si nécessaire
+            {f'''
+            const zone = {json.dumps(zone_css)};
+            [0, 1].forEach(idx => {{
+                // STYLE POUR LE TABLEAU
+                const containerTab = document.getElementById('{id}-tab-' + idx);
+                
+                const styleZoneTab = () => {{
+                    const table = containerTab.querySelector('table');
+                    if (!table) return;
+                    
+                    for(let r=0; r<table.rows.length; r++) {{
+                        for(let c=0; c<table.rows[r].cells.length; c++) {{
+                            // table.rows inclut les headers ! (affichage_tableau lignes 950+)
+                            // row 0 = headers colonnes
+                            // col 0 = headers lignes
+                            // donc indices données sont r-1, c-1
+                            
+                            const dataR = r - 1;
+                            const dataC = c - 1;
+                            
+                            if (dataR >= zone.r_min && dataR <= zone.r_max &&
+                                dataC >= zone.c_min && dataC <= zone.c_max) {{
+                                
+                                const cell = table.rows[r].cells[c];
+                                cell.style.boxShadow = 'inset 0 0 0 3px #ff0000';
+                            }}
+                        }}
+                    }}
+                }};
+                setTimeout(styleZoneTab, 50);
+
+                // STYLE POUR L'IMAGE GRAPHIQUE
+                // window.mathadata.affichage crée aussi une table avec la classe .image-table
+                const containerImg = document.getElementById('{id}-img-' + idx);
+                const styleZoneImg = () => {{
+                    const table = containerImg.querySelector('table');
+                    if (!table) return;
+                     // Cette table n'a PAS de headers (générée par affichage() ligne 874)
+                    for(let r=0; r<table.rows.length; r++) {{
+                        for(let c=0; c<table.rows[r].cells.length; c++) {{
+                            if (r >= zone.r_min && r <= zone.r_max &&
+                                c >= zone.c_min && c <= zone.c_max) {{
+                                
+                                const cell = table.rows[r].cells[c];
+                                cell.style.boxShadow = 'inset 0 0 0 3px #ff0000';
+                                // cell.style.border = '2px solid red'; // Alternative
+                            }}
+                        }}
+                    }}
+                }};
+                setTimeout(styleZoneImg, 50);
+
+            }});
+            ''' if zone_coords else ''}
+            
+            // Setup de la ligne interactive
+            window.mathadata.setup_simple_line('{id}', {json.dumps(targets)}, ['Moy 2', 'Moy 7'], '{callback_ok}');
+            
+        }}, 100);
+    """)
+
+def exercice_moyenne_globale():
+    _afficher_exercice_interactif('exo_moy_globale', "Moyenne Globale", callback_ok="set_exo_moy_globale_ok")
+
+def exercice_moyenne_zone():
+    # Zone bas gauche (2x2) : Lignes 2 et 3, Colonnes 0 et 1
+    # Slice Python [2:4, 0:2]
+    _afficher_exercice_interactif('exo_moy_zone', "Moyenne Zone", zone_coords=(2, 4, 0, 2), callback_ok="set_exo_moy_zone_ok")
+
+def validate_exo_moy_globale(errors, answers):
+    if exo_moy_globale_ok:
+        return True
+    else:
+        errors.append("Place correctement les points sur l'axe (moins de 5 d'écart).")
+        return False
+
+def validate_exo_moy_zone(errors, answers):
+    if exo_moy_zone_ok:
+        return True
+    else:
+        errors.append("Place correctement les points sur l'axe (moins de 5 d'écart).")
+        return False
+
+validation_exercice_moyenne_globale = MathadataValidate(function_validation=validate_exo_moy_globale, success="Bravo ! Tu as bien calculé la moyenne globale.")
+validation_exercice_moyenne_zone = MathadataValidate(function_validation=validate_exo_moy_zone, success="Bravo ! Tu vois que la moyenne de la zone permet de mieux séparer les deux images (plus grand écart).")
