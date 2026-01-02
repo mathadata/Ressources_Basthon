@@ -45,7 +45,8 @@ strings = {
     ],
     "r_petite_caracteristique": 7,
     "r_grande_caracteristique": 2,
-    "train_size": "6 000",
+    "train_size": "6 073",
+    "train_size_approx": "6 000",
     "objectif_score_droite": 10,
     "objectif_score_droite_custom": 8,
     "pt_retourprobleme": "(40; 20)"
@@ -85,7 +86,7 @@ with open(d_train_path, 'rb') as f:
 with open(r_train_path, 'rb') as f:
     r_train = pickle.load(f)
 
-print(f"données chargées")
+pretty_print_success('Le chargement de la base de données s\'est déroulé à merveille ! Tu peux poursuivre en déroulant la page.')
 
 # VERSION 2/7 : 
 classes = [2, 7]
@@ -923,56 +924,84 @@ window.mathadata.affichage = (id, matrix, params) => {
 
 // affiche l'image avec les valeurs des pixels
 function affichage_tableau(id, matrix) {
-    const container = document.getElementById(id)
-    container.style.overflow = 'hidden'
-    container.style.display = 'flex'
-    container.style.alignItems = 'center'
-    container.style.justifyContent = 'center'
+    const container = document.getElementById(id);
+    container.style.overflow = 'hidden';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
     container.innerHTML = '';
 
-    const table = document.createElement('table')
-    table.classList.add('image-table')
-    table.classList.add('image-table-numbers')
-    table.style.width = '100%'
-    table.style.height = '100%'
+    const table = document.createElement('table');
+    table.style.borderCollapse = 'collapse';
+    table.style.width = '100%';
+    table.style.height = '100%';
+    table.style.fontFamily = 'monospace';
 
-    // Calculer la taille de police en fonction du nombre de lignes/colonnes
-    // Plus il y a de cellules, plus la police doit être petite
-    const numCols = matrix[0].length + 1; // +1 pour la colonne header
-    const numRows = matrix.length + 1; // +1 pour la ligne header
-    const cellSize = Math.min(100 / numCols, 100 / numRows); // pourcentage
-    // Taille de police proportionnelle à la taille de cellule
-    const fontSize = Math.max(6, Math.min(14, cellSize * 0.4)); // entre 6px et 14px
-    table.style.fontSize = fontSize + 'px';
+    // Dimensionnement typographique
+    const numCols = matrix[0].length + 1;
+    const numRows = matrix.length + 1;
+    const cellSize = Math.min(100 / numCols, 100 / numRows);
+    table.style.fontSize = Math.max(6, Math.min(14, cellSize * 0.4)) + 'px';
 
-    container.appendChild(table)
+    container.appendChild(table);
 
+    /* ===== EN-TÊTE COLONNES ===== */
     const thead = document.createElement('thead');
-    const corner_th = document.createElement('th');
-    corner_th.innerText = 'n°';
-    thead.appendChild(corner_th);
+    const headRow = document.createElement('tr');
+
+    const corner = document.createElement('th');
+    corner.innerText = '';
+    styleHeader(corner);
+    headRow.appendChild(corner);
+
     for (let col = 0; col < matrix[0].length; col++) {
         const th = document.createElement('th');
-        th.innerText = col + 1;
-        thead.appendChild(th);
+        th.innerText = col+1;
+        styleHeader(th);
+        headRow.appendChild(th);
     }
 
+    thead.appendChild(headRow);
     table.appendChild(thead);
+
+    /* ===== CORPS ===== */
+    const tbody = document.createElement('tbody');
+
     for (let row = 0; row < matrix.length; row++) {
         const tr = document.createElement('tr');
+
+        // En-tête ligne
         const th = document.createElement('th');
-        th.innerText = row + 1;
+        th.innerText = row+1;
+        styleHeader(th);
         tr.appendChild(th);
 
         for (let col = 0; col < matrix[row].length; col++) {
             const td = document.createElement('td');
-            const value = matrix[row][col];
-            td.innerText = value;
+            td.innerText = matrix[row][col];
+            td.style.border = '1px solid #ccc';
+            td.style.textAlign = 'center';
             tr.appendChild(td);
         }
-        table.appendChild(tr);
+
+        tbody.appendChild(tr);
     }
+
+    table.appendChild(tbody);
 }
+
+window.mathadata.affichage_tableau = affichage_tableau;
+
+/* ===== STYLE STRUCTUREL ===== */
+function styleHeader(cell) {
+    cell.style.backgroundColor = '#f0f0f0';
+    cell.style.border = '2px solid #000';
+    cell.style.fontWeight = 'bold';
+    cell.style.textAlign = 'center';
+    cell.style.padding = '2px 4px';
+    cell.style.fontSize = '1.4em';
+}
+
     
 
 window.mathadata.affichage_image_et_pixels = (id, params) => {
@@ -1753,3 +1782,277 @@ validation_caracteristique_ligne_et_affichage = MathadataValidateFunction(
     expected=lambda: [caracteristique_ligne_correction(d) for d in common.challenge.d_train[0:100]],
     on_success=on_success_affichage_histograme
 )
+
+
+# -------------------------------------------------------------------------
+# NOUVEAUX EXERCICES : COMPRÉHENSION DES ZONES (4x3)
+# -------------------------------------------------------------------------
+
+# Données simplifiées 4x3
+img_2_4x3 = np.array([
+    [0, 255, 255],
+    [0, 0, 255],
+    [0, 255, 0],
+    [255, 255, 255]
+])
+
+img_7_4x3 = np.array([
+    [255, 255, 255],
+    [0, 0, 255],
+    [0, 255, 0],
+    [0, 255, 0]
+])
+
+def setup_interactive_line_js():
+    # Injection du code JS nécessaire pour la droite interactive simplifiée (version Chart.js "Native")
+    run_js("""
+    window.mathadata.setup_simple_line = (id, targets, labels, callback_python) => {
+        const chartId = id + '-chart';
+        
+        // Configuration pour tracer_droite_carac
+        // On veut tracer l'axe, mais pas afficher les points tout de suite
+        const params = {
+            c_train: targets, // Les valeurs cibles (juste pour définir min/max axe)
+            labels: [0, 1],   // Classe 0 (2) et Classe 1 (7)
+            afficherPoints: false
+        };
+
+        // Utiliser la fonction existante pour initialiser le graphique (même style que l'exercice officiel)
+        window.mathadata.tracer_droite_carac(chartId, params);
+        const chart = window.mathadata.charts[chartId];
+        
+        // État du jeu
+        let currentTargetIndex = 0; // 0 pour Image 2, 1 pour Image 7
+        const statusEl = document.getElementById(id + '-feedback');
+        
+        // Messages
+        const updateStatus = () => {
+            if (currentTargetIndex >= targets.length) {
+                statusEl.textContent = "Bravo ! C'est correct.";
+                statusEl.style.color = "green";
+                // Désactiver l'interaction
+                chart.options.onClick = null;
+                // Validation Python
+                window.mathadata.run_python(callback_python + '()');
+            } else {
+                const currentLabel = labels[currentTargetIndex];
+                statusEl.textContent = `Clique sur l'axe pour placer la moyenne de l'${currentLabel}.`;
+                statusEl.style.color = "#333";
+            }
+        };
+        
+        updateStatus();
+
+        // Interaction Click
+        chart.options.onClick = (e) => {
+            const canvasPosition = Chart.helpers.getRelativePosition(e, chart);
+            const dataX = chart.scales.x.getValueForPixel(canvasPosition.x);
+            
+            const target = targets[currentTargetIndex];
+            
+            // Tolérance de 5 unités (comme avant)
+            if (Math.abs(dataX - target) < 5) {
+                // Succès : Ajouter le point au dataset
+                // Dataset 0 = Classe 0 (Bleu/2), Dataset 1 = Classe 1 (Orange/7)
+                // On suppose que targets[0] est pour classe 0 et targets[1] pour classe 1
+                const datasetIndex = currentTargetIndex; 
+                
+                chart.data.datasets[datasetIndex].data.push({x: target, y: 0});
+                chart.update();
+                
+                currentTargetIndex++;
+                updateStatus();
+            } else {
+                // Erreur
+                statusEl.textContent = `Ce n'est pas la bonne moyenne (tu as cliqué sur ${dataX.toFixed(1)}). Recalcule et réessaie !`;
+                statusEl.style.color = "red";
+                
+                // Petit feedback visuel temporaire (point rouge erreur)
+                // On peut réutiliser la logique d'erreur de l'exercice officiel ou faire simple
+                const errorDatasetIndex = chart.data.datasets.length; // Nouveau dataset temporaire
+                chart.data.datasets.push({
+                    label: 'Erreur',
+                    data: [{x: dataX, y: 0}],
+                    pointRadius: 4,
+                    pointBackgroundColor: 'red',
+                    pointBorderColor: 'red'
+                });
+                chart.update();
+                
+                setTimeout(() => {
+                    chart.data.datasets.splice(errorDatasetIndex, 1);
+                    chart.update();
+                }, 1000);
+            }
+        };
+    };
+    """)
+
+exo_moy_globale_ok = False
+exo_moy_zone_ok = False
+
+def set_exo_moy_globale_ok():
+    global exo_moy_globale_ok
+    exo_moy_globale_ok = True
+
+def set_exo_moy_zone_ok():
+    global exo_moy_zone_ok
+    exo_moy_zone_ok = True
+
+def _afficher_exercice_interactif(id, titre, zone_coords=None, callback_ok="set_exo_moy_globale_ok"):
+    # Calcul des moyennes cibles
+    if zone_coords:
+        # Zone spécifique
+        # zone_coords = (row_start, row_end, col_start, col_end) (inclusif/exclusif style python slice ?)
+        # Disons indices inclusifs pour CSS, slicing python exclusif pour le calcul
+        r1, r2, c1, c2 = zone_coords
+        targets = [np.mean(img_2_4x3[r1:r2, c1:c2]), np.mean(img_7_4x3[r1:r2, c1:c2])]
+        zone_css = {
+            'r_min': r1, 'r_max': r2-1, # indices inclusifs pour JS
+            'c_min': c1, 'c_max': c2-1
+        }
+    else:
+        # Global
+        targets = [np.mean(img_2_4x3), np.mean(img_7_4x3)]
+        zone_css = None
+
+    setup_interactive_line_js()
+
+    instruction_zone = "de la zone rouge" if zone_coords else "de toute l'image"
+
+    display(HTML(f'''
+    <div id="{id}" style="border: 1px solid #ddd; padding: 20px; border-radius: 8px; background: #f9f9f9;">
+        <h3 style="margin-top:0; text-align: center;">{titre}</h3>
+        <p style="text-align: center; margin-bottom: 20px; font-size: 1.1em;">
+            Calcule la moyenne des pixels {instruction_zone} et place le résultat sur l'axe ci-dessous.
+        </p>
+        <div style="display: flex; gap: 40px; justify-content: center; margin: 20px 0;">
+            <div style="text-align: center;">
+                <strong>Image 2</strong>
+                <div style="display: flex; gap: 10px; margin-top: 10px; justify-content: center;">
+                    <div id="{id}-tab-0" style="width: 180px; aspect-ratio: 1;"></div>
+                    <div id="{id}-img-0" style="width: 180px; aspect-ratio: 1;"></div>
+                </div>
+            </div>
+            <div style="text-align: center;">
+                <strong>Image 7</strong>
+                <div style="display: flex; gap: 10px; margin-top: 10px; justify-content: center;">
+                    <div id="{id}-tab-1" style="width: 180px; aspect-ratio: 1;"></div>
+                    <div id="{id}-img-1" style="width: 180px; aspect-ratio: 1;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="background: white; border: 1px solid #ccc; border-radius: 4px; padding: 10px;">
+            <canvas id="{id}-chart" style="width: 100%; height: 100px;"></canvas>
+        </div>
+        <p id="{id}-feedback" style="min-height: 20px; margin-top: 10px; text-align: center; font-weight: bold;"></p>
+    </div>
+    '''))
+    
+    run_js(f"""
+        // Affichage des images
+        const img2 = {json.dumps(img_2_4x3.tolist())};
+        const img7 = {json.dumps(img_7_4x3.tolist())};
+        
+        // Timeout pour s'assurer que le DOM est prêt et affichage_tableau dispo
+        setTimeout(() => {{
+            // Affichage Tableaux
+            if (window.mathadata.affichage_tableau) {{
+                window.mathadata.affichage_tableau('{id}-tab-0', img2);
+                window.mathadata.affichage_tableau('{id}-tab-1', img7);
+            }}
+
+            // Affichage Images Graphiques
+            // On utilise window.mathadata.affichage définie plus haut
+            if (window.mathadata.affichage) {{
+                window.mathadata.affichage('{id}-img-0', img2, {{}});
+                window.mathadata.affichage('{id}-img-1', img7, {{}});
+            }}
+            
+            // Application de la zone rouge si nécessaire
+            {f'''
+            const zone = {json.dumps(zone_css)};
+            [0, 1].forEach(idx => {{
+                // STYLE POUR LE TABLEAU
+                const containerTab = document.getElementById('{id}-tab-' + idx);
+                
+                const styleZoneTab = () => {{
+                    const table = containerTab.querySelector('table');
+                    if (!table) return;
+                    
+                    for(let r=0; r<table.rows.length; r++) {{
+                        for(let c=0; c<table.rows[r].cells.length; c++) {{
+                            // table.rows inclut les headers ! (affichage_tableau lignes 950+)
+                            // row 0 = headers colonnes
+                            // col 0 = headers lignes
+                            // donc indices données sont r-1, c-1
+                            
+                            const dataR = r - 1;
+                            const dataC = c - 1;
+                            
+                            if (dataR >= zone.r_min && dataR <= zone.r_max &&
+                                dataC >= zone.c_min && dataC <= zone.c_max) {{
+                                
+                                const cell = table.rows[r].cells[c];
+                                cell.style.boxShadow = 'inset 0 0 0 3px #ff0000';
+                            }}
+                        }}
+                    }}
+                }};
+                setTimeout(styleZoneTab, 50);
+
+                // STYLE POUR L'IMAGE GRAPHIQUE
+                // window.mathadata.affichage crée aussi une table avec la classe .image-table
+                const containerImg = document.getElementById('{id}-img-' + idx);
+                const styleZoneImg = () => {{
+                    const table = containerImg.querySelector('table');
+                    if (!table) return;
+                     // Cette table n'a PAS de headers (générée par affichage() ligne 874)
+                    for(let r=0; r<table.rows.length; r++) {{
+                        for(let c=0; c<table.rows[r].cells.length; c++) {{
+                            if (r >= zone.r_min && r <= zone.r_max &&
+                                c >= zone.c_min && c <= zone.c_max) {{
+                                
+                                const cell = table.rows[r].cells[c];
+                                cell.style.boxShadow = 'inset 0 0 0 3px #ff0000';
+                                // cell.style.border = '2px solid red'; // Alternative
+                            }}
+                        }}
+                    }}
+                }};
+                setTimeout(styleZoneImg, 50);
+
+            }});
+            ''' if zone_coords else ''}
+            
+            // Setup de la ligne interactive
+            window.mathadata.setup_simple_line('{id}', {json.dumps(targets)}, ['Moy 2', 'Moy 7'], '{callback_ok}');
+            
+        }}, 100);
+    """)
+
+def exercice_moyenne_globale():
+    _afficher_exercice_interactif('exo_moy_globale', "Moyenne Globale", callback_ok="set_exo_moy_globale_ok")
+
+def exercice_moyenne_zone():
+    # Zone bas gauche (2x2) : Lignes 2 et 3, Colonnes 0 et 1
+    # Slice Python [2:4, 0:2]
+    _afficher_exercice_interactif('exo_moy_zone', "Moyenne Zone", zone_coords=(2, 4, 0, 2), callback_ok="set_exo_moy_zone_ok")
+
+def validate_exo_moy_globale(errors, answers):
+    if exo_moy_globale_ok:
+        return True
+    else:
+        errors.append("Place correctement les points sur l'axe (moins de 5 d'écart).")
+        return False
+
+def validate_exo_moy_zone(errors, answers):
+    if exo_moy_zone_ok:
+        return True
+    else:
+        errors.append("Place correctement les points sur l'axe (moins de 5 d'écart).")
+        return False
+
+validation_exercice_moyenne_globale = MathadataValidate(function_validation=validate_exo_moy_globale, success="Bravo ! Tu as bien calculé la moyenne globale.")
+validation_exercice_moyenne_zone = MathadataValidate(function_validation=validate_exo_moy_zone, success="Bravo ! Tu vois que la moyenne de la zone permet de mieux séparer les deux images (plus grand écart).")

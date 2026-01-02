@@ -744,7 +744,7 @@ window.mathadata.generateInteractiveHistoClassif = function(div_id, data, params
         // Si déjà complété, afficher le message et passer le breakpoint
         if (isAlreadyCompleted) {
             if (feedbackEl) {
-                feedbackEl.textContent = '✓ Vous avez déjà complété cet histogramme précédemment. Vous pouvez continuer.'
+                feedbackEl.textContent = '✓ Tu as déjà complété cet histogramme précédemment. Tu peux continuer.'
                 feedbackEl.style.color = 'green'
                 feedbackEl.style.fontStyle = 'italic'
             }
