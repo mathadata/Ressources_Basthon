@@ -319,9 +319,8 @@ def exercice_association_deux_droites():
 
 # JS
 
-def calculer_score_droite():
-    calculer_score_droite_geo(validate=common.challenge.objectif_score_droite)
-
+def calculer_score_droite(animation=False):
+    calculer_score_droite_geo(validate=common.challenge.objectif_score_droite,animation=animation)
 
 def calculer_score_custom_droite():
     calculer_score_droite_geo(custom=True, validate=common.challenge.objectif_score_droite_custom,
