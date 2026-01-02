@@ -4149,13 +4149,13 @@ validation_question_score_fixe = MathadataValidateVariables({
 }, function_validation=validation_func_score_fixed,
     tips=[
         {
-            'seconds': 50,
+            'seconds': 20,
             'tip': 'Compte dans le tableau le nombre d\'erreurs commmises. Il restera une opération mathématique à faire pour obtenir le pourcentage d\'erreur.'
         }, {
-            'seconds': 100,
+            'seconds': 60,
             'tip': 'Il faut diviser par 10 pour obtenir la proportion d\'erreur parmi les 10 premières valeurs.'
         }, {
-            'seconds': 130,
+            'seconds': 80,
             'tip': 'Pour obtenir le pourcentage d\'erreur, il faut multiplier la proportion par 100.'
         }], success="")
 validation_score_fixe = MathadataValidate(success="")
