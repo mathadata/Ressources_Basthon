@@ -82,7 +82,7 @@ def load_data(source=DATASET, local=LOCAL):
         with open(r_train_path, 'rb') as f:
             r_train = pickle.load(f)
         # Suppresion du mot surce pour ne pas afficher le nom du dataset dans le notebook    
-        print(f"données chargées")
+        pretty_print_success('Le chargement de la base de données s\'est déroulé à merveille ! Tu peux poursuivre en déroulant la page.')
 
     d_animation = d_train[10].copy()
     
