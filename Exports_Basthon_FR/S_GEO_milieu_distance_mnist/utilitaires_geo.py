@@ -1,4 +1,3 @@
-import sys
 import base64
 import mimetypes
 import os
@@ -790,8 +789,9 @@ def tracer_200_points(nb=200):
     '''))
 
 
-def tracer_points_droite_vecteur(id_content=None, carac=None, initial_hidden=False, save=True, normal=None, directeur=False,
-                                 reglage_normal=False, initial_values=None, sliders=False, interception_point=True):
+def tracer_points_droite_vecteur(id_content=None, carac=None, initial_hidden=False, save=True, normal=None,
+                                 directeur=False, directeur_a=False, reglage_normal=False, initial_values=None,
+                                 sliders=False, interception_point=True, equation_hide=True):
     if id_content is None:
         id_content = uuid.uuid4().hex
 
@@ -809,9 +809,10 @@ def tracer_points_droite_vecteur(id_content=None, carac=None, initial_hidden=Fal
         'hover': True,
         'displayValue': False,
         'save': save,
-        'equation_hide': True,
+        'equation_hide': equation_hide,
         'vecteurs': {
             'directeur': directeur,
+            'directeur_a': directeur_a,
             'normal': normal,
         },
         'droite': {
@@ -1052,15 +1053,12 @@ def tracer_points_droite_vecteur(id_content=None, carac=None, initial_hidden=Fal
     '''))
 
 
-def tracer_points_droite_vecteur_directeur(initial_values=None):
+def tracer_points_droite_vecteur_directeur():
     # Valeurs par défaut spécifiques pour cet exercice
     defaults = {'ux': 5, 'uy': 10, 'xa': 20, 'ya': 10}
 
-    if initial_values:
-        # On fusionne les valeurs utilisateur avec les défauts spécifiques
-        defaults.update(initial_values)
-
-    tracer_points_droite_vecteur(directeur=True, initial_values=defaults, sliders=True, interception_point=False)
+    tracer_points_droite_vecteur(directeur=True, directeur_a=True, initial_values=defaults, sliders=True,
+                                 interception_point=False)
 
 
 def update_custom():
@@ -1295,7 +1293,6 @@ def get_best_score(method='utra-fast'):
 pointA = (20, 40)
 pointB = (30, 10)
 
-
 # JS
 run_js('''
     if (localStorage.getItem('input-values')) {
@@ -1341,51 +1338,39 @@ run_js('''
         return {a, b, c}
     }
       
-    window.mathadata.findIntersectionPoints = function(a, b, c, x_min, x_max, force_vertical) {
-        const y_min = x_min;
-        const y_max = x_max;
-        const points = [];
-
-        // Handle vertical line (b === 0): x = -c/a
-        if (b === 0) {
-            const x = -c / a;
-            if (x >= x_min && x <= x_max) {
-                points.push({ x, y: y_min }, { x, y: y_max });
-            }
-        }
-        // Handle horizontal line (a === 0): y = -c/b
-        else if (a === 0) {
-            const y = -c / b;
-            if (y >= y_min && y <= y_max) {
-                points.push({ x: x_min, y }, { x: x_max, y });
-            }
-        }
-        // General case
-        else {
-            // Intersect with vertical boundaries: x = x_min and x = x_max
-            let y = (-a * x_min - c) / b;
-            if (force_vertical || (y >= y_min && y <= y_max)) {
-                points.push({ x: x_min, y });
-            }
-            y = (-a * x_max - c) / b;
-            if (force_vertical || (y >= y_min && y <= y_max)) {
-                points.push({ x: x_max, y });
-            }
-
-            // Intersect with horizontal boundaries: y = y_min and y = y_max
-            let x = (-b * y_min - c) / a;
-            if (x >= x_min && x <= x_max) points.push({ x, y: y_min });
-            x = (-b * y_max - c) / a;
-            if (x >= x_min && x <= x_max) points.push({ x, y: y_max });
-        }
-
-        // Remove duplicates
-        const uniquePoints = points.filter((pt, i, arr) =>
-            arr.findIndex(p => p.x === pt.x && p.y === pt.y) === i
-        );
-
-        return uniquePoints.slice(0, 2).sort((p1, p2) => p1.x - p2.x); // Return at most two intersection points
-    }
+    window.mathadata.findIntersectionPoints = function (
+      a,
+      b,
+      c,
+      x_min,
+      x_max
+    ) {
+      const INF = (x_max - x_min) * 10; // Hack pour faire tendre les points de la droite vers l'infini (donc en dehors du canvas)
+      const points = [];
+    
+      // Droite horizontale
+      if (b === 0) {
+        const x = -c / a;
+        points.push({ x, y: x_min - INF }, { x, y: x_max + INF });
+        return points;
+      }
+    
+      // Droite verticale
+      if (a === 0) {
+        const y = -c / b;
+        points.push({ x: x_min - INF, y }, { x: x_max + INF, y });
+        return points;
+      }
+    
+      // Points d'interesection -/+ facteur 'infini'
+      const x1 = x_min - INF;
+      const x2 = x_max + INF;
+    
+      // Renvoie deux points pour tracer la droite
+      points.push({ x: x1, y: (-a * x1 - c) / b }, { x: x2, y: (-a * x2 - c) / b });
+    
+      return points;
+    };
 
     window.mathadata.getLineEquationStr = function(a, b, c) {
         const round2 = v => Math.round((v + Number.EPSILON) * 100) / 100;
@@ -1531,7 +1516,10 @@ run_js('''
       const {points, droite, vecteurs, centroides, additionalPoints, hideClasses, hover, inputs, initial_values, displayValue, save, custom, compute_score, drag, force_origin, equation_hide, param_colors, equation_fixed_position, side_box = true , interception_point = true} = params;
         // points: tableau des données en entrée sous forme de coordonnées (deux éléments, les points des 2 et les points des 7) [[[x,y],[x,y],...] , [[x,y],[x,y],...]]
         // droite: la droite à afficher (objet)
-        // vecteurs: vecteurs à afficher pour le bouger (normal ou directeur)
+        // vecteurs: vecteurs à afficher pour le bouger
+        //   - normal: bool: affiche le vecteur normal
+        //   - directeur: bool: affiche le vecteur directeur (origin)
+        //   - directeur_a: bool: affiche le vecteur directeur (attaché au point A)
         // centroides: bool: afficher les centroides
         // additionalPoints: tableau de points additionnels
         // hideClasses: bool: (default: false) pour afficher la légende au dessus du graphe
@@ -1774,12 +1762,6 @@ run_js('''
             points = datasets.slice(0, 2).map(d => d.data).map(d => d.map(({x, y}) => [x, y]))
         }
 
-        const interceptPoint = getYInterceptPoint(values);
-        if (interceptPoint) {
-            max = Math.max(max, interceptPoint.y);
-            min = Math.min(min, interceptPoint.y);
-        }
-
         if (centroid1DatasetIndex) {
           const centroidCoords = calculateCentroids(points)
           centroidCoords.forEach(({x, y}, index) => {
@@ -1816,6 +1798,9 @@ run_js('''
         if (nDatasetIndex) {
             datasets[nDatasetIndex].data = [{ x: values.xa, y: values.ya }, { x: values.xa + values.nx, y: values.ya + values.ny }]
         }
+        if (uaDatasetIndex) {
+            datasets[uaDatasetIndex].data = [{ x: values.xa, y: values.ya }, { x: values.xa + values.ux, y: values.ya + values.uy }]
+        }
         if (aDatasetIndex) {
             datasets[aDatasetIndex].data = [{ x: values.xa, y: values.ya }]
         }
@@ -1843,9 +1828,9 @@ run_js('''
         }
       })
 
-      let uDatasetIndex, nDatasetIndex, aDatasetIndex;
+      let uDatasetIndex, nDatasetIndex, uaDatasetIndex, aDatasetIndex;
       if (vecteurs) {
-        const {normal, directeur} = vecteurs;
+        const {normal, directeur, directeur_a} = vecteurs;
         const vectorParams = []
 
         if (directeur) {
@@ -1866,6 +1851,26 @@ run_js('''
             id: 'directeur',
           })
           uDatasetIndex = datasets.length - 1;
+        }
+
+        if (directeur_a) {
+          // add vector u attached to A
+          datasets.push({
+              type: 'line',
+              data: [],
+              borderColor: 'purple',
+              borderWidth: 2,
+              pointRadius: 0,
+              pointHitRadius: 0,
+              label: '',
+          }); 
+          vectorParams.push({
+            datasetIndex: datasets.length - 1,
+            color: 'purple',
+            label: '',
+            id: 'directeur_a',
+          })
+          uaDatasetIndex = datasets.length - 1;
         }
 
         if (normal) {
@@ -1939,8 +1944,38 @@ run_js('''
                 ctx.font = '18px Arial';
                 ctx.fillStyle = color;
                 ctx.textAlign = 'left';
-                // TODO
-                ctx.fillText(`${label}(${id === 'directeur' ? -(values['b']) : values['nx']}, ${values[id === 'directeur' ? 'a' : 'ny']})`, x2 + 10, y2);
+                if (label) {
+                    let label_x, label_y;
+                    if (id === 'directeur' || id === 'directeur_a') {
+                        label_x = values.ux;
+                        label_y = values.uy;
+                    } else {
+                        label_x = values.nx;
+                        label_y = values.ny;
+                    }
+                    if (directeur_a) {
+                        ctx.fillText(`${label}(`, x2 + 10, y2);
+                        let currentX = x2 + 10 + ctx.measureText(`${label}(`).width;
+                        
+                        ctx.fillStyle = 'green';
+                        ctx.fillText(`${label_x}`, currentX, y2);
+                        currentX += ctx.measureText(`${label_x}`).width;
+                        
+                        ctx.fillStyle = color;
+                        ctx.fillText(`, `, currentX, y2);
+                        currentX += ctx.measureText(`, `).width;
+                        
+                        ctx.fillStyle = 'firebrick';
+                        ctx.fillText(`${label_y}`, currentX, y2);
+                        currentX += ctx.measureText(`${label_y}`).width;
+                        
+                        ctx.fillStyle = color;
+                        ctx.fillText(`)`, currentX, y2);
+                    }
+                    else {
+                        ctx.fillText(`${label}(${label_x}, ${label_y})`, x2 + 10, y2);
+                    }
+                }
                 ctx.restore(); 
               }
             });
@@ -2443,6 +2478,8 @@ run_js('''
           const inputElements = {}
           
           const update = () => {
+            const chart = mathadata.charts[`${id}-chart`];
+
             // Recupération des valeurs des inputs
             const newValues = {}
             Object.keys(inputElements).forEach((key) => {
@@ -2493,8 +2530,10 @@ run_js('''
 
             // Update des datasets
             if (uDatasetIndex) {
-              // ux = -b, uy = a. Utilisation de a et b qui sont toujours définis
-              datasets[uDatasetIndex].data = [{ x: start_ux, y: start_uy }, { x: start_ux - values.b, y: start_uy + values.a }]
+              datasets[uDatasetIndex].data = [{ x: start_ux, y: start_uy }, { x: start_ux + values.ux, y: start_uy + values.uy }]
+            }
+            if (uaDatasetIndex) {
+              datasets[uaDatasetIndex].data = [{ x: values.xa, y: values.ya }, { x: values.xa + values.ux, y: values.ya + values.uy }]
             }
             if (nDatasetIndex) {
               datasets[nDatasetIndex].data = [{ x: values.xa, y: values.ya }, { x: values.xa + values.nx, y: values.ya + values.ny }]
@@ -2502,13 +2541,25 @@ run_js('''
             if (aDatasetIndex) {
               datasets[aDatasetIndex].data = [{ x: values.xa, y: values.ya }]
             }
-            if (droiteDatasetIndex) {
-              datasets[droiteDatasetIndex].data = mathadata.findIntersectionPoints(values.a, values.b, values.c, min, max); 
-            }
+
+            let minWithIntercept = min;
+            let maxWithIntercept = max;
             if (yInterceptDatasetIndex !== undefined) {
               const interceptData = getYInterceptPoint(values);
               datasets[yInterceptDatasetIndex].data = interceptData ? [interceptData] : [];
+              if (interceptData) {
+                minWithIntercept = Math.min(min, interceptData.y);
+                maxWithIntercept = Math.max(max, interceptData.y);
+                chart.options.scales.x.min = minWithIntercept
+                chart.options.scales.x.max = maxWithIntercept
+                chart.options.scales.y.min = minWithIntercept
+                chart.options.scales.y.max = maxWithIntercept
+              }
             }
+            if (droiteDatasetIndex) {
+              datasets[droiteDatasetIndex].data = mathadata.findIntersectionPoints(values.a, values.b, values.c, minWithIntercept, maxWithIntercept);
+            }
+
 
             mathadata.charts[`${id}-chart`].update()
 
@@ -2581,7 +2632,8 @@ def compute_score_json(a, b, c, custom=False):
     return json.dumps({'error': error})
 
 
-def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banque=True, success_msg=None, animation=True):
+def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banque=True, success_msg=None,
+                              animation=True):
     global input_values
 
     if custom:
@@ -2628,7 +2680,6 @@ def qcm_choix_caracteristiques():
         'choices': ['1er choix', '2ème choix'],
         'answer': '2ème choix',
     })
-
 
 
 ### Validation
@@ -2855,8 +2906,10 @@ def validate_moyenne_carac(errors, answers):
         errors.append("Réponds d'abord à la question ci-dessus en plaçant les points sur le graphe.")
         return False
 
+
 chat = 'chat'
 Chat = 'Chat'
+
 
 def function_validation_cartesienne_determinante(errors, answers):
     a = answers['a']
@@ -2872,12 +2925,14 @@ def function_validation_cartesienne_determinante(errors, answers):
     pretty_print_success("Bravo, tu peux passer à la suite.")
     return True
 
-validation_placer_2_points = MathadataValidate(function_validation=validate_moyenne_carac,success="Bravo tu as bien placé les points !")
+
+validation_placer_2_points = MathadataValidate(function_validation=validate_moyenne_carac,
+                                               success="Bravo tu as bien placé les points !")
 
 validation_moyenne_carac_mauvaise = MathadataValidate(function_validation=validate_moyenne_carac)
 validation_moyenne_carac_meilleure = MathadataValidate(function_validation=validate_moyenne_carac)
 
 validation_question_cartesienne_determinant = MathadataValidateVariables({
-    'a' : None,
-}, function_validation= function_validation_cartesienne_determinante
-, success="")
+    'a': None,
+}, function_validation=function_validation_cartesienne_determinante
+    , success="")

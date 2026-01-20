@@ -486,7 +486,7 @@ validation_deplacement_vertical = MathadataValidateVariables(
     {
         'deplacement_vertical_2': 3,
         'deplacement_vertical_3': 2,
-        'deplacement_vertical_4': 1
+        'deplacement_vertical_4': 1.5
     },
     tips=[
         {
