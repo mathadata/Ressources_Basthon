@@ -117,6 +117,10 @@ chat = 'chat'
 Chat = 'chat'
 cat = 'cat'
 
+# Variables pour validation histogrammes zones (permettre A et B sans guillemets)
+A = 'A'
+B = 'B'
+
 
 class Mnist(common.Challenge):
     def __init__(self):
@@ -1836,7 +1840,7 @@ def setup_interactive_line_js():
                 window.mathadata.run_python(callback_python + '()');
             } else {
                 const currentLabel = labels[currentTargetIndex];
-                statusEl.textContent = `Clique sur l'axe pour placer la moyenne de l'${currentLabel}.`;
+                statusEl.textContent = `Clique sur l'axe pour placer la moyenne pour l'${currentLabel}.`;
                 statusEl.style.color = "#333";
             }
         };
@@ -1899,7 +1903,10 @@ def set_exo_moy_zone_ok():
     global exo_moy_zone_ok
     exo_moy_zone_ok = True
 
-def _afficher_exercice_interactif(id, titre, zone_coords=None, callback_ok="set_exo_moy_globale_ok"):
+def _afficher_exercice_interactif(id_prefix, titre, zone_coords=None, callback_ok="set_exo_moy_globale_ok"):
+    # On génère un ID unique à chaque exécution pour éviter le bug du canvas blanc (conflit Chart.js)
+    id = f"{id_prefix}_{uuid.uuid4().hex}"
+
     # Calcul des moyennes cibles
     if zone_coords:
         # Zone spécifique
@@ -1990,12 +1997,25 @@ def _afficher_exercice_interactif(id, titre, zone_coords=None, callback_ok="set_
                             
                             const dataR = r - 1;
                             const dataC = c - 1;
+                            const cell = table.rows[r].cells[c];
+                            
+                            // Réinitialiser
+                            cell.style.boxShadow = '';
+                            cell.style.border = '';
                             
                             if (dataR >= zone.r_min && dataR <= zone.r_max &&
                                 dataC >= zone.c_min && dataC <= zone.c_max) {{
                                 
-                                const cell = table.rows[r].cells[c];
-                                cell.style.boxShadow = 'inset 0 0 0 3px #ff0000';
+                                const borders = [];
+                                if (dataR === zone.r_min) borders.push('2px solid red'); else borders.push('0');
+                                if (dataR === zone.r_max) borders.push('2px solid red'); else borders.push('0');
+                                if (dataC === zone.c_min) borders.push('2px solid red'); else borders.push('0');
+                                if (dataC === zone.c_max) borders.push('2px solid red'); else borders.push('0');
+                                
+                                cell.style.borderTop = borders[0];
+                                cell.style.borderBottom = borders[1];
+                                cell.style.borderLeft = borders[2];
+                                cell.style.borderRight = borders[3];
                             }}
                         }}
                     }}
@@ -2011,12 +2031,25 @@ def _afficher_exercice_interactif(id, titre, zone_coords=None, callback_ok="set_
                      // Cette table n'a PAS de headers (générée par affichage() ligne 874)
                     for(let r=0; r<table.rows.length; r++) {{
                         for(let c=0; c<table.rows[r].cells.length; c++) {{
+                            const cell = table.rows[r].cells[c];
+                            
+                            // Réinitialiser
+                            cell.style.boxShadow = '';
+                            cell.style.border = '';
+                            
                             if (r >= zone.r_min && r <= zone.r_max &&
                                 c >= zone.c_min && c <= zone.c_max) {{
                                 
-                                const cell = table.rows[r].cells[c];
-                                cell.style.boxShadow = 'inset 0 0 0 3px #ff0000';
-                                // cell.style.border = '2px solid red'; // Alternative
+                                const borders = [];
+                                if (r === zone.r_min) borders.push('2px solid red'); else borders.push('0');
+                                if (r === zone.r_max) borders.push('2px solid red'); else borders.push('0');
+                                if (c === zone.c_min) borders.push('2px solid red'); else borders.push('0');
+                                if (c === zone.c_max) borders.push('2px solid red'); else borders.push('0');
+                                
+                                cell.style.borderTop = borders[0];
+                                cell.style.borderBottom = borders[1];
+                                cell.style.borderLeft = borders[2];
+                                cell.style.borderRight = borders[3];
                             }}
                         }}
                     }}
@@ -2027,7 +2060,7 @@ def _afficher_exercice_interactif(id, titre, zone_coords=None, callback_ok="set_
             ''' if zone_coords else ''}
             
             // Setup de la ligne interactive
-            window.mathadata.setup_simple_line('{id}', {json.dumps(targets)}, ['Moy 2', 'Moy 7'], '{callback_ok}');
+            window.mathadata.setup_simple_line('{id}', {json.dumps(targets)}, ['image 2', 'image 7'], '{callback_ok}');
             
         }}, 100);
     """)
@@ -2056,3 +2089,522 @@ def validate_exo_moy_zone(errors, answers):
 
 validation_exercice_moyenne_globale = MathadataValidate(function_validation=validate_exo_moy_globale, success="Bravo ! Tu as bien calculé la moyenne globale.")
 validation_exercice_moyenne_zone = MathadataValidate(function_validation=validate_exo_moy_zone, success="Bravo ! Tu vois que la moyenne de la zone permet de mieux séparer les deux images (plus grand écart).")
+
+
+# Sélection de 2 images de 2 et 2 images de 7 pour l'affichage bas
+def _get_samples_2_and_7(n_per_class=2):
+    idx_2 = np.where(r_train == 2)[0][22    :22+n_per_class]
+    idx_7 = np.where(r_train == 7)[0][:n_per_class]
+    return np.concatenate([idx_2, idx_7])
+
+
+def _compute_zone_means(images, zone):
+    # zone: ((r_min, c_min), (r_max, c_max))
+    (r0, c0), (r1, c1) = zone
+    return [float(np.mean(img[r0:r1 + 1, c0:c1 + 1])) for img in images]
+
+
+def exercice_zones_comparaison():
+    """
+    Affiche deux zones candidates (A et B) et 4 images d'exemple (2x classe 2, 2x classe 7).
+    - A (rouge) : zone 5x4 en bas à gauche
+    - B (bleu) : zone 5x4 en haut à droite
+    Interaction :
+    - Cliquer sur A ou B applique la zone correspondante sur les 4 images du bas (par défaut A).
+    - Affiche 2 histogrammes : Histo 1 (zone B), Histo 2 (zone A), classés par classe (2 vs 7).
+    - Sur la 1ère image de la rangée du bas, une flèche indique la moyenne dans la zone active.
+    """
+    # Zones (coordonnées inclusives) — nouvelle taille 6x10
+    # A (rouge) : bas-gauche, hauteur 6, largeur 10
+    
+    zone_A = ((17, 4), (22, 13))
+    # B (bleue) : haut-droite, hauteur 6, largeur 10
+    
+    zone_B = ((5, 14), (10, 23))
+
+    # Échantillons
+    sample_idx = _get_samples_2_and_7()
+    images = d_train[sample_idx]
+    labels = r_train[sample_idx]  # valeurs 2 ou 7
+
+    # Moyennes par zone
+    means_A = _compute_zone_means(images, zone_A)
+    means_B = _compute_zone_means(images, zone_B)
+
+    # Préparation des données d'histogramme (format data displayHisto : {bin: [c0, c1]})
+    def build_data(means, labels):
+        data = {}
+        for m, lab in zip(means, labels):
+            k = int(m // 2) * 2
+            if k not in data:
+                data[k] = [0, 0]
+            if lab == 2:
+                data[k][0] += 1
+            else:
+                data[k][1] += 1
+        return data
+
+    data_histo_B = build_data(means_B, labels)  # Histo 1 -> zone B (bleue)
+    data_histo_A = build_data(means_A, labels)  # Histo 2 -> zone A (rouge)
+
+    # Paramètres JS
+    params = {
+        "images": images.tolist(),
+        "labels": labels.tolist(),
+        "zoneA": zone_A,
+        "zoneB": zone_B,
+        "meansA": means_A,
+        "meansB": means_B,
+        "dataHistoA": data_histo_A,
+        "dataHistoB": data_histo_B,
+    }
+
+    id = uuid.uuid4().hex
+
+    display(HTML(f"""
+    <div id="{id}" style="display: flex; flex-direction: column; gap: 16px;">
+        <!-- Top row A / B -->
+        <div style="display: flex; gap: 24px; justify-content: center;">
+            <div id="{id}-A" class="zone-selector selected-zone" data-zone="A" style="cursor: pointer; text-align:center;">
+                <div style="margin-bottom: 4px; font-weight: 700;">Zone A (rouge)</div>
+                <div id="{id}-A-canvas" style="width: 140px; aspect-ratio: 1;"></div>
+            </div>
+            <div id="{id}-B" class="zone-selector" data-zone="B" style="cursor: pointer; text-align:center;">
+                <div style="margin-bottom: 4px; font-weight: 700;">Zone B (bleue)</div>
+                <div id="{id}-B-canvas" style="width: 140px; aspect-ratio: 1;"></div>
+            </div>
+        </div>
+
+        <!-- Bottom images -->
+        <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+            <div id="{id}-img-0" class="img-box" style="position: relative; width: 120px; aspect-ratio: 1;"></div>
+            <div id="{id}-img-1" class="img-box" style="position: relative; width: 120px; aspect-ratio: 1;"></div>
+            <div id="{id}-img-2" class="img-box" style="position: relative; width: 120px; aspect-ratio: 1;"></div>
+            <div id="{id}-img-3" class="img-box" style="position: relative; width: 120px; aspect-ratio: 1;"></div>
+        </div>
+
+        <!-- Histograms -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 32px;">
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <h4 style="margin: 0 0 8px 0; text-align: center;">Histogramme 1</h4>
+                <div style="width: 100%; height: 250px;">
+                    <canvas id="{id}-histo-b" style="width: 100%; height: 100%;"></canvas>
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <h4 style="margin: 0 0 8px 0; text-align: center;">Histogramme 2</h4>
+                <div style="width: 100%; height: 250px;">
+                    <canvas id="{id}-histo-a" style="width: 100%; height: 100%;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    """))
+
+    # JS pour affichage et interaction
+    run_js(f"""
+    setTimeout(() => {{
+        const rootId = "{id}";
+        const data = {json.dumps(params, cls=NpEncoder)};
+
+        // Fonction d'affichage locale robuste (remplace displayHisto global)
+        const localDisplayHisto = (div_id, data, params) => {{
+            try {{
+                // Gestion permissive du parsing JSON
+                if (typeof data === 'string') data = JSON.parse(data);
+                if (typeof params === 'string') params = JSON.parse(params);
+            }} catch (e) {{
+                console.warn('[mathadata] localDisplayHisto: parse error', e);
+                data = {{}};
+                params = {{}};
+            }}
+
+            const canvas = document.getElementById(div_id);
+            if (!canvas) {{
+                console.warn('[mathadata] localDisplayHisto: canvas introuvable', div_id);
+                return;
+            }}
+            
+            if (typeof Chart === 'undefined') {{
+                // Si Chart.js n'est pas encore chargé, on réessaie plus tard
+                console.warn('[mathadata] localDisplayHisto: Chart.js non chargé, nouvel essai dans 500ms');
+                setTimeout(() => localDisplayHisto(div_id, data, params), 500);
+                return;
+            }}
+
+            // Destruction du chart existant s'il y en a un (évite les superpositions)
+            const existingChart = Chart.getChart(canvas);
+            if (existingChart) existingChart.destroy();
+
+            const entries = Object.entries(data);
+            const data_1 = entries.map(([key, v]) => ({{ x: parseInt(key) + 1, y: Array.isArray(v) ? (v[0] || 0) : 0 }}));
+            const data_2 = entries.map(([key, v]) => ({{ x: parseInt(key) + 1, y: Array.isArray(v) ? (v[1] || 0) : 0 }}));
+            
+            // Calculer min/max dès maintenant pour éviter les ticks excessifs
+            const keys = entries.map(([k]) => parseInt(k) + 1);
+            const xMin = keys.length > 0 ? Math.min(...keys) : 0;
+            const xMax = keys.length > 0 ? Math.max(...keys) : 10;
+            const xStep = 10;
+            const xMinRounded = Math.floor(xMin / xStep) * xStep;
+            const xMaxRounded = Math.ceil(xMax / xStep) * xStep;
+            
+            // Création du graphique
+            const chart = new Chart(canvas.getContext('2d'), {{
+                type: 'bar',
+                data: {{
+                    datasets: [
+                        {{
+                            label: 'Classe 2',
+                            data: data_1,
+                            backgroundColor: 'rgba(80,140,255,0.8)',
+                            borderColor: 'rgba(80,140,255,1)',
+                            borderWidth: 1
+                        }},
+                        {{
+                            label: 'Classe 7',
+                            data: data_2,
+                            backgroundColor: 'rgba(255,170,80,0.8)',
+                            borderColor: 'rgba(255,170,80,1)',
+                            borderWidth: 1
+                        }}
+                    ]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {{
+                        x: {{
+                            type: 'linear',
+                            stacked: true,
+                            offset: false,
+                            grid: {{ offset: false }},
+                            min: xMinRounded,
+                            max: xMaxRounded,
+                            ticks: {{
+                                stepSize: xStep
+                            }},
+                            title: {{ display: true, text: 'Caractéristique (moyenne zone)' }}
+                        }},
+                        y: {{
+                            beginAtZero: true,
+                            min: 0,
+                            max: 8,
+                            ticks: {{ stepSize: 2 }},
+                            title: {{ display: true, text: 'Nombre' }}
+                        }}
+                    }},
+                    plugins: {{
+                        legend: {{ display: true }}
+                    }}
+                }}
+            }});
+            
+            // Enregistrement global pour accès ultérieur (tick updates)
+            if (!window.mathadata.charts) window.mathadata.charts = {{}};
+            window.mathadata.charts[div_id] = chart; // On utilise div_id comme clé unique
+        }};
+
+        // Helpers pour dessiner la zone (bordures)
+        function applyZone(table, zone, color) {{
+            if (!table) return;
+            for (let r = 0; r < table.rows.length; r++) {{
+                for (let c = 0; c < table.rows[r].cells.length; c++) {{
+                    const cell = table.rows[r].cells[c];
+                    cell.style.boxShadow = '';
+                    cell.style.border = '';
+                    if (r >= zone[0][0] && r <= zone[1][0] && c >= zone[0][1] && c <= zone[1][1]) {{
+                        const bt = (r === zone[0][0]) ? `2px solid ${{color}}` : '0';
+                        const bb = (r === zone[1][0]) ? `2px solid ${{color}}` : '0';
+                        const bl = (c === zone[0][1]) ? `2px solid ${{color}}` : '0';
+                        const br = (c === zone[1][1]) ? `2px solid ${{color}}` : '0';
+                        cell.style.borderTop = bt;
+                        cell.style.borderBottom = bb;
+                        cell.style.borderLeft = bl;
+                        cell.style.borderRight = br;
+                    }}
+                }}
+            }}
+        }}
+
+        // Affichage des deux zones A/B (images noires)
+        function renderZoneCanvas(targetId, zone, color) {{
+            const container = document.getElementById(targetId);
+            if (!container || !window.mathadata.affichage) return;
+            const zeroImg = Array.from({{length: 28}}, () => Array(28).fill(0));
+            window.mathadata.affichage(targetId, zeroImg, {{}});
+            const table = container.querySelector('table');
+            applyZone(table, zone, color);
+        }}
+
+        // Affichage des 4 images exemples
+        function renderImages(activeZoneKey) {{
+            const zone = activeZoneKey === 'A' ? data.zoneA : data.zoneB;
+            const color = activeZoneKey === 'A' ? 'red' : 'blue';
+            for (let i = 0; i < data.images.length; i++) {{
+                const container = document.getElementById(`${{rootId}}-img-${{i}}`);
+                if (!container || !window.mathadata.affichage) continue;
+                window.mathadata.affichage(`${{rootId}}-img-${{i}}`, data.images[i], {{}});
+                const table = container.querySelector('table');
+                applyZone(table, zone, color);
+
+                // Flèche + valeur sur la 1ère image (idx 0) pour la zone active
+                const existing = container.querySelector('.mean-badge');
+                if (existing) existing.remove();
+                if (i === 0) {{
+                    const meanVal = activeZoneKey === 'A' ? data.meansA[0] : data.meansB[0];
+                    const badge = document.createElement('div');
+                    badge.className = 'mean-badge';
+                    badge.style.position = 'absolute';
+                    badge.style.top = activeZoneKey === 'A' ? '70%' : '5%';
+                    badge.style.left = activeZoneKey === 'A' ? '5%' : '55%';
+                    badge.style.background = '#000';
+                    badge.style.color = '#fff';
+                    badge.style.padding = '2px 6px';
+                    badge.style.borderRadius = '4px';
+                    badge.style.fontSize = '11px';
+                    badge.style.boxShadow = '0 1px 4px rgba(0,0,0,0.3)';
+                    badge.textContent = `↘ moyenne = ${{meanVal.toFixed(1)}}`;
+                    container.appendChild(badge);
+                }}
+            }}
+        }}
+
+        // Histos (B puis A)
+        function renderHistos() {{
+            const paramsA = {{ with_legend: true, with_axes_legend: true }};
+            const paramsB = {{ with_legend: true, with_axes_legend: true }};
+            
+            // Appel direct à notre fonction locale (avec timeout intégré si Chart manquant)
+            localDisplayHisto(`${{rootId}}-histo-b`, data.dataHistoB, paramsB);
+            localDisplayHisto(`${{rootId}}-histo-a`, data.dataHistoA, paramsA);
+
+            // Ajuste les ticks : abscisses par pas de 4, ordonnées par pas de 2 (FIXE)
+            // On encapsule dans un setTimeout pour s'assurer que les charts sont créés
+            setTimeout(() => {{
+                try {{
+                    const charts = window.mathadata.charts || {{}};
+                    const keysB = Object.keys(data.dataHistoB || {{}}).map(k => parseInt(k) + 1);
+                    const keysA = Object.keys(data.dataHistoA || {{}}).map(k => parseInt(k) + 1);
+                    
+                    // Plage globale pour les deux histogrammes
+                    const allKeys = [...keysB, ...keysA];
+                    const xMinGlobal = Math.min(...allKeys, 0);
+                    const xMaxGlobal = Math.max(...allKeys, 0);
+                    const xStep = 10;
+                    const xMinRounded = Math.floor(xMinGlobal / xStep) * xStep;
+                    const xMaxRounded = Math.ceil(xMaxGlobal / xStep) * xStep;
+                    
+                    ['histo-b', 'histo-a'].forEach(key => {{
+                        const chart = charts[`${{rootId}}-${{key}}`];
+                        if (!chart || !chart.options || !chart.options.scales) return;
+                        const allowed = key === 'histo-b' ? keysB : keysA;
+                        
+                        // Abscisses : même plage pour les deux, pas fixe de 4
+                        if (chart.options.scales.x) {{
+                            chart.options.scales.x.min = xMinRounded;
+                            chart.options.scales.x.max = xMaxRounded;
+                            chart.options.scales.x.ticks = {{
+                                ...(chart.options.scales.x.ticks || {{}}),
+                                stepSize: xStep
+                            }};
+                        }}
+                        
+                        // Ordonnées : fixe de 0 à 8, pas fixe de 2
+                        if (chart.options.scales.y) {{
+                            chart.options.scales.y.min = 0;
+                            chart.options.scales.y.max = 8;
+                            chart.options.scales.y.ticks = {{
+                                ...(chart.options.scales.y.ticks || {{}}),
+                                stepSize: 2
+                            }};
+                        }}
+                        
+                        chart.update();
+                    }});
+                }} catch (e) {{
+                    console.error('[mathadata] tick adjust error', e);
+                }}
+            }}, 1000); // Délai pour laisser le temps aux charts de se créer (polling Chart.js dans localDisplayHisto)
+        }}
+
+        // Sélection visuelle A/B avec badge "Cliquez"
+        function highlight(selected) {{
+            ['A','B'].forEach(z => {{
+                const el = document.getElementById(`${{rootId}}-${{z}}`);
+                if (!el) return;
+                el.classList.toggle('selected-zone', z === selected);
+                
+                // Style de base
+                el.style.position = 'relative';
+                el.style.cursor = 'pointer';
+                el.style.transition = 'all 0.2s ease';
+                el.style.borderRadius = '8px';
+                el.style.padding = '8px';
+                
+                if (z === selected) {{
+                    // Zone sélectionnée : bordure épaisse + ombre
+                    el.style.border = z === 'A' ? '3px solid #ff0000' : '3px solid #0000ff';
+                    el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
+                    el.style.backgroundColor = z === 'A' ? 'rgba(255, 0, 0, 0.05)' : 'rgba(0, 0, 255, 0.05)';
+                    
+                    // Supprimer le badge "Cliquez" si présent
+                    const clickBadge = el.querySelector('.click-badge');
+                    if (clickBadge) clickBadge.remove();
+                    
+                    // Ajouter badge "Sélectionné"
+                    let selectedBadge = el.querySelector('.selected-badge');
+                    if (!selectedBadge) {{
+                        selectedBadge = document.createElement('div');
+                        selectedBadge.className = 'selected-badge';
+                        selectedBadge.style.position = 'absolute';
+                        selectedBadge.style.top = '3px';
+                        selectedBadge.style.right = '3px';
+                        selectedBadge.style.background = z === 'A' ? '#ff0000' : '#0000ff';
+                        selectedBadge.style.color = 'white';
+                        selectedBadge.style.padding = '2.25px 6px';
+                        selectedBadge.style.borderRadius = '9px';
+                        selectedBadge.style.fontSize = '8.25px';
+                        selectedBadge.style.fontWeight = 'bold';
+                        selectedBadge.style.boxShadow = '0 1.5px 3px rgba(0,0,0,0.2)';
+                        selectedBadge.textContent = '✓ Sélectionné';
+                        el.appendChild(selectedBadge);
+                    }}
+                }} else {{
+                    // Zone non sélectionnée : bordure fine + badge "Cliquez"
+                    el.style.border = '2px solid #ccc';
+                    el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+                    el.style.backgroundColor = 'rgba(250, 250, 250, 0.8)';
+                    
+                    // Supprimer le badge "Sélectionné" si présent
+                    const selectedBadge = el.querySelector('.selected-badge');
+                    if (selectedBadge) selectedBadge.remove();
+                    
+                    // Ajouter badge "Cliquez"
+                    let clickBadge = el.querySelector('.click-badge');
+                    if (!clickBadge) {{
+                        clickBadge = document.createElement('div');
+                        clickBadge.className = 'click-badge';
+                        clickBadge.style.position = 'absolute';
+                        clickBadge.style.top = '3px';
+                        clickBadge.style.right = '3px';
+                        clickBadge.style.background = z === 'A' ? '#ff0000' : '#0000ff';
+                        clickBadge.style.color = 'white';
+                        clickBadge.style.padding = '3px 7.5px';
+                        clickBadge.style.borderRadius = '9px';
+                        clickBadge.style.fontSize = '8.25px';
+                        clickBadge.style.fontWeight = '600';
+                        clickBadge.style.boxShadow = z === 'A' ? '0 1.5px 4.5px rgba(255, 0, 0, 0.4)' : '0 1.5px 4.5px rgba(0, 0, 255, 0.4)';
+                        clickBadge.style.animation = 'pulse 2s ease-in-out infinite';
+                        clickBadge.textContent = 'Cliquez';
+                        el.appendChild(clickBadge);
+                    }}
+                }}
+            }});
+        }}
+        
+        // Ajouter l'animation CSS pour le badge "Cliquez"
+        if (!document.getElementById('mathadata-pulse-animation')) {{
+            const style = document.createElement('style');
+            style.id = 'mathadata-pulse-animation';
+            style.textContent = `
+                @keyframes pulse {{
+                    0%, 100% {{ opacity: 1; transform: scale(1); }}
+                    50% {{ opacity: 0.8; transform: scale(1.05); }}
+                }}
+            `;
+            document.head.appendChild(style);
+        }}
+
+        // Initial render
+        renderZoneCanvas(`${{rootId}}-A-canvas`, data.zoneA, 'red');
+        renderZoneCanvas(`${{rootId}}-B-canvas`, data.zoneB, 'blue');
+        renderImages('A'); // défaut A
+        renderHistos();
+        highlight('A');
+
+        // Click handlers
+        const zoneAEl = document.getElementById(`${{rootId}}-A`);
+        const zoneBEl = document.getElementById(`${{rootId}}-B`);
+        if (zoneAEl) zoneAEl.onclick = () => {{ renderImages('A'); highlight('A'); }};
+        if (zoneBEl) zoneBEl.onclick = () => {{ renderImages('B'); highlight('B'); }};
+    }}, 100);
+    """)
+
+
+def question_hist_zones_markdown():
+    """Affiche la question sur l'association histogramme/zone avec mise en forme HTML."""
+    display(HTML("""
+<div class="admonition admonition-question">
+<p class="admonition-title">Quel histogramme correspond à quelle zone ?</p>
+<p>
+Regarde les deux histogrammes affichés : l'un est associé à la zone B (bleue), l'autre à la zone A (rouge).
+Indique dans la cellule suivante quel histogramme (1 ou 2) correspond à la zone A et lequel à la zone B.
+</p>
+</div>
+"""))
+
+
+def _normalize_hist_zone(val):
+    """Normalise la valeur pour accepter A/B avec ou sans guillemets, insensible à la casse."""
+    if val is Ellipsis:
+        return None
+    if val is None:
+        return None
+    if isinstance(val, str):
+        normalized = val.strip().upper()
+        return normalized if normalized else None
+    # Si c'est une variable Python (sans guillemets), essayer de la convertir en string
+    try:
+        normalized = str(val).strip().upper()
+        return normalized if normalized else None
+    except:
+        return None
+
+def _validate_hist_zones(errors, answers):
+    """Validation permissive qui normalise les valeurs avant comparaison."""
+    h1_raw = answers.get('histogramme_1')
+    h2_raw = answers.get('histogramme_2')
+    
+    # Vérifier que les variables sont définies
+    if h1_raw is Ellipsis or h1_raw is None:
+        errors.append("histogramme_1 n'est pas défini. Tu dois remplacer les ... par A ou B.")
+        return False
+    if h2_raw is Ellipsis or h2_raw is None:
+        errors.append("histogramme_2 n'est pas défini. Tu dois remplacer les ... par A ou B.")
+        return False
+    
+    # Normaliser les valeurs
+    h1 = _normalize_hist_zone(h1_raw)
+    h2 = _normalize_hist_zone(h2_raw)
+    
+    # Vérifier que la normalisation a fonctionné
+    if h1 is None:
+        errors.append("histogramme_1 n'a pas une valeur valide. Tu dois utiliser A ou B (avec ou sans guillemets).")
+        return False
+    if h2 is None:
+        errors.append("histogramme_2 n'a pas une valeur valide. Tu dois utiliser A ou B (avec ou sans guillemets).")
+        return False
+    
+    # Mettre à jour answers avec les valeurs normalisées
+    answers['histogramme_1'] = h1
+    answers['histogramme_2'] = h2
+    
+    # Vérifier que les valeurs sont dans ['A', 'B']
+    if h1 not in ['A', 'B']:
+        errors.append(f"histogramme_1 doit être A ou B, pas '{h1_raw}'. Tu peux utiliser A, B, 'A', 'B', \"A\" ou \"B\". Si tu vois une erreur 'NameError', c'est que tu as utilisé une lettre sans guillemets qui n'est pas définie (comme C, D, 7, 2, etc.). Utilise des guillemets : 'A' ou 'B'.")
+        return False
+    if h2 not in ['A', 'B']:
+        errors.append(f"histogramme_2 doit être A ou B, pas '{h2_raw}'. Tu peux utiliser A, B, 'A', 'B', \"A\" ou \"B\". Si tu vois une erreur 'NameError', c'est que tu as utilisé une lettre sans guillemets qui n'est pas définie (comme C, D, 7, 2, etc.). Utilise des guillemets : 'A' ou 'B'.")
+        return False
+    
+    # Vérifier que les deux valeurs ne sont pas identiques
+    if h1 == h2:
+        errors.append(f"Les deux histogrammes ne peuvent pas correspondre à la même zone. Tu as mis '{h1_raw}' pour les deux. L'un doit être A et l'autre B.")
+        return False
+    
+    return True
+
+validation_hist_zones = MathadataValidateVariables({
+    'histogramme_1': None,  # On vérifie juste que c'est défini, la validation se fait dans function_validation
+    'histogramme_2': None
+}, function_validation=_validate_hist_zones, success="Bravo, tu as bien associé chaque histogramme à la bonne zone !")

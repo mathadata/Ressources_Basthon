@@ -584,7 +584,7 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
                 <line id="slope-hypo" stroke="black" stroke-width="5" stroke-linecap="round" />
                 <text id="text-base" text-anchor="middle" font-weight="bold" font-size="16" fill="purple">10</text>
                 <text id="text-calc" text-anchor="start" font-weight="bold" font-size="16" fill="orange"></text>
-                <text id="text-formula" text-anchor="middle" font-weight="bold" font-size="16" fill="black" x="125" y="{height - 20}"></text>
+                <foreignObject id="text-formula" x="0" y="{height - 60}" width="250" height="55"></foreignObject>
             </svg>
         </div>
     </div>
@@ -638,7 +638,7 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
               const errorsA = {orange_pts}.filter(([x, y]) => y >= currentM() * x + currentP()).length;
 
               // Points bleus incorrectement classés (en dessous de la droite alors qu'ils devraient être au-dessus)
-              const errorsB = {blue_pts}.filter(([x, y]) => y <= currentM() * x + currentP()).length;
+              const errorsB = {blue_pts}.filter(([x, y]) => y < currentM() * x + currentP()).length;
 
               const totalErrors = errorsA + errorsB;
               const totalPoints = 2 * n;
@@ -990,52 +990,21 @@ def afficher_separation_line(show_slider_p=False, show_slider_m=False,
             textCalc.textContent = hDisp;
 
             if (textFormula) {{
-                // Clear existing content
-                while (textFormula.firstChild) {{
-                    textFormula.removeChild(textFormula.firstChild);
-                }}
-                
-                // m (green)
-                var tspan1 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-                tspan1.textContent = "m";
-                tspan1.setAttribute("fill", "{m_color}");
-                textFormula.appendChild(tspan1);
-
-                // = (black)
-                var tspanEq = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-                tspanEq.textContent = " = ";
-                tspanEq.setAttribute("fill", "black");
-                textFormula.appendChild(tspanEq);
-
-                // hDisp (vertical, orange)
-                var tspan2 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-                tspan2.textContent = hDisp;
-                tspan2.setAttribute("fill", "orange");
-                textFormula.appendChild(tspan2);
-
-                // / (black)
-                var tspan3 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-                tspan3.textContent = " / ";
-                tspan3.setAttribute("fill", "black");
-                textFormula.appendChild(tspan3);
-
-                // 10 (horizontal, purple)
-                var tspan4 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-                tspan4.textContent = "10";
-                tspan4.setAttribute("fill", "purple");
-                textFormula.appendChild(tspan4);
-
-                // = (black)
-                var tspan5 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-                tspan5.textContent = " = ";
-                tspan5.setAttribute("fill", "black");
-                textFormula.appendChild(tspan5);
-
-                // mDisp (green)
-                var tspan6 = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-                tspan6.textContent = mDisp;
-                tspan6.setAttribute("fill", "{m_color}");
-                textFormula.appendChild(tspan6);
+                // Render the formula as a fraction (keep colors).
+                textFormula.innerHTML = `
+                  <div xmlns="http://www.w3.org/1999/xhtml"
+                       style="width:250px; height:55px; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:16px; line-height:1;">
+                    <span style="color:{m_color};">m</span>
+                    <span style="color:black;">&nbsp;=&nbsp;</span>
+                    <span style="display:inline-flex; flex-direction:column; align-items:center; margin:0 4px;">
+                      <span style="color:orange; padding:0 2px;">${{hDisp}}</span>
+                      <span style="height:2px; width:100%; background:black; margin:2px 0;"></span>
+                      <span style="color:purple; padding:0 2px;">10</span>
+                    </span>
+                    <span style="color:black;">&nbsp;=&nbsp;</span>
+                    <span style="color:{m_color};">${{mDisp}}</span>
+                  </div>
+                `;
             }}
         }}
 
@@ -1327,11 +1296,17 @@ validation_question_score_droite_p = MathadataValidateVariables({
     'p': None
 },
     function_validation=function_validation_score_droite_p, success="")
-validation_question_score_droite_pm = MathadataValidateVariables({
-    'm': 0.5,
-    'p': 5
-},
-    tips=[
+
+def get_possible_values_droite_pm():
+    return [
+        {'m': 0.5, 'p': 5},
+        {'m': 0.5, 'p': 6},
+        {'m': 0.4, 'p': 6},
+        {'m': 0.4, 'p': 7}
+    ]
+
+validation_question_score_droite_pm = MathadataValidateVariables(get_names_and_values=get_possible_values_droite_pm, function_validation=function_validation_score_droite_pm, success="",
+    tips=[  
         {
             'seconds': 10,
             'tip': 'Les valeurs de m et p peuvent être lues directement sur l\'équation de la droite affichée en bas du graphique.'
