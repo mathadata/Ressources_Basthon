@@ -548,46 +548,18 @@ def calculer_score(algorithme, cb=None, caracteristique=None, banque=True, anima
 
 
 current_algo = None
-autofill_enabled = False
 
 
 def run_algorithme(d_json):
-    global autofill_enabled
     if current_algo is None:
         return None
-    
-    try:
-        d = json.loads(d_json)
-        if type(d) == list:
-            # Vérifier s'il y a des valeurs None/null dans la liste avant conversion
-            has_missing_values = any(x is None for x in d)
-            
-            if has_missing_values:
-                if autofill_enabled:
-                    # Remplir les valeurs manquantes avec 120
-                    d = [120 if x is None else x for x in d]
-                    d = np.array(d, dtype=float)
-                else:
-                    # Afficher un message d'erreur convivial
-                    raise ValueError("Veille à passer sur chaque point sur ton enregistrement, refais le bien.")
-            else:
-                d = np.array(d)
-        
-        res = current_algo(d)
-        return json.dumps({
-            'result': res
-        }, cls=NpEncoder)
-    except ValueError as e:
-        if "Veille à passer sur chaque point" in str(e):
-            raise e
-        else:
-            raise ValueError("Veille à passer sur chaque point sur ton enregistrement, refais le bien.")
-    except Exception as e:
-        # Gérer l'erreur isnan spécifique
-        if "ufunc 'isnan' not supported" in str(e) or "could not be safely coerced" in str(e):
-            raise ValueError("Veille à passer sur chaque point sur ton enregistrement, refais le bien.")
-        else:
-            raise e
+    d = json.loads(d_json)
+    if type(d) == list:
+        d = np.array(d)
+    res = current_algo(d)
+    return json.dumps({
+        'result': res
+    }, cls=NpEncoder)
 
 
 def test_algorithme(algorithme=None):
@@ -650,15 +622,7 @@ def test_algorithme_faineant():
     test_algorithme(algorithme=algo_faineant)
 
 
-def test_algorithme_ref(autofill=False):
-    """Test l'algorithme de référence avec l'interface animation calcul score
-    
-    Args:
-        autofill (bool): Si True, remplit automatiquement les points manquants avec la valeur 70.
-                        Si False (par défaut), affiche un message d'erreur si des points sont manquants.
-    """
-    global autofill_enabled
-    autofill_enabled = autofill
+def test_algorithme_ref():
     test_algorithme(algorithme=algo_carac)
 
 
@@ -3488,7 +3452,7 @@ _BASE_STYLE = (
     "font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;"
 )
 
-    
+
 def pretty_print_error(error_message):
     msg = error_message
     style = _BASE_STYLE + "background:#fde8e8;border-color:#f5b5b5;color:#7a1c1c;"
@@ -3885,9 +3849,7 @@ class MathadataValidateVariables(MathadataValidate):
 
     def check_undefined_variables(self, errors):
         undefined_variables = []
-        ## On regarde le premier couple pour récupérer le name
-        first_couple = self.name_and_values[0] if isinstance(self.name_and_values, list) else self.name_and_values
-        for name in first_couple:
+        for name in self.name_and_values:
             if not hasattr(__main__, name):
                 undefined_variables.append(name)
                 errors.append(f"La variable {name} n'a pas été définie. Ecris dans ta cellule : {name} = ta_reponse")
@@ -3900,26 +3862,9 @@ class MathadataValidateVariables(MathadataValidate):
         return undefined_variables
 
     def check_variables(self, errors):
-        possible_values = self.name_and_values
-        ## Normalisation en list
-        if isinstance(possible_values, dict):
-            possible_values = [possible_values]
-
-        for name_and_values in possible_values:
-            local_errors = []
-            for name in name_and_values:
-                val = get_variable(name)
-                expected = name_and_values[name]
-                check_variable(local_errors, name, val, expected)
-
-            if len(local_errors) == 0:
-                return True
-            
-        ## Retourner qu'une seule erreur
-        first_couple = possible_values[0]
-        for name in first_couple:
+        for name in self.name_and_values:
             val = get_variable(name)
-            expected = first_couple[name]
+            expected = self.name_and_values[name]
             check_variable(errors, name, val, expected)
 
         return len(errors) == 0
@@ -3927,79 +3872,50 @@ class MathadataValidateVariables(MathadataValidate):
     def validate(self, errors, answers):
         if self.get_name_and_values is not None:
             self.name_and_values = self.get_name_and_values()
-                
-        # Normalisation
-        if isinstance(self.name_and_values, dict):
-            self.name_and_values = [self.name_and_values]
 
-        # Variables depuis le premier couple
-        first_couple = self.name_and_values[0]
-        for name in first_couple:
+        for name in self.name_and_values:
             if not has_variable(name):
                 answers[name] = None
             else:
                 answers[name] = get_variable(name)
 
         undefined_variables = self.check_undefined_variables(errors)
-        if len(undefined_variables) > 0:
-            return False
+        if len(undefined_variables) == 0:
+            res = self.check_variables(errors)
+            if res and self.function_validation is not None:
+                return self.function_validation(errors, answers)
 
-        # On appelle check_variables
-        res_check = self.check_variables(errors)
-
-        res_function = True
-        ## Quoi qu'il arrive appel de la fonction de validation -> affichage des messages plus "pédagogiques"
-        if self.function_validation is not None:
-            res_function = self.function_validation(errors, answers)
-
-        ## Return true si res_check & res_function == true, sinon false
-        return res_check and res_function
-
+        return len(errors) == 0
 
     def get_variables_str(self):
         res = []
-
-        # Normalisation en liste
-        possible_values = self.name_and_values
-        if isinstance(possible_values, dict):
-            possible_values = [possible_values]
-
-        # Boucle sur tous les couples, start = 1 pour l'affichage "Couple X"
-        for i, couple in enumerate(possible_values, start=1):
-            couple_res = []
-            for name in couple:
-                expected = couple[name]
-                if expected is None:
-                    continue
-                elif isinstance(expected, dict):
-                    if 'value' in expected:
-                        expected = expected['value']
-
-                if isinstance(expected, dict):
-                    if 'is' in expected:
-                        solution = expected['is']
-                    elif 'min' in expected and 'max' in expected:
-                        solution = f"entre {expected['min']} et {expected['max']}"
-                    elif 'min' in expected:
-                        solution = f"supérieur ou égal à {expected['min']}"
-                    elif 'max' in expected:
-                        solution = f"inférieur ou égal à {expected['max']}"
-                    elif 'in' in expected:
-                        solution = f"l'une de ces valeurs : {', '.join(map(str, expected['in']))}"
-                    else:
-                        raise ValueError(f"Malformed validation class")
+        for name in self.name_and_values:
+            expected = self.name_and_values[name]
+            if expected is None:
+                continue
+            elif isinstance(expected, dict):
+                if 'value' in expected:
+                    expected = expected['value']
                 else:
-                    solution = expected
-                couple_res.append(f"{name} : {solution}")
+                    continue
 
-            # Ajoute le couple avec un titre seulement s'il y a plusieurs couples
-            if len(possible_values) > 1:
-                res.append(f"Couple {i}: " + ", ".join(couple_res))
+            if isinstance(expected, dict):
+                if 'is' in expected:
+                    solution = expected['is']
+                elif 'min' in expected and 'max' in expected:
+                    solution = f"entre {expected['min']} et {expected['max']}"
+                elif 'min' in expected:
+                    solution = f"supérieur ou égal à {expected['min']}"
+                elif 'max' in expected:
+                    solution = f"inférieur ou égal à {expected['max']}"
+                elif 'in' in expected:
+                    solution = f"l'une de ces valeurs : {', '.join(expected['in'])}"
+                else:
+                    raise ValueError(f"Malformed validation class")
             else:
-                res.append(", ".join(couple_res))
-
+                solution = expected
+            res.append(f"{name} : {solution}")
         return res
-
 
 
 class MathadataValidateFunction(MathadataValidate):

@@ -1,4 +1,4 @@
-# pip install hyperopt
+#pip install hyperopt
 
 import os
 import pandas as pd
@@ -18,13 +18,12 @@ import requests
 
 # permet de charger les fichiers matlab (*.mat)
 from typing import Tuple
-import builtins  # to use builtins.RAW, just for dev test
+import builtins # to use builtins.RAW, just for dev test
 
 import utilitaires_common as common
 from utilitaires_common import *
 
-DATASET = getattr(builtins, 'DATASET',
-                  'artificiel_rebiased_2_cheated')  # 'original', 'relabelled_std', 'relabelled_std_10s'
+DATASET = getattr(builtins, 'DATASET', 'artificiel_rebiased_2_cheated') # 'original', 'relabelled_std', 'relabelled_std_10s'
 
 LOCAL = getattr(builtins, 'LOCAL', False)  # Pour utiliser les données locales (travail hors ligne)
 
@@ -39,15 +38,13 @@ def interpolate_nans(data, max_nan_span=10):
     nans = np.isnan(data)
     if not np.any(nans):
         return data
-
-
+    
 # le répertoire de travail
 directory = os.path.dirname(__file__)
 
-
 def load_data(source=DATASET, local=LOCAL):
     if local:
-        root = parent_dir + "/challenges/foetus/Data/"
+        root = parent_dir+"/challenges/foetus/Data/"
         d_train_path = f'{root}d_train_{source}.pickle'
         r_train_path = f'{root}r_train_{source}.pickle'
         with open(d_train_path, 'rb') as f:
@@ -57,8 +54,7 @@ def load_data(source=DATASET, local=LOCAL):
             r_train = pickle.load(f)
         print(f"LOCAL données {source} chargées")
     else:
-        inputs_zip_urls = [f"{files_url}/foetus.zip",
-                           "https://raw.githubusercontent.com/mathadata/data_challenges_lycee/main/foetus.zip"]
+        inputs_zip_urls = [f"{files_url}/foetus.zip", "https://raw.githubusercontent.com/mathadata/data_challenges_lycee/main/foetus.zip"]
         loading_errors = []
 
         for url in inputs_zip_urls:
@@ -71,10 +67,8 @@ def load_data(source=DATASET, local=LOCAL):
                     print_error(f"failed to load from {url} : {e}")
         else:
             error = '\n'.join(loading_errors)
-            pretty_print_error(
-                f"Erreur du chargement des données. Essayez de recharger la page, relancer le notebook en suivant les instructions SOS ou sur un autre navigateur internet.")
-            pretty_print_error(
-                f'Si le problème persiste, transmettez cette erreur à votre professeur pour qu\'il nous l\'envoie :\n\n{error}')
+            pretty_print_error(f"Erreur du chargement des données. Essayez de recharger la page, relancer le notebook en suivant les instructions SOS ou sur un autre navigateur internet.")
+            pretty_print_error(f'Si le problème persiste, transmettez cette erreur à votre professeur pour qu\'il nous l\'envoie :\n\n{error}')
             exit(1)
 
         zf = ZipFile(BytesIO(inputs_zip.content))
@@ -88,11 +82,10 @@ def load_data(source=DATASET, local=LOCAL):
         with open(r_train_path, 'rb') as f:
             r_train = pickle.load(f)
         # Suppresion du mot surce pour ne pas afficher le nom du dataset dans le notebook    
-        pretty_print_success(
-            'Le chargement de la base de données s\'est déroulé à merveille ! Tu peux poursuivre en déroulant la page.')
+        pretty_print_success('Le chargement de la base de données s\'est déroulé à merveille ! Tu peux poursuivre en déroulant la page.')
 
     d_animation = d_train[10].copy()
-
+    
     if source == 'relabelled_std':
         # reordonner les données : on veut que les 10 premières données soient [130 202 271 206 57 21 91 58 67 84]
         indices_debut = [130, 202, 271, 206, 57, 21, 91, 58, 67, 84]
@@ -111,12 +104,12 @@ def load_data(source=DATASET, local=LOCAL):
         r_train_new = r_train[indexes]
         d_train = d_train_new.copy()
         r_train = r_train_new.copy()
-
+        
     return d_train, r_train, d_animation
-
 
 # chargement des données
 d_train, r_train, d_animation = load_data(source=DATASET, local=LOCAL)
+
 
 # Import des strings pour lire l'export dans jupyter - A FAIRE AVANT IMPORT utilitaires_common
 
@@ -162,23 +155,20 @@ strings = {
 
 classes = ['Normal', 'ALARMANT']
 
-# Nouvelle variable pour checker la validation de l'exercice de classification
+#Nouvelle variable pour checker la validation de l'exercice de classification
 exercice_classification_ok = False
-
 
 # Fonction de mise à jour
 def set_exercice_classification_ok():
     global exercice_classification_ok
     exercice_classification_ok = True
-    # print(f"DEBUG: exercice_classification_ok mis à jour -> {exercice_classification_ok}")
-
+    #print(f"DEBUG: exercice_classification_ok mis à jour -> {exercice_classification_ok}")
 
 d = d_train[0]
 # d2 = d_train[167]
 d2 = d_train[10]
 
 v = 100
-
 
 class Foetus(common.Challenge):
     def __init__(self):
@@ -209,7 +199,7 @@ class Foetus(common.Challenge):
 
         # Droite produit scalaire
         # Pour les versions question_normal
-        self.M_retourprobleme = (40, 20)
+        self.M_retourprobleme=(40,20)
 
         # Objectif de score avec les 2 caracs de référence pour passer à la suite
         self.objectif_score_droite = strings['objectif_score_droite']
@@ -228,6 +218,7 @@ class Foetus(common.Challenge):
         for d in self.d_train[:10]:
             affichage(d)
 
+
     def display_custom_selection(self, id):
         d_sain = self.d_train[np.where(self.r_train == self.classes[0])][:2]
         d_malade = self.d_train[np.where(self.r_train == self.classes[1])][:2]
@@ -235,12 +226,11 @@ class Foetus(common.Challenge):
         data = np.concatenate([d_sain, d_malade])
         labels = [self.classes[0]] * len(d_sain) + [self.classes[1]] * len(d_malade)
 
-        run_js(
-            f"mathadata.add_observer('{id}', () => window.mathadata.setup_zone_selection('{id}', '{json.dumps(data, cls=NpEncoder)}', '{json.dumps(labels, cls=NpEncoder)}'))")
+        run_js(f"mathadata.add_observer('{id}', () => window.mathadata.setup_zone_selection('{id}', '{json.dumps(data, cls=NpEncoder)}', '{json.dumps(labels, cls=NpEncoder)}'))")
 
     def display_custom_selection_2d(self, id):
         self.display_custom_selection(id)
-
+    
     def caracteristique(self, d):
         # Calculate the percentage of values less than v (v = 100)
         # Filter out NaN values
@@ -259,26 +249,27 @@ class Foetus(common.Challenge):
         valid_values = d[~np.isnan(d)]
         count = np.sum(valid_values < vmin)
         return (count / len(valid_values)) * 100
-
+        
     def caracteristique_vmax(self, d, vmax):
         """% de valeurs > vmax"""
         valid_values = d[~np.isnan(d)]
         count = np.sum(valid_values > vmax)
         return (count / len(valid_values)) * 100
-
+        
     def deux_caracteristiques_custom(self, d):
         """Retourne un tuple (x,y) où:
            x = % valeurs < vmin
            y = % valeurs > vmax"""
         valid_values = d[~np.isnan(d)]
-
+        
         if len(valid_values) == 0:
             return (0, 0)
-
+            
         x = (np.sum(valid_values < self.vmin) / len(valid_values)) * 100
         y = (np.sum(valid_values > self.vmax) / len(valid_values)) * 100
-
+        
         return (x, y)
+
 
     def caracteristique2(self, d):
         return np.nanmax(d) - np.nanmin(d)
@@ -288,18 +279,17 @@ class Foetus(common.Challenge):
             return 100
 
         valid_values = d[~np.isnan(d)]
-
-        y, x = np.sum(valid_values < self.vmin) / len(valid_values) * 100, np.sum(valid_values > self.vmax) / len(
-            valid_values) * 100
+        
+        y, x = np.sum(valid_values < self.vmin)/len(valid_values) * 100, np.sum(valid_values > self.vmax)/len(valid_values) * 100
         return x, y
-
+    
     def caracteristique_custom(self, d):
         # Compute percentage of values in the range [vmin, vmax]
         if (self.vmin > self.vmax):
             return 100
 
         valid_values = d[~np.isnan(d)]
-
+        
         count_out_of_range = np.sum(valid_values < self.vmin) + np.sum(valid_values > self.vmax)
         return count_out_of_range / len(valid_values) * 100
 
@@ -312,9 +302,8 @@ class Foetus(common.Challenge):
             self.remplacer_d_train_sans_nan()
             return True
         else:
-            print_error(
-                "Modifie vmin et vmax pour faire moins de 20% d'erreur et passer à la suite. Cherche les valeurs qui sont plus fréquentes pour les foetus malades.")
-
+            print_error("Modifie vmin et vmax pour faire moins de 20% d'erreur et passer à la suite. Cherche les valeurs qui sont plus fréquentes pour les foetus malades.")
+        
         return False
 
     def import_js_scripts(self):
@@ -342,59 +331,54 @@ class Foetus(common.Challenge):
             })
 
             require(['chartjs-zoom-plugin'])
-        """)
-
+        """)    
 
 init_challenge(Foetus())
 
 # Créer une version de la liste d_train sans les NaN
 d_train_no_nan = [d[~np.isnan(d)] for d in d_train]
 
-
-def affichage(d, start_minut: float = -60, duration_in_minuts: float = 30, display_mean: bool = True,
-              interpolate_missing_values: bool = True, min_y_value: int = None, max_y_value: int = None):
+def affichage(d, start_minut:float = -60, duration_in_minuts: float = 30, display_mean: bool = True, interpolate_missing_values:bool = True, min_y_value: int = None, max_y_value: int = None):
     # fhr_full = loadmat(id_to_path[id])['fhr'].ravel()
     # start_idx = int(start_minut*4*60)
     # if start_idx<0: 
     #     start_idx+=len(fhr_full)
     # start_idx = max(0, start_idx-1)
     # end_idx = min( start_idx+1+int(duration_in_minuts*4*60) , len(fhr_full) )
-
+    
     # fhr = fhr_full[start_idx:end_idx]
     fhr = d
     if interpolate_missing_values:
         fhr = interpolate_nans(fhr)
-
+    
     # nombre d'éléments dans l'électrocardiogramme
     n = len(fhr)
-
+    
     # Create an array of time points (assuming each heart rate measurement is taken at regular intervals)
-    time_in_minuts = np.arange(n) / (60 * 4)
+    time_in_minuts = np.arange(n)/(60*4)
     # Plot the heart rate data
     plt.figure(figsize=(20, 10))
     plt.plot(time_in_minuts, fhr, linestyle='-', color='black', linewidth=1)
-
     # Formater les ticks pour afficher le temps au format hh:mm
     def format_func(time_in_minuts, tick_number):
-        # time_in_minuts = int(time_in_minuts/(60*4))
+        #time_in_minuts = int(time_in_minuts/(60*4))
         hours = int(time_in_minuts) // 60
         minutes = int(time_in_minuts) % 60
         return f'{hours:02d}:{minutes:02d}'
-
     plt.gca().xaxis.set_major_formatter(ticker.FuncFormatter(format_func))
-    # comment = 'sujet sain' if id_to_target[id] == 0 else 'sujet malade'
-
+    #comment = 'sujet sain' if id_to_target[id] == 0 else 'sujet malade'
+    
     if display_mean:
         # observed_mean = int(moyenne(fhr_full))
         observed_mean = int(moyenne(fhr))
-        plt.axhline(y=observed_mean, color='red', linewidth=1, linestyle='-', label='Moyenne: ' + str(observed_mean))
+        plt.axhline(y=observed_mean, color='red', linewidth=1, linestyle='-', label='Moyenne: '+str(observed_mean))
         # Annotate the y-value on the vertical axis
         plt.text(x=0, y=observed_mean, s=f'{observed_mean:.0f}', color='red', va='center', ha='right')
 
     # Add labels and title
     plt.xlabel('Temps (minutes)', fontsize=15)
     plt.ylabel('Rythme cardiaques', fontsize=15)
-    # plt.title(f"Electrocardiogramme pour un {comment} ({id})", fontsize=15)
+    #plt.title(f"Electrocardiogramme pour un {comment} ({id})", fontsize=15)
     plt.xlim(0, max(time_in_minuts))
     plt.ylim(min_y_value or 60, max_y_value or len(d))
     # Display grid
@@ -405,19 +389,17 @@ def affichage(d, start_minut: float = -60, duration_in_minuts: float = 30, displ
     # Show the plot
     plt.show()
 
-
 def affichage_tableau(d):
-    df = pd.DataFrame(d, columns=['fréquence']).round(1)
-    dligne = df.transpose()
-    display(dligne)
-
+  df = pd.DataFrame(d,columns=['fréquence']).round(1)
+  dligne =  df.transpose()
+  display(dligne)
 
 def affichage_donnee_courbe(d):
-    df = pd.DataFrame(d).round(1)
-    dligne = df.transpose()
-    display(dligne)
-    # Utile ici la suite ?
-    affichage_html(d)
+        df = pd.DataFrame(d).round(1)
+        dligne =  df.transpose()
+        display(dligne)
+        # Utile ici la suite ? 
+        affichage_html(d) 
 
 
 def get_histogramme_data(d=None, id=None):
@@ -427,30 +409,24 @@ def get_histogramme_data(d=None, id=None):
     counts, bins = np.histogram(data, bins=bin_edges)
     return counts, bins
 
-
 # calcule la moyenne de la séquence ''fhr' en ignorant les NaN
 def moyenne(fhr):
     return fhr[~np.isnan(fhr)].mean()
 
-
 # calcul des 3 quartiles Q1 , Q2 (=mediane), Q3 (en ignorant les NaN)
-def compute_quartiles_Q1_Q2_Q3(fhr) -> Tuple[float, float, float]:
+def compute_quartiles_Q1_Q2_Q3(fhr) -> Tuple[float,float,float]:
     # Remove NaN values
     cleaned_data = fhr[~np.isnan(fhr)]
     Q1 = np.percentile(cleaned_data, 25)
     Q2 = np.percentile(cleaned_data, 50)  # This is the median
     Q3 = np.percentile(cleaned_data, 75)
-    return Q1, Q2, Q3
-
+    return Q1,Q2,Q3
 
 # nombre d elements NaN dans la séquence 'fhr'
 def nan_count(fhr):
     return np.count_nonzero(np.isnan(fhr))
 
-
 random_frequencies = []
-
-
 def affichage_10_frequences():
     random_frequencies.clear()
     while np.sum(np.array(random_frequencies) < v) == 0:
@@ -461,19 +437,19 @@ def affichage_10_frequences():
             while np.isnan(fr):
                 fr = d[np.random.randint(0, len(d))].round(1)
             random_frequencies.append(fr)
-
+        
     df = pd.DataFrame(random_frequencies, columns=['fréquence'])
-    # dligne = pd.DataFrame([random_frequencies], columns=[f'fréquence_{i+1}' for i in range(10)])
-    dtranspose = df.transpose()
-    # display(df)
-    # display(dligne)
+    #dligne = pd.DataFrame([random_frequencies], columns=[f'fréquence_{i+1}' for i in range(10)])
+    dtranspose= df.transpose()
+    #display(df)
+    #display(dligne)
     display(dtranspose)
 
-
 def afficher_interface_teachable():
-    # Affiche l'interface HTML Teachable Machine dans le notebook via une Iframe.
-    # Gère les permissions micro et l'isolation CSS.
-
+    
+    #Affiche l'interface HTML Teachable Machine dans le notebook via une Iframe.
+    #Gère les permissions micro et l'isolation CSS.
+    
     # 1. Construction du chemin vers le fichier (situé à la racine par rapport aux utilitaires)
     path_html = os.path.join(parent_dir, 'interface_eleve.html')
 
@@ -506,10 +482,8 @@ def afficher_interface_teachable():
         </div>
     '''))
 
-
 def update_custom_epsilon(epsilon):
     common.challenge.custom_epsilon = epsilon
-
 
 def exercice_classification():
     id = uuid.uuid4().hex
@@ -607,7 +581,6 @@ def exercice_classification():
         <button id="{id}-submit" type="button">Valider</button>
     '''))
 
-
 def get_exercice_data():
     random_order = np.random.permutation(2)
 
@@ -616,10 +589,8 @@ def get_exercice_data():
 
     return [random_order, d_train[index_1], d_train[index_2]]
 
-
 def get_exercice_data_json():
     return json.dumps(get_exercice_data(), cls=NpEncoder)
-
 
 def animation_battement():
     id = uuid.uuid4().hex
@@ -683,12 +654,10 @@ def animation_battement():
     </script>
     '''))
 
-
 def set_v_limits(vmin, vmax):
     common.challenge.vmin = vmin
     common.challenge.vmax = vmax
     # print(f"Seuils mis à jour : vmin={vmin}, vmax={vmax}")
-
 
 # JS
 
@@ -802,7 +771,7 @@ run_js("""
                         max,
                     }
                 },
-            plugins: {
+                plugins: {
                     legend: {
                         display: false
                     },
@@ -825,38 +794,8 @@ run_js("""
                         }
                     }
                 },
-                layout: {
-                    padding: {
-                        right: with_selection ? 40 : 0
-                    }
-                }
             },
-            plugins: [{
-                id: 'vlimit-labels',
-                afterDraw: (chart) => {
-                    if (!with_selection) return;
-                    const { ctx, scales: {y}, chartArea: {right} } = chart;
-                    ctx.save();
-                    ctx.font = '12px sans-serif';
-                    ctx.fillStyle = 'rgba(255, 99, 132, 1)';
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-
-                    const datasets = chart.data.datasets;
-                    const vminLine = datasets[1];
-                    const vmaxLine = datasets[2];
-
-                    if (vminLine && vminLine.label === 'vmin' && vminLine.data.length > 0) {
-                        const yPos = y.getPixelForValue(vminLine.data[0].y);
-                        ctx.fillText('vmin', right + 5, yPos);
-                    }
-                    if (vmaxLine && vmaxLine.label === 'vmax' && vmaxLine.data.length > 0) {
-                        const yPos = y.getPixelForValue(vmaxLine.data[0].y);
-                        ctx.fillText('vmax', right + 5, yPos);
-                    }
-                    ctx.restore();
-                }
-            }],
+            plugins: [{}],
         }
 
         // Si le container est petit, exécuter ceci , hehehee et bien cela nous aidera bien pour l'animation tapis algo.
@@ -870,7 +809,7 @@ run_js("""
             config.options.layout = {
                 padding: {
                     left: 5,
-                    right: with_selection ? 40 : 5,
+                    right: 5,
                     top: 5,
                     bottom: 5
                 }
@@ -1631,65 +1570,54 @@ chaton = "0"
 CHATON = "0"
 
 
+
 def validate_etendue(errors, answers):
     return answers['etendue'] - (max(random_frequencies) - min(random_frequencies)) < 1e-3
-
 
 def validate_caracteristique(errors, answers):
     x = answers['x']
     count = np.sum(np.array(random_frequencies) < v)
-
+    
     if x == count:
-        errors.append(
-            f"Attention, la caractéristique est le pourcentage de valeurs avec une fréquence cardiaque inférieure à {v} et non le nombre.")
+        errors.append(f"Attention, la caractéristique est le pourcentage de valeurs avec une fréquence cardiaque inférieure à {v} et non le nombre.")
         return False
-
+    
     if x == count * 10:
-        pretty_print_success(
-            f"Bravo ! Il y a {count} valeur(s) avec une fréquence cardiaque inférieure à {v} soit {x}% du temps total.")
+        pretty_print_success(f"Bravo ! Il y a {count} valeur(s) avec une fréquence cardiaque inférieure à {v} soit {x}% du temps total.")
         return True
-
-    errors.append(
-        f"Ce n'est pas la bonne réponse. La caractéristique est le pourcentage de valeurs avec une fréquence cardiaque inférieure à {v}.")
+    
+    errors.append(f"Ce n'est pas la bonne réponse. La caractéristique est le pourcentage de valeurs avec une fréquence cardiaque inférieure à {v}.")
     return False
-
 
 def validate_exercice(errors, answers):
     global exercice_classification_ok
-    if not exercice_classification_ok:
+    if not exercice_classification_ok :
         errors.append("Terminez l'exercice ci-dessus avant de continuer.")
         return False
     return True
-
-
 validation_animation_battement = common.MathadataValidate(success="")
 validation_execution_affichage = common.MathadataValidate(success="")
 validation_execution_affichage_tableau = common.MathadataValidate(success="")
-
-
 def validate_question_frequence(errors, answers):
     f = answers['frequence']
     if not isinstance(f, (int, float)):
-        errors.append(
-            "La fréquence doit être un nombre. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','")
+        errors.append("La fréquence doit être un nombre. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','")
         return False
-    if f == Ellipsis:
+    if f==Ellipsis:
         errors.append("Tu n'as pas remplacé les ...")
         return False
-    if f != d[3].round(1):
-        errors.append(
-            "Ce n'est pas la bonne valeur. Reprends le tableau et vérifie la valeur de la fréquence cardiaque après 3 secondes d'enregistrement.")
-        return False
+    if f!= d[3].round(1):
+        errors.append("Ce n'est pas la bonne valeur. Reprends le tableau et vérifie la valeur de la fréquence cardiaque après 3 secondes d'enregistrement.")
+        return False 
     return True
 
-
 validation_question_frequence = common.MathadataValidateVariables({
-    'frequence': None
-}, function_validation=validate_question_frequence, success="Bravo ! La fréquence cardiaque est " + str(d[3].round(1)))
+    'frequence':None
+}, function_validation=validate_question_frequence, success="Bravo ! La fréquence cardiaque est "+ str(d[3].round(1)))
 
 validation_exercice_classification = common.MathadataValidate(
     success="Bravo ! Tu commences à savoir distinguer les différentes classes.",
-    function_validation=validate_exercice
+    function_validation= validate_exercice
 )
 validation_execution_affichage_etendue = common.MathadataValidate(success="")
 validation_execution_affichage_10_frequences = common.MathadataValidate(success="")
@@ -1701,26 +1629,25 @@ validation_execution_exercice_classification = common.MathadataValidate(success=
 
 validation_question_caracteristique = common.MathadataValidateVariables({
     'x': None
-}, function_validation=validate_caracteristique, tips=[
-    {
-        'seconds': 30,
-        'tip': 'Compte dans le tableau le nombre de fréquences cardiaques inférieures à 100)'
-    }, {
-        'seconds': 60,
-        'tip': 'Il faut diviser le nombre de fréquences inférieures à 100 par le nombre total de fréquences pour obtenir la proportion.'
-    }, {
-        'seconds': 100,
-        'tip': 'Pour obtenir la caractéristique il faut calculer la valeur suivante : (nombre de fréquences inférieures à 100) / 10 * 100).'
-    }], success="")
+}, function_validation=validate_caracteristique,  tips=[
+        {
+            'seconds': 30,
+            'tip': 'Compte dans le tableau le nombre de fréquences cardiaques inférieures à 100)'
+        }, {
+            'seconds': 60,
+            'tip': 'Il faut diviser le nombre de fréquences inférieures à 100 par le nombre total de fréquences pour obtenir la proportion.'
+        }, {
+            'seconds': 100,
+            'tip': 'Pour obtenir la caractéristique il faut calculer la valeur suivante : (nombre de fréquences inférieures à 100) / 10 * 100).'
+        }], success="")
 
 validation_affichage_banque_ecart_type = common.MathadataValidate(success="")
-
 
 # Notebook histogramme
 
 def get_names_and_values_hist_2():
     c_train_by_class = compute_c_train_by_class()
-
+    
     # c_train_by_class[0] and c_train_by_class[1] are already numpy arrays
     c_train_class_0 = c_train_by_class[0]
     c_train_class_1 = c_train_by_class[1]
@@ -1730,7 +1657,7 @@ def get_names_and_values_hist_2():
     # Use element-wise '&' for combining numpy boolean arrays
     condition_class_0 = (c_train_class_0 >= 8) & (c_train_class_0 < 10)
     count_class_0 = np.sum(condition_class_0)
-
+    
     # For class 1 (e.g., "ALARMANT")
     condition_class_1 = (c_train_class_1 >= 8) & (c_train_class_1 < 10)
     count_class_1 = np.sum(condition_class_1)
@@ -1739,7 +1666,6 @@ def get_names_and_values_hist_2():
         f'nombre_{classes[0]}': count_class_0,
         f'nombre_{classes[1]}': count_class_1,
     }
-
 
 def get_names_and_values_hist_3():
     c_train_by_class = compute_c_train_by_class()
@@ -1758,21 +1684,19 @@ def get_names_and_values_hist_3():
         f'nombre_{classes[1]}_inf_6': count_class_1,
     }
 
-
 validation_question_hist_2 = MathadataValidateVariables(get_names_and_values=get_names_and_values_hist_2, tips=[
     {
-        'seconds': 30,
-        'tip': 'En passant la souris sur les barres de l\'histogramme, tu peux voir le nombre d\'enregistrements qui ont une caractéristique dans l\'intervalle correspondant.'
+      'seconds': 30,
+      'tip': 'En passant la souris sur les barres de l\'histogramme, tu peux voir le nombre d\'enregistrements qui ont une caractéristique dans l\'intervalle correspondant.'
     }
-])
+  ])
 
-validation_question_hist_3 = MathadataValidateVariables(get_names_and_values=get_names_and_values_hist_3, tips=[
+validation_question_hist_3 = MathadataValidateVariables(get_names_and_values=get_names_and_values_hist_3,tips=[
     {
-        'seconds': 30,
-        'tip': 'As-tu bien tenu compte du mot inférieur ?'
+      'seconds': 30,
+      'tip': 'As-tu bien tenu compte du mot inférieur ?'
     }
-])
-
+  ])
 
 def caracteristique_etendue_correction(d):
     """
@@ -1781,18 +1705,16 @@ def caracteristique_etendue_correction(d):
     """
     minimum = min(d)
     maximum = max(d)
-    etendue = maximum - minimum
+    etendue = maximum-minimum
     return etendue
-
 
 def on_success_etendue(answers):
     if has_variable('afficher_histogramme'):
-        print(
-            "Voici l'histogramme des fréquences cardiaques pour l'ensemble des données d'entraînement avec cette caractéristique. Comme tu vas le voir elle n'est pas très discriminante et peu utile pour classer les enregistrements.")
-        get_variable('afficher_histogramme')(legend=True, caracteristique=get_variable('caracteristique'))
+        print("Voici l'histogramme des fréquences cardiaques pour l'ensemble des données d'entraînement avec cette caractéristique. Comme tu vas le voir elle n'est pas très discriminante et peu utile pour classer les enregistrements.")
+        get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
 
 
-validation_caracteristique_etendue_et_affichage = MathadataValidateFunction(
+validation_caracteristique_etendue_et_affichage=MathadataValidateFunction(
     'caracteristique',
     test_set=lambda: common.challenge.d_train[0:100],
     expected=lambda: [caracteristique_etendue_correction(d) for d in common.challenge.d_train[0:100]],
@@ -1805,20 +1727,18 @@ def validate_caracteristique_libre(errors, answers):
     Validation de la caractéristique libre.
     La caractéristique doit être un nombre.
     """
-    caracteristique = answers['caracteristique']
+    caracteristique = answers['caracteristique'] 
     for d in common.challenge.d_train[0:5]:
-        if not isinstance(caracteristique(d), float) and not isinstance(caracteristique(d), int):
-            errors.append("La caractéristique doit être un nombre. Ta fonction ne semble pas renvoyer un nombre.")
-            return False
+            if not isinstance(caracteristique(d), float) and not isinstance(caracteristique(d), int):
+                errors.append("La caractéristique doit être un nombre. Ta fonction ne semble pas renvoyer un nombre.")
+                return False
     return True
-
 
 def on_success_histogramme(answers):
     if has_variable('afficher_histogramme'):
-        get_variable('afficher_histogramme')(legend=True, caracteristique=get_variable('caracteristique'))
+
+        get_variable('afficher_histogramme')(legend=True,caracteristique=get_variable('caracteristique'))
+
+validation_caracteristique_libre_et_affichage=MathadataValidateVariables(name_and_values={'caracteristique': None}, function_validation=validate_caracteristique_libre,success="Ta fonction renvoie bien un nombre. Testons ta proposition",on_success=on_success_histogramme)
 
 
-validation_caracteristique_libre_et_affichage = MathadataValidateVariables(name_and_values={'caracteristique': None},
-                                                                           function_validation=validate_caracteristique_libre,
-                                                                           success="Ta fonction renvoie bien un nombre. Testons ta proposition",
-                                                                           on_success=on_success_histogramme)
