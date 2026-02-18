@@ -12,8 +12,6 @@ import matplotlib.patches as mpatches
 import utilitaires_common as common
 from utilitaires_common import *
 
-# from scipy.spatial import Voronoi, voronoi_plot_2d
-
 strings = {
     "dataname": {
         "nom": "image",
@@ -46,9 +44,9 @@ strings = {
     ],
     "r_petite_caracteristique": 7,
     "r_grande_caracteristique": 2,
-    "train_size": "6 073",
-    "train_size_approx": "6 000",
-    "objectif_score_droite": 10,
+    "train_size": "5 036",
+    "train_size_approx": "5 000",
+    "objectif_score_droite": 12,
     "objectif_score_droite_custom": 8,
     "pt_retourprobleme": "(40; 20)"
 }
@@ -86,7 +84,7 @@ with open(d_train_path, 'rb') as f:
     d_train = []
     d_train_test = []
     if len(d_train_full) > 0:
-        split_index = int(1/2 * len(d_train_full))
+        split_index = int(2/3 * len(d_train_full))
         d_train = d_train_full[:split_index]
         d_train_test = d_train_full[split_index:]
     
@@ -96,7 +94,7 @@ with open(r_train_path, 'rb') as f:
     r_train = []
     r_train_test = []
     if len(r_train_full) > 0:
-        split_index = int(1/2 * len(r_train_full))
+        split_index = int(2/3 * len(r_train_full))
         r_train = r_train_full[:split_index]
         r_train_test = r_train_full[split_index:]
 
@@ -111,6 +109,14 @@ d_train_par_population = [d_train[r_train == k] for k in classes]
 
 d = d_train[10, :, :].copy()
 d2 = d_train[2, :, :].copy()
+
+# Modifier l'image 23 qui sert de référence pour les exo
+d_train[23][6, 7] = 0
+d_train[23][6, 8] = 0
+d_train[23][7, 8] = 255
+d_train[23][7, 6] = 0
+d_train[23][7, 9] = 0
+d_train[23][9, 8] = 0
 
 # 10 images en tableau format 3x3
 d_train_simple = [
@@ -153,6 +159,9 @@ class Mnist(common.Challenge):
         self.custom_zone = None
         self.custom_zones = None
 
+        # Imges de ref pour les question calcul caracteristique
+        self.ids_images_ref = (9, 23, 24)
+
         # STATS
         # Moyenne histogramme
         self.carac_explanation = f"C'est la bonne réponse ! Les images de 7 ont souvent moins de pixels blancs que les images de 2. C'est pourquoi leur caractéristique, leur moyenne, est souvent plus petite."
@@ -178,6 +187,9 @@ class Mnist(common.Challenge):
         # GEO zones de références pour les deux caractéristiques
         self.zone_1_ref = [(4, 4), (11, 11)]
         self.zone_2_ref = [(16, 18), (22, 25)]
+
+        self.zone_1_exo = [(6,8), (9,10)]
+        self.zone_2_exo = [(19, 18), (21, 22)]
 
         # Droite produit scalaire
         # Pour les versions question_normal
@@ -548,15 +560,29 @@ def afficher_image_3x3():
 def afficher_deux_exemples_zones(
     id1=None,
     id2=None,
-    show_points=True,
+    id3=None,
+    show_points=False,
+    save_png=False,
+    png_scale=2,
+    save_png_path=None,
     zones=None,
     show_zones=True,
+    show_zone_x=True,
+    show_zone_y=True,
+    crop=0,
     seuil_texte=130,
-    fontsize=10,
+    fontsize=8,
     grid_gap_px=1,
+    max_width_px=440,
+    show_values=True,
     zone_colors=("red", "blue"),
     zone_lw=6,
     point_names=("A", "B"),
+    legends=True,
+    legend_offset_px=8,
+    legend_font_px=24,
+    legend_background=False,
+    troisieme=False,
     **kwargs,
 ):
     """
@@ -567,13 +593,32 @@ def afficher_deux_exemples_zones(
     - Affichage : niveaux de gris + valeur dans chaque pixel
     - Zones : rectangles (rouge puis bleu)
     - Option (show_points=True) : sous chaque image, afficher le point caractéristique (moyenne sur les zones)
+
+    Par défaut, si le challenge expose `ids_images_ref`, alors ces images sont utilisées en priorité.
+    Si `troisieme=True`, une 3e image de référence (si disponible) est affichée.
     """
 
     # Alias (compat) : ancien paramètre `show_point`
     if "show_point" in kwargs:
         show_points = kwargs.pop("show_point")
 
-    # Choix d'images par défaut : 1 de chaque classe (si possible)
+    # Choix d'images par défaut (priorité) : `ids_images_ref` défini dans le challenge.
+    ids_images_ref = getattr(common.challenge, "ids_images_ref", None)
+    if ids_images_ref is not None:
+        try:
+            ids_images_ref = tuple(ids_images_ref)
+        except Exception:
+            ids_images_ref = None
+
+    if ids_images_ref is not None and (id1 is None or id2 is None):
+        if id1 is None and len(ids_images_ref) >= 1:
+            id1 = int(ids_images_ref[0])
+        if id2 is None and len(ids_images_ref) >= 2:
+            id2 = int(ids_images_ref[1])
+        if id3 is None and len(ids_images_ref) >= 3:
+            id3 = int(ids_images_ref[2])
+
+    # Fallback : 1 image de chaque classe (si possible)
     if id1 is None or id2 is None:
         try:
             r = common.challenge.r_train
@@ -588,8 +633,8 @@ def afficher_deux_exemples_zones(
             if id2 is None:
                 id2 = 1
 
-    zone_1_ref = getattr(common.challenge, "zone_1_ref", None)
-    zone_2_ref = getattr(common.challenge, "zone_2_ref", None)
+    zone_1_ref = getattr(common.challenge, "zone_1_exo", None)
+    zone_2_ref = getattr(common.challenge, "zone_2_exo", None)
 
     if zones is None:
         zones = [zone_1_ref, zone_2_ref]
@@ -606,16 +651,43 @@ def afficher_deux_exemples_zones(
             zones = [zones[0], zones[1]]
 
     display_id = uuid.uuid4().hex
+
+    ids = [int(id1), int(id2)]
+    if troisieme:
+        if id3 is not None:
+            ids.append(int(id3))
+        elif ids_images_ref is not None and len(ids_images_ref) >= 3:
+            ids.append(int(ids_images_ref[2]))
+
     params = {
-        "ids": [int(id1), int(id2)],
+        "ids": ids,
         # Compat : JS accepte `show_points` et `show_point`
         "show_points": bool(show_points),
         "show_point": bool(show_points),
+        "save_png": bool(save_png),
+        "png_scale": float(png_scale) if png_scale is not None else 2.0,
+        "save_png_path": save_png_path,
         "show_zones": bool(show_zones),
+        "show_zone_x": bool(show_zone_x),
+        "show_zone_y": bool(show_zone_y),
         "zones": zones,
+        "crop": int(crop) if crop is not None else 0,
+        "legends": (
+            [
+                {"left": ["x<sub>2</sub>", "y<sub>2</sub>"], "right": [None, None]},
+                {"left": [None, None], "right": ["x<sub>7</sub>", "y<sub>7</sub>"]},
+            ]
+            if legends is True
+            else legends
+        ),
+        "legend_offset_px": float(legend_offset_px),
+        "legend_font_px": float(legend_font_px),
+        "legend_background": bool(legend_background),
         "seuil_texte": float(seuil_texte),
         "fontsize": float(fontsize),
         "grid_gap_px": int(grid_gap_px),
+        "max_width_px": float(max_width_px) if max_width_px is not None else None,
+        "show_values": bool(show_values),
         "zone_colors": list(zone_colors) if zone_colors is not None else ["red", "blue"],
         "zone_lw": float(zone_lw),
         "point_names": list(point_names) if point_names is not None else ["A", "B"],
@@ -660,6 +732,31 @@ def check_pixel_coordinates(coords, errors):
         errors.append("Les coordonnées du pixel doivent être entre 0 et 27.")
         return False
     return True
+
+
+def _mathadata_save_png_base64(path, b64_png):
+    """
+    Sauvegarde un PNG fourni en base64 dans le système de fichiers côté Python.
+
+    Remarques :
+    - Cela ne marche que si l'environnement Python a accès à un vrai FS (Jupyter local, etc.).
+    - Dans certains environnements (Basthon/JupyterLite/Capytale), l'écriture peut être limitée ou éphémère.
+    """
+    if not path:
+        return
+    try:
+        import base64
+        import os
+
+        data = base64.b64decode(b64_png.encode("ascii"))
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
+        print(f"PNG enregistré : {path}")
+    except Exception as e:
+        print_error(f"Impossible d'enregistrer le PNG dans '{path}' : {e}")
 
 
 def update_selected(A, B):
@@ -721,7 +818,7 @@ def qcm_1_cara_mnist():
             "l'image de 2",
             "l'image de 7",
         ],
-        "answer": "l'image de 2",
+        "answer": "l'image de 7",
     })
 
 def qcm_contre_exemple_mnist():
@@ -850,6 +947,20 @@ styles = '''
         margin: 1rem 0;
     }
 
+    /* Variante : forcer toutes les images sur une seule ligne (utile si on en affiche 3) */
+    .mathadata-mnist-exemples-zones-grid.mathadata-mnist-exemples-zones-grid--one-line {
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .mathadata-mnist-exemples-zones-grid.mathadata-mnist-exemples-zones-grid--one-line .mathadata-mnist-exemples-zones-item {
+        max-width: none;
+        min-width: 0;
+    }
+
     .mathadata-mnist-exemples-zones-item {
         display: flex;
         flex-direction: column;
@@ -867,7 +978,7 @@ styles = '''
     .mathadata-mnist-exemples-zones-point {
         font-family: sans-serif;
         text-align: center;
-        font-size: 1.05rem;
+        font-size: 0.95rem;
         line-height: 1.2;
     }
 
@@ -891,13 +1002,25 @@ styles = '''
         overflow: hidden;
     }
 
-    .mathadata-mnist-zonerect {
-        position: absolute;
-        pointer-events: none;
-        box-sizing: border-box;
-        border-radius: 6px;
-    }
-'''
+	    .mathadata-mnist-zonerect {
+	        position: absolute;
+	        pointer-events: none;
+	        box-sizing: border-box;
+	        border-radius: 6px;
+	    }
+
+	    .mathadata-mnist-zonelabel {
+	        position: absolute;
+	        pointer-events: none;
+	        font-family: sans-serif;
+	        font-weight: 700;
+	        white-space: nowrap;
+	        line-height: 1;
+	        padding: 2px 6px;
+	        border-radius: 999px;
+	        box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+	    }
+	'''
 
 run_js(f"""
     let style = document.getElementById('mathadata-style-mnist');
@@ -1791,7 +1914,7 @@ def validate_algo(errors, answers):
 def question_pixel():
     value = 210
     create_qcm({
-        'question_html': f"A votre avis, quelle est la valeur associée à ce pixel ?<br/><div style='width: 60px; height: 60px; background-color: rgb({value}, {value}, {value}); margin: 10px auto; border: 1px solid black;'></div>",
+        'question_html': f"À ton avis, quelle est la valeur associée à ce pixel ?<br/><div style='width: 60px; height: 60px; background-color: rgb({value}, {value}, {value}); margin: 10px auto; border: 1px solid black;'></div>",
         'choices': ['10', '110', str(value)],
         'answer': str(value)
     })
@@ -2979,7 +3102,10 @@ run_js(r"""
         const opts = options || {};
         const seuilTexte = Number.isFinite(Number(opts.seuil_texte)) ? Number(opts.seuil_texte) : 130;
         const fontsize = Number.isFinite(Number(opts.fontsize)) ? Number(opts.fontsize) : 10;
+        const showValues = (opts.show_values === undefined) ? true : Boolean(opts.show_values);
         const showZones = Boolean(opts.show_zones);
+        const showZoneX = (opts.show_zone_x === undefined) ? true : Boolean(opts.show_zone_x);
+        const showZoneY = (opts.show_zone_y === undefined) ? true : Boolean(opts.show_zone_y);
         const zones = Array.isArray(opts.zones) ? opts.zones : null;
         const zoneColors = Array.isArray(opts.zone_colors) ? opts.zone_colors : ["red", "blue"];
         const zoneLw = Number.isFinite(Number(opts.zone_lw)) ? Number(opts.zone_lw) : 6;
@@ -2998,11 +3124,19 @@ run_js(r"""
         const gapPxRaw = Number(opts.grid_gap_px);
         const gapPx = Number.isFinite(gapPxRaw) ? Math.max(0, Math.min(8, Math.round(gapPxRaw))) : 1;
         const padPx = gapPx;
-        const maxWidthPx = Number.isFinite(Number(opts.max_width_px)) ? Number(opts.max_width_px) : 360;
+        const maxWidthPxRaw = opts.max_width_px;
+        const maxWidthPxNum = Number(maxWidthPxRaw);
+        const maxWidthPx = (
+            maxWidthPxRaw === null ||
+            maxWidthPxRaw === undefined ||
+            !Number.isFinite(maxWidthPxNum) ||
+            maxWidthPxNum <= 0
+        ) ? 360 : maxWidthPxNum;
 
         const available = Math.max(1, maxWidthPx - 2 * padPx - (w - 1) * gapPx);
-        const cellSize = Math.max(8, Math.min(22, Math.floor(available / w)));
-        const fontPx = Math.max(4, Math.min(Math.floor(fontsize), cellSize - 1));
+        const minCellPx = showValues ? 8 : 4;
+        const cellSize = Math.max(minCellPx, Math.min(22, Math.floor(available / w)));
+        const fontPx = showValues ? Math.max(4, Math.min(Math.floor(fontsize), cellSize - 1)) : 0;
 
         const grid = document.createElement("div");
         grid.className = "mathadata-mnist-pixelgrid";
@@ -3024,8 +3158,8 @@ run_js(r"""
                 cell.className = "mathadata-mnist-pixelcell";
                 cell.style.backgroundColor = `rgb(${g}, ${g}, ${g})`;
                 cell.style.color = (displayVal >= seuilTexte) ? "black" : "white";
-                cell.style.fontSize = `${fontPx}px`;
-                cell.textContent = String(displayVal);
+                cell.style.fontSize = showValues ? `${fontPx}px` : "0px";
+                cell.textContent = showValues ? String(displayVal) : "";
 
                 frag.appendChild(cell);
             }
@@ -3033,16 +3167,180 @@ run_js(r"""
         grid.appendChild(frag);
         container.appendChild(grid);
 
-        if (showZones && zones) {
-            if (zones.length > 0) drawZoneRect(grid, zones[0], zoneColors[0] || "red", zoneLw, cellSize, gapPx, padPx);
-            if (zones.length > 1) drawZoneRect(grid, zones[1], zoneColors[1] || "blue", zoneLw, cellSize, gapPx, padPx);
+	        if (showZones && zones) {
+	            if (showZoneX && zones.length > 0) drawZoneRect(grid, zones[0], zoneColors[0] || "red", zoneLw, cellSize, gapPx, padPx);
+	            if (showZoneY && zones.length > 1) drawZoneRect(grid, zones[1], zoneColors[1] || "blue", zoneLw, cellSize, gapPx, padPx);
+	        }
+
+	        // Légendes (optionnel) alignées sur le centre vertical des zones
+	        const legend = opts?.legend;
+	        const legendEnabled = legend && (Array.isArray(legend.left) || Array.isArray(legend.right));
+	        if (legendEnabled && zones && zones.length > 0) {
+	            const offsetPx = Number.isFinite(Number(legend.offset_px)) ? Number(legend.offset_px) : 8;
+	            const fontPxLegend = Number.isFinite(Number(legend.font_px)) ? Number(legend.font_px) : 14;
+	            const withBg = (legend.background === undefined) ? true : Boolean(legend.background);
+
+	            const zoneCenterY = (zone) => {
+	                if (!Array.isArray(zone) || zone.length !== 2) return null;
+	                const A = zone[0];
+	                const B = zone[1];
+	                if (!Array.isArray(A) || !Array.isArray(B) || A.length !== 2 || B.length !== 2) return null;
+
+	                const r0 = Number(A[0]);
+	                const r1 = Number(B[0]);
+	                if (!Number.isFinite(r0) || !Number.isFinite(r1)) return null;
+
+	                const rmin = Math.min(r0, r1);
+	                const rmax = Math.max(r0, r1);
+	                const top = padPx + rmin * (cellSize + gapPx);
+	                const height = (rmax - rmin + 1) * cellSize + (rmax - rmin) * gapPx;
+	                return top + height / 2;
+	            };
+
+	            const makeLabel = (html, side, color, topPx) => {
+	                if (!html) return;
+	                const el = document.createElement("div");
+	                el.className = "mathadata-mnist-zonelabel";
+	                el.innerHTML = String(html);
+	                el.style.fontSize = `${fontPxLegend}px`;
+	                el.style.color = color || "#111";
+	                el.style.top = `${topPx}px`;
+
+	                if (withBg) {
+	                    el.style.background = "rgba(255,255,255,0.92)";
+	                } else {
+	                    el.style.background = "transparent";
+	                    el.style.boxShadow = "none";
+	                    el.style.padding = "0";
+	                }
+
+	                if (side === "left") {
+	                    el.style.left = `-${offsetPx}px`;
+	                    el.style.transform = "translate(-100%, -50%)";
+	                } else {
+	                    el.style.right = `-${offsetPx}px`;
+	                    el.style.transform = "translate(100%, -50%)";
+	                }
+
+	                grid.appendChild(el);
+	            };
+
+	            const leftLabels = Array.isArray(legend.left) ? legend.left : [];
+	            const rightLabels = Array.isArray(legend.right) ? legend.right : [];
+
+	            for (let zi = 0; zi < zones.length; zi++) {
+	                if (zi === 0 && !showZoneX) continue;
+	                if (zi === 1 && !showZoneY) continue;
+	                const cy = zoneCenterY(zones[zi]);
+	                if (cy === null) continue;
+	                const color = (Array.isArray(zoneColors) && zoneColors[zi]) ? zoneColors[zi] : undefined;
+	                makeLabel(leftLabels[zi], "left", color, cy);
+	                makeLabel(rightLabels[zi], "right", color, cy);
+	            }
+	        }
+	    };
+
+    // ---------------------------------------------------------------------
+    // Export PNG (screenshot DOM) via html2canvas (chargé à la demande)
+    // ---------------------------------------------------------------------
+    window.mathadata._ensure_html2canvas = window.mathadata._ensure_html2canvas || (async () => {
+        if (window.html2canvas) return window.html2canvas;
+
+        const loadScript = (src) => new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = src;
+            s.async = true;
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error("Impossible de charger html2canvas"));
+            document.head.appendChild(s);
+        });
+
+        try {
+            await loadScript("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js");
+        } catch (e) {
+            console.error(e);
+            return null;
         }
-    };
+
+        return window.html2canvas || null;
+    });
+
+    window.mathadata._save_element_png = window.mathadata._save_element_png || (async (element, filename) => {
+        if (!element) return false;
+        const h2c = await window.mathadata._ensure_html2canvas();
+        if (!h2c) return false;
+
+        const stripIds = (node) => {
+            if (!node || node.nodeType !== 1) return;
+            if (node.hasAttribute && node.hasAttribute("id")) node.removeAttribute("id");
+            if (node.children) Array.from(node.children).forEach(stripIds);
+        };
+
+        const clone = element.cloneNode(true);
+        stripIds(clone);
+        clone.querySelectorAll && clone.querySelectorAll(".mathadata-noexport").forEach(el => el.remove());
+
+        // Forcer l'affichage complet (pas de scroll interne) pour la capture
+        const grid = clone.querySelector && clone.querySelector(".mathadata-mnist-exemples-zones-grid");
+        if (grid) {
+            grid.style.overflow = "visible";
+            grid.style.maxWidth = "none";
+        }
+
+        clone.style.position = "fixed";
+        clone.style.left = "-10000px";
+        clone.style.top = "0";
+        clone.style.background = "#fff";
+        clone.style.maxWidth = "none";
+        clone.style.width = `${Math.max(element.scrollWidth || 0, element.clientWidth || 0)}px`;
+
+        document.body.appendChild(clone);
+        try {
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+            const w = Math.max(clone.scrollWidth || 0, clone.clientWidth || 0);
+            const h = Math.max(clone.scrollHeight || 0, clone.clientHeight || 0);
+
+            const canvas = await h2c(clone, {
+                backgroundColor: "#ffffff",
+                scale: 2,
+                width: w || undefined,
+                height: h || undefined,
+            });
+
+            const blob = await new Promise((resolve) => {
+                if (canvas.toBlob) {
+                    canvas.toBlob((b) => resolve(b), "image/png");
+                } else {
+                    // Fallback ancien navigateur
+                    const dataUrl = canvas.toDataURL("image/png");
+                    const bin = atob(dataUrl.split(",")[1]);
+                    const arr = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                    resolve(new Blob([arr], { type: "image/png" }));
+                }
+            });
+
+            if (!blob) return false;
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename || "mnist_exemples_zones.png";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            return true;
+        } finally {
+            clone.remove();
+        }
+    });
 
     // ---------------------------------------------------------------------
     // Affichage demandé : 2 images côte à côte + zones + (option) point caractéristique.
     // ---------------------------------------------------------------------
-    window.mathadata.afficher_deux_exemples_zones = async (id, params) => {
+	    window.mathadata.afficher_deux_exemples_zones = async (id, params) => {
         try {
             if (typeof params === "string") params = JSON.parse(params);
         } catch (e) {
@@ -3050,55 +3348,116 @@ run_js(r"""
             return;
         }
 
-        const root = document.getElementById(id);
-        if (!root) return;
+	        const root = document.getElementById(id);
+	        if (!root) return;
 
-        const ids = Array.isArray(params?.ids) ? params.ids : [0, 1];
-        const showPoint = Boolean((params?.show_points !== undefined) ? params.show_points : params?.show_point);
-        const showZones = Boolean(params?.show_zones);
-        const zones = Array.isArray(params?.zones) ? params.zones : null;
-        const seuilTexte = params?.seuil_texte;
-        const fontsize = params?.fontsize;
-        const zoneColors = params?.zone_colors;
-        const zoneLw = params?.zone_lw;
-        const pointNames = Array.isArray(params?.point_names) ? params.point_names : ["A", "B"];
-        const gridGapPx = params?.grid_gap_px;
+	        const ids = Array.isArray(params?.ids) ? params.ids : [0, 1];
+	        const nImgs = ids.length;
+	        const showPoint = Boolean((params?.show_points !== undefined) ? params.show_points : params?.show_point);
+	        const showZones = Boolean(params?.show_zones);
+	        const zones = Array.isArray(params?.zones) ? params.zones : null;
+	        const showZoneX = (params?.show_zone_x === undefined) ? true : Boolean(params.show_zone_x);
+	        const showZoneY = (params?.show_zone_y === undefined) ? true : Boolean(params.show_zone_y);
+	        const crop = Number.isFinite(Number(params?.crop)) ? Math.max(0, Math.floor(Number(params.crop))) : 0;
+	        const seuilTexte = params?.seuil_texte;
+	        const fontsize = params?.fontsize;
+	        const zoneColors = params?.zone_colors;
+	        const zoneLw = params?.zone_lw;
+	        const pointNames = Array.isArray(params?.point_names) ? params.point_names : ["A", "B"];
+	        const gridGapPx = params?.grid_gap_px;
+	        const maxWidthPx = params?.max_width_px;
+	        const showValues = (params?.show_values === undefined) ? true : Boolean(params.show_values);
+	        const legends = Array.isArray(params?.legends) ? params.legends : null;
+	        const legendOffsetPx = params?.legend_offset_px;
+	        const legendFontPx = params?.legend_font_px;
+	        const legendBackground = params?.legend_background;
+	        const savePng = Boolean(params?.save_png);
+	        const pngScaleRaw = Number(params?.png_scale);
+	        const pngScale = (Number.isFinite(pngScaleRaw) && pngScaleRaw > 0) ? Math.min(8, pngScaleRaw) : 2;
+	        const savePngPath = (params?.save_png_path !== undefined && params?.save_png_path !== null) ? String(params.save_png_path) : null;
 
-        root.innerHTML = `
-            <div class="mathadata-mnist-exemples-zones-grid">
-                <div class="mathadata-mnist-exemples-zones-item">
-                    <div id="${id}-img-0"></div>
-                    <div id="${id}-pt-0" class="mathadata-mnist-exemples-zones-point" style="${showPoint ? "" : "display:none;"}"></div>
-                </div>
-                <div class="mathadata-mnist-exemples-zones-item">
-                    <div id="${id}-img-1"></div>
-                    <div id="${id}-pt-1" class="mathadata-mnist-exemples-zones-point" style="${showPoint ? "" : "display:none;"}"></div>
-                </div>
-            </div>
-        `;
+	        const itemsHtml = ids.map((_, i) => `
+	            <div class="mathadata-mnist-exemples-zones-item">
+	                <div id="${id}-img-${i}"></div>
+	                <div id="${id}-pt-${i}" class="mathadata-mnist-exemples-zones-point" style="${showPoint ? "" : "display:none;"}"></div>
+	            </div>
+	        `).join("");
+	        const gridClass = (nImgs >= 3)
+	            ? "mathadata-mnist-exemples-zones-grid mathadata-mnist-exemples-zones-grid--one-line"
+	            : "mathadata-mnist-exemples-zones-grid";
+	        root.innerHTML = `<div class="${gridClass}">${itemsHtml}</div>`;
+	        const effectiveMaxWidthPx = maxWidthPx;
 
-        const fetchImg = async (index) => {
-            const safeIndex = Number.isFinite(Number(index)) ? Number(index) : 0;
-            return await window.mathadata.run_python_async(`get_data(index=${safeIndex})`);
-        };
+	        const fetchImg = async (index) => {
+	            const safeIndex = Number.isFinite(Number(index)) ? Number(index) : 0;
+	            return await window.mathadata.run_python_async(`get_data(index=${safeIndex})`);
+	        };
 
-        const [img0, img1] = await Promise.all([fetchImg(ids[0]), fetchImg(ids[1])]);
-        const t0 = window.mathadata.mnist_seuillage_0_200_250(img0);
-        const t1 = window.mathadata.mnist_seuillage_0_200_250(img1);
+	        const images = await Promise.all(ids.map((idx) => fetchImg(idx)));
+	        const cropImg = (img, c) => {
+	            if (!c || c <= 0) return img;
+	            if (!Array.isArray(img) || img.length === 0 || !Array.isArray(img[0])) return img;
+	            const h = img.length;
+	            const w = img[0].length;
+	            const maxCrop = Math.floor(Math.min(h, w) / 2) - 1;
+	            if (c > maxCrop) c = Math.max(0, maxCrop);
+	            if (c <= 0) return img;
+	            return img.slice(c, h - c).map(row => Array.isArray(row) ? row.slice(c, w - c) : row);
+	        };
+	        const shiftZone = (zone, c, h, w) => {
+	            if (!c || c <= 0) return zone;
+	            if (!Array.isArray(zone) || zone.length !== 2) return null;
+	            const A = zone[0], B = zone[1];
+	            if (!Array.isArray(A) || !Array.isArray(B) || A.length !== 2 || B.length !== 2) return null;
+	            const r0 = Number(A[0]) - c, c0 = Number(A[1]) - c;
+	            const r1 = Number(B[0]) - c, c1 = Number(B[1]) - c;
+	            if (![r0, c0, r1, c1].every(Number.isFinite)) return null;
+	            const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+	            const rr0 = clamp(Math.round(r0), 0, h - 1);
+	            const rr1 = clamp(Math.round(r1), 0, h - 1);
+	            const cc0 = clamp(Math.round(c0), 0, w - 1);
+	            const cc1 = clamp(Math.round(c1), 0, w - 1);
+	            return [[rr0, cc0], [rr1, cc1]];
+	        };
 
-        const opts = {
-            seuil_texte: seuilTexte,
-            fontsize,
-            show_zones: showZones,
-            zones,
-            zone_colors: zoneColors,
-            zone_lw: zoneLw,
-            max_width_px: 360,
-            grid_gap_px: gridGapPx,
-        };
+	        const thresholded = images.map(img => cropImg(window.mathadata.mnist_seuillage_0_200_250(img), crop));
 
-        window.mathadata.mnist_afficher_image_pixels(`${id}-img-0`, t0, opts);
-        window.mathadata.mnist_afficher_image_pixels(`${id}-img-1`, t1, opts);
+	        let zonesAdj = zones;
+	        const tRef = thresholded[0];
+	        if (crop > 0 && Array.isArray(zonesAdj) && Array.isArray(tRef) && tRef.length > 0 && Array.isArray(tRef[0])) {
+	            const h = tRef.length;
+	            const w = tRef[0].length;
+	            zonesAdj = zonesAdj.map(z => shiftZone(z, crop, h, w));
+	        }
+
+	        const optsBase = {
+	            seuil_texte: seuilTexte,
+	            fontsize,
+	            show_values: showValues,
+	            show_zones: showZones,
+	            show_zone_x: showZoneX,
+	            show_zone_y: showZoneY,
+	            zones: zonesAdj,
+	            zone_colors: zoneColors,
+	            zone_lw: zoneLw,
+	            max_width_px: effectiveMaxWidthPx,
+	            grid_gap_px: gridGapPx,
+	        };
+
+	        const patchLegend = (legend) => {
+	            if (!legend) return null;
+	            const out = Object.assign({}, legend);
+	            if (legendOffsetPx !== undefined) out.offset_px = legendOffsetPx;
+	            if (legendFontPx !== undefined) out.font_px = legendFontPx;
+	            if (legendBackground !== undefined) out.background = legendBackground;
+	            return out;
+	        };
+
+	        thresholded.forEach((tImg, i) => {
+	            const legend = (legends && legends.length > i) ? patchLegend(legends[i]) : null;
+	            const opts = Object.assign({}, optsBase, { legend });
+	            window.mathadata.mnist_afficher_image_pixels(`${id}-img-${i}`, tImg, opts);
+	        });
 
         const escapeHtml = (s) => String(s)
             .replaceAll("&", "&amp;")
@@ -3107,27 +3466,430 @@ run_js(r"""
             .replaceAll('"', "&quot;")
             .replaceAll("'", "&#039;");
 
-        if (showPoint && zones && zones.length >= 2) {
-            const x0 = window.mathadata.mnist_mean_zone(t0, zones[0]);
-            const y0 = window.mathadata.mnist_mean_zone(t0, zones[1]);
-            const x1 = window.mathadata.mnist_mean_zone(t1, zones[0]);
-            const y1 = window.mathadata.mnist_mean_zone(t1, zones[1]);
+	        if (showPoint && zonesAdj && zonesAdj.length >= 2) {
+	            const defaultNames = ["A", "B", "C", "D"];
+	            thresholded.forEach((tImg, i) => {
+	                const x = window.mathadata.mnist_mean_zone(tImg, zonesAdj[0]);
+	                const y = window.mathadata.mnist_mean_zone(tImg, zonesAdj[1]);
 
-            const pt0 = document.getElementById(`${id}-pt-0`);
-            const pt1 = document.getElementById(`${id}-pt-1`);
+	                const pt = document.getElementById(`${id}-pt-${i}`);
+	                if (!pt) return;
 
-            if (pt0) {
-                const name = escapeHtml(pointNames[0] || "A");
-                pt0.innerHTML = `${name}(<span class="mathadata-carac-x">${escapeHtml(format1(x0))}</span>&nbsp;;&nbsp;<span class="mathadata-carac-y">${escapeHtml(format1(y0))}</span>)`;
-            }
-            if (pt1) {
-                const name = escapeHtml(pointNames[1] || "B");
-                pt1.innerHTML = `${name}(<span class="mathadata-carac-x">${escapeHtml(format1(x1))}</span>&nbsp;;&nbsp;<span class="mathadata-carac-y">${escapeHtml(format1(y1))}</span>)`;
-            }
+	                const name = escapeHtml(pointNames[i] || defaultNames[i] || `P${i + 1}`);
+	                pt.innerHTML = `${name}(<span class="mathadata-carac-x">${escapeHtml(format1(x))}</span>&nbsp;;&nbsp;<span class="mathadata-carac-y">${escapeHtml(format1(y))}</span>)`;
+	            });
 
-            // (Optionnel) Si MathJax est dispo, on peut typeset les blocs.
-            // Ici on affiche déjà une version HTML (toujours lisible, même sans MathJax).
+	            // (Optionnel) Si MathJax est dispo, on peut typeset les blocs.
+	            // Ici on affiche déjà une version HTML (toujours lisible, même sans MathJax).
+	        }
+
+	        if (savePng) {
+	            const safeIds = ids.map(x => String(x).replace(/[^0-9A-Za-z_-]/g, "")).join("_");
+	            const filename = `mnist_exemples_zones_${safeIds || "export"}.png`;
+
+	            const htmlToText = (html) => {
+	                if (!html) return "";
+	                const tmp = document.createElement("div");
+	                tmp.innerHTML = String(html);
+	                let text = (tmp.textContent || "").trim();
+	                // Remplacer chiffres en indice par unicode (x2 -> x₂) si présent
+	                text = text.replace(/([0-9])/g, (d) => ({
+	                    "0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"₇","8":"₈","9":"₉"
+	                }[d] || d));
+	                return text;
+	            };
+
+	            const downloadCanvasPng = async (canvas, fname) => {
+	                if (!canvas) return { ok: false, blob: null };
+	                const blob = await new Promise((resolve) => {
+	                    if (canvas.toBlob) {
+	                        canvas.toBlob((b) => resolve(b), "image/png");
+	                    } else {
+	                        const dataUrl = canvas.toDataURL("image/png");
+	                        const bin = atob(dataUrl.split(",")[1]);
+	                        const arr = new Uint8Array(bin.length);
+	                        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+	                        resolve(new Blob([arr], { type: "image/png" }));
+	                    }
+	                });
+	                if (!blob) return { ok: false, blob: null };
+	                const url = URL.createObjectURL(blob);
+	                const a = document.createElement("a");
+	                a.href = url;
+	                a.download = fname || "mnist_exemples_zones.png";
+	                document.body.appendChild(a);
+	                a.click();
+	                a.remove();
+	                setTimeout(() => URL.revokeObjectURL(url), 1000);
+	                return { ok: true, blob };
+	            };
+
+    const maybeSavePngToPython = async (blob, path) => {
+        if (!path) return true;
+        if (!window.mathadata || typeof window.mathadata.run_python_async !== "function") {
+            console.warn("[save_png] run_python_async indisponible, impossible d'enregistrer côté Python.");
+            return false;
+        }
+        try {
+            const dataUrl = await new Promise((resolve, reject) => {
+                const r = new FileReader();
+                r.onload = () => resolve(String(r.result || ""));
+                r.onerror = () => reject(new Error("FileReader error"));
+                r.readAsDataURL(blob);
+            });
+            const b64 = dataUrl.split(",")[1] || "";
+            if (!b64) return false;
+            const py = `from challenges.mnist.utilitaires import _mathadata_save_png_base64 as _s; _s(${JSON.stringify(String(path))}, ${JSON.stringify(String(b64))})`;
+            await window.mathadata.run_python_async(py);
+            return true;
+        } catch (e) {
+            console.error("[save_png] save to python failed", e);
+            return false;
         }
     };
+
+	            const exportViaCanvas = async () => {
+	                try {
+	                    const imgs = thresholded;
+	                    if (!Array.isArray(imgs) || imgs.length === 0) return false;
+
+	                    const n = imgs.length;
+	                    const outerPad = 16;
+	                    const gapBetween = 24;
+	                    const pointFontPx = 18;
+	                    const pointLineH = 26;
+
+	                    const zonesForExport = zonesAdj;
+	                    const zColors = Array.isArray(zoneColors) ? zoneColors : ["red", "blue"];
+	                    const zLw = Number.isFinite(Number(zoneLw)) ? Number(zoneLw) : 6;
+
+	                    // Mesure de marges pour légendes
+	                    const legendFont = Number.isFinite(Number(legendFontPx)) ? Number(legendFontPx) : 14;
+	                    const legendOff = Number.isFinite(Number(legendOffsetPx)) ? Number(legendOffsetPx) : 8;
+	                    const legendBg = (legendBackground === undefined) ? true : Boolean(legendBackground);
+
+	                    const perLayouts = imgs.map((img, i) => {
+	                        const h = img.length;
+	                        const w = img[0].length;
+
+	                        const gapPxRaw = Number(gridGapPx);
+	                        const gapPx = Number.isFinite(gapPxRaw) ? Math.max(0, Math.min(8, Math.round(gapPxRaw))) : 1;
+	                        const padPx = gapPx;
+
+	                        const maxWraw = effectiveMaxWidthPx;
+	                        const maxWnum = Number(maxWraw);
+	                        const maxW = (maxWraw === null || maxWraw === undefined || !Number.isFinite(maxWnum) || maxWnum <= 0) ? 360 : maxWnum;
+
+	                        const available = Math.max(1, maxW - 2 * padPx - (w - 1) * gapPx);
+	                        const minCellPx = showValues ? 8 : 4;
+	                        const cellSize = Math.max(minCellPx, Math.min(22, Math.floor(available / w)));
+
+	                        const fsNum = Number(fontsize);
+	                        const fs = Number.isFinite(fsNum) ? fsNum : 10;
+	                        const fontPx = showValues ? Math.max(4, Math.min(Math.floor(fs), cellSize - 1)) : 0;
+
+	                        const gridW = 2 * padPx + w * cellSize + (w - 1) * gapPx;
+	                        const gridH = 2 * padPx + h * cellSize + (h - 1) * gapPx;
+
+	                        const legend = (legends && legends.length > i) ? patchLegend(legends[i]) : null;
+	                        const leftLabels = legend && Array.isArray(legend.left) ? legend.left : [];
+	                        const rightLabels = legend && Array.isArray(legend.right) ? legend.right : [];
+
+	                        const labelsToMeasure = [];
+	                        for (let zi = 0; zi < 2; zi++) {
+	                            if (zi === 0 && !showZoneX) continue;
+	                            if (zi === 1 && !showZoneY) continue;
+	                            if (leftLabels[zi]) labelsToMeasure.push(htmlToText(leftLabels[zi]));
+	                            if (rightLabels[zi]) labelsToMeasure.push(htmlToText(rightLabels[zi]));
+	                        }
+
+	                        return {
+	                            w, h, gapPx, padPx, cellSize, fontPx, gridW, gridH,
+	                            legend, leftLabels, rightLabels, labelsToMeasure,
+	                            legendFont, legendOff, legendBg,
+	                        };
+	                    });
+
+	                    // Canvas temporaire de mesure
+	                    const meas = document.createElement("canvas");
+	                    const mctx = meas.getContext("2d");
+	                    if (!mctx) return false;
+	                    mctx.font = `700 ${legendFont}px sans-serif`;
+
+	                    perLayouts.forEach((lay) => {
+	                        let leftW = 0, rightW = 0;
+	                        const left = lay.legend && Array.isArray(lay.leftLabels) ? lay.leftLabels : [];
+	                        const right = lay.legend && Array.isArray(lay.rightLabels) ? lay.rightLabels : [];
+	                        for (let zi = 0; zi < 2; zi++) {
+	                            if (zi === 0 && !showZoneX) continue;
+	                            if (zi === 1 && !showZoneY) continue;
+	                            const lt = htmlToText(left[zi]);
+	                            const rt = htmlToText(right[zi]);
+	                            if (lt) leftW = Math.max(leftW, mctx.measureText(lt).width);
+	                            if (rt) rightW = Math.max(rightW, mctx.measureText(rt).width);
+	                        }
+	                        lay.marginLeft = leftW ? (leftW + legendOff + 10) : 0;
+	                        lay.marginRight = rightW ? (rightW + legendOff + 10) : 0;
+	                    });
+
+	                    const blockWidths = perLayouts.map(lay => lay.marginLeft + lay.gridW + lay.marginRight);
+	                    const maxBlockH = Math.max(...perLayouts.map(lay => lay.gridH + (showPoint ? pointLineH : 0)));
+
+	                    const canvasW = outerPad * 2 + blockWidths.reduce((a, b) => a + b, 0) + gapBetween * (n - 1);
+	                    const canvasH = outerPad * 2 + maxBlockH;
+
+	                    const canvas = document.createElement("canvas");
+	                    canvas.width = Math.ceil(canvasW * pngScale);
+	                    canvas.height = Math.ceil(canvasH * pngScale);
+	                    const ctx = canvas.getContext("2d");
+	                    if (!ctx) return false;
+	                    ctx.setTransform(pngScale, 0, 0, pngScale, 0, 0);
+	                    ctx.imageSmoothingEnabled = false;
+
+	                    ctx.fillStyle = "#fff";
+	                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+	                    const seuilNum = Number(seuilTexte);
+	                    const seuil = Number.isFinite(seuilNum) ? seuilNum : 130;
+
+	                    const drawLegendBox = (x, y, text, color) => {
+	                        if (!text) return;
+	                        ctx.font = `700 ${legendFont}px sans-serif`;
+	                        const metrics = ctx.measureText(text);
+	                        const padX = 6;
+	                        const padY = 4;
+	                        const w = metrics.width + padX * 2;
+	                        const h = legendFont + padY * 2;
+	                        if (legendBg) {
+	                            ctx.fillStyle = "rgba(255,255,255,0.92)";
+	                            ctx.strokeStyle = "rgba(0,0,0,0.08)";
+	                            ctx.lineWidth = 1;
+	                            ctx.beginPath();
+	                            ctx.roundRect ? ctx.roundRect(x, y - h / 2, w, h, 10) : ctx.rect(x, y - h / 2, w, h);
+	                            ctx.fill();
+	                            ctx.stroke();
+	                        }
+	                        ctx.fillStyle = color || "#111";
+	                        ctx.textAlign = "left";
+	                        ctx.textBaseline = "middle";
+	                        ctx.fillText(text, x + (legendBg ? padX : 0), y);
+	                    };
+
+	                    const drawPointText = (cx, y, name, xVal, yVal) => {
+	                        const left = `${name}(`;
+	                        const mid = " ; ";
+	                        const right = ")";
+	                        const xStr = String(format1(xVal));
+	                        const yStr = String(format1(yVal));
+
+	                        ctx.font = `600 ${pointFontPx}px sans-serif`;
+	                        const wLeft = ctx.measureText(left).width;
+	                        const wX = ctx.measureText(xStr).width;
+	                        const wMid = ctx.measureText(mid).width;
+	                        const wY = ctx.measureText(yStr).width;
+	                        const wRight = ctx.measureText(right).width;
+	                        const total = wLeft + wX + wMid + wY + wRight;
+
+	                        let x = cx - total / 2;
+	                        ctx.textAlign = "left";
+	                        ctx.textBaseline = "middle";
+
+	                        ctx.fillStyle = "#111";
+	                        ctx.fillText(left, x, y);
+	                        x += wLeft;
+
+	                        ctx.fillStyle = "#d64545";
+	                        ctx.fillText(xStr, x, y);
+	                        x += wX;
+
+	                        ctx.fillStyle = "#111";
+	                        ctx.fillText(mid, x, y);
+	                        x += wMid;
+
+	                        ctx.fillStyle = "#2f6fed";
+	                        ctx.fillText(yStr, x, y);
+	                        x += wY;
+
+	                        ctx.fillStyle = "#111";
+	                        ctx.fillText(right, x, y);
+	                    };
+
+	                    let xCursor = outerPad;
+	                    for (let i = 0; i < n; i++) {
+	                        const img = imgs[i];
+	                        const lay = perLayouts[i];
+	                        const gridX = xCursor + lay.marginLeft;
+	                        const gridY = outerPad;
+
+	                        // Fond du "cadre" (pour ressembler au widget)
+	                        ctx.fillStyle = "#b3b3b3";
+	                        ctx.fillRect(gridX, gridY, lay.gridW, lay.gridH);
+	                        ctx.fillStyle = "#ffffff";
+	                        ctx.fillRect(gridX, gridY, lay.gridW, lay.gridH);
+
+	                        // Pixels
+	                        ctx.textAlign = "center";
+	                        ctx.textBaseline = "middle";
+	                        ctx.font = `${lay.fontPx}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
+
+	                        for (let r = 0; r < lay.h; r++) {
+	                            const row = img[r];
+	                            for (let c = 0; c < lay.w; c++) {
+	                                const raw = Number(row[c]);
+	                                const v = Number.isFinite(raw) ? raw : 0;
+	                                const displayVal = Math.round(v);
+	                                const g = Math.max(0, Math.min(255, displayVal));
+	                                const x0 = gridX + lay.padPx + c * (lay.cellSize + lay.gapPx);
+	                                const y0 = gridY + lay.padPx + r * (lay.cellSize + lay.gapPx);
+
+	                                ctx.fillStyle = `rgb(${g},${g},${g})`;
+	                                ctx.fillRect(x0, y0, lay.cellSize, lay.cellSize);
+
+	                                if (showValues && lay.fontPx > 0) {
+	                                    ctx.fillStyle = (displayVal >= seuil) ? "#000" : "#fff";
+	                                    ctx.fillText(String(displayVal), x0 + lay.cellSize / 2, y0 + lay.cellSize / 2);
+	                                }
+	                            }
+	                        }
+
+	                        // Zones
+	                        if (showZones && zonesForExport && Array.isArray(zonesForExport)) {
+	                            const drawZone = (zone, color) => {
+	                                if (!zone || !Array.isArray(zone) || zone.length !== 2) return;
+	                                const A = zone[0], B = zone[1];
+	                                if (!A || !B) return;
+	                                const r0 = Math.round(Number(A[0]));
+	                                const c0 = Math.round(Number(A[1]));
+	                                const r1 = Math.round(Number(B[0]));
+	                                const c1 = Math.round(Number(B[1]));
+	                                if (![r0, c0, r1, c1].every(Number.isFinite)) return;
+
+	                                const rmin = Math.min(r0, r1);
+	                                const rmax = Math.max(r0, r1);
+	                                const cmin = Math.min(c0, c1);
+	                                const cmax = Math.max(c0, c1);
+	                                const left = gridX + lay.padPx + cmin * (lay.cellSize + lay.gapPx);
+	                                const top = gridY + lay.padPx + rmin * (lay.cellSize + lay.gapPx);
+	                                const width = (cmax - cmin + 1) * lay.cellSize + (cmax - cmin) * lay.gapPx;
+	                                const height = (rmax - rmin + 1) * lay.cellSize + (rmax - rmin) * lay.gapPx;
+	                                const lwPx = Math.max(1, Math.round(Number(zLw || 6) * (lay.cellSize / 16)));
+
+	                                ctx.strokeStyle = color || "red";
+	                                ctx.lineWidth = lwPx;
+	                                ctx.strokeRect(left - lwPx / 2, top - lwPx / 2, width + lwPx, height + lwPx);
+
+	                                return { top, height };
+	                            };
+
+	                            let rect0 = null, rect1 = null;
+	                            if (showZoneX && zonesForExport.length > 0) rect0 = drawZone(zonesForExport[0], zColors[0] || "red");
+	                            if (showZoneY && zonesForExport.length > 1) rect1 = drawZone(zonesForExport[1], zColors[1] || "blue");
+
+	                            // Légendes
+	                            const legend = lay.legend;
+	                            if (legend) {
+	                                const leftLabels = Array.isArray(legend.left) ? legend.left : [];
+	                                const rightLabels = Array.isArray(legend.right) ? legend.right : [];
+
+	                                const zoneCenters = [];
+	                                if (rect0) zoneCenters[0] = rect0.top + rect0.height / 2;
+	                                if (rect1) zoneCenters[1] = rect1.top + rect1.height / 2;
+
+	                                if (showZoneX && zoneCenters[0] !== undefined) {
+	                                    const lt = htmlToText(leftLabels[0]);
+	                                    const rt = htmlToText(rightLabels[0]);
+	                                    if (lt) {
+	                                        const tw = ctx.measureText(lt).width;
+	                                        drawLegendBox(gridX - legendOff - tw - 10, zoneCenters[0], lt, zColors[0] || "#111");
+	                                    }
+	                                    if (rt) {
+	                                        drawLegendBox(gridX + lay.gridW + legendOff, zoneCenters[0], rt, zColors[0] || "#111");
+	                                    }
+	                                }
+	                                if (showZoneY && zoneCenters[1] !== undefined) {
+	                                    const lt = htmlToText(leftLabels[1]);
+	                                    const rt = htmlToText(rightLabels[1]);
+	                                    if (lt) {
+	                                        const tw = ctx.measureText(lt).width;
+	                                        drawLegendBox(gridX - legendOff - tw - 10, zoneCenters[1], lt, zColors[1] || "#111");
+	                                    }
+	                                    if (rt) {
+	                                        drawLegendBox(gridX + lay.gridW + legendOff, zoneCenters[1], rt, zColors[1] || "#111");
+	                                    }
+	                                }
+	                            }
+	                        }
+
+	                        // Point caractéristique (sous l'image)
+	                        if (showPoint && zonesForExport && zonesForExport.length >= 2) {
+	                            const xVal = window.mathadata.mnist_mean_zone(img, zonesForExport[0]);
+	                            const yVal = window.mathadata.mnist_mean_zone(img, zonesForExport[1]);
+	                            const defaultNames = ["A", "B", "C", "D"];
+	                            const name = String(pointNames[i] || defaultNames[i] || `P${i + 1}`);
+	                            const centerX = gridX + lay.gridW / 2;
+	                            const y = gridY + lay.gridH + pointLineH / 2;
+	                            drawPointText(centerX, y, name, xVal, yVal);
+	                        }
+
+	                        xCursor += (lay.marginLeft + lay.gridW + lay.marginRight);
+	                        if (i < n - 1) xCursor += gapBetween;
+	                    }
+
+	                    const dl = await downloadCanvasPng(canvas, filename);
+	                    if (dl && dl.ok && dl.blob) {
+	                        await maybeSavePngToPython(dl.blob, savePngPath);
+	                        return true;
+	                    }
+	                    return false;
+	                } catch (e) {
+	                    console.error("[save_png] exportViaCanvas error", e);
+	                    return false;
+	                }
+	            };
+
+	            const createToolbar = () => {
+	                const toolbar = document.createElement("div");
+	                toolbar.className = "mathadata-noexport";
+	                toolbar.style.display = "flex";
+	                toolbar.style.justifyContent = "center";
+	                toolbar.style.gap = "0.5rem";
+	                toolbar.style.marginTop = "0.5rem";
+
+	                const btn = document.createElement("button");
+	                btn.type = "button";
+	                btn.textContent = "Télécharger en PNG";
+	                btn.style.fontFamily = "sans-serif";
+	                btn.style.fontSize = "14px";
+	                btn.style.padding = "6px 10px";
+	                btn.style.borderRadius = "8px";
+	                btn.style.border = "1px solid #ddd";
+	                btn.style.background = "#fff";
+	                btn.style.cursor = "pointer";
+
+	                btn.addEventListener("click", async () => {
+	                    // On privilégie l'export via Canvas (pas de dépendance réseau).
+	                    const okCanvas = await exportViaCanvas();
+	                    if (okCanvas) return;
+
+	                    // Fallback : screenshot DOM via html2canvas (si dispo)
+	                    const okDom = await window.mathadata._save_element_png(root, filename);
+	                    if (!okDom) console.warn("[save_png] Export PNG échoué (html2canvas indisponible ?).");
+	                });
+
+	                toolbar.appendChild(btn);
+	                root.appendChild(toolbar);
+	            };
+
+	            // Ajouter le bouton dans tous les cas (plus fiable que l'auto-download selon navigateur).
+	            createToolbar();
+
+	            // Tentative auto (peut être bloquée selon contexte)
+	            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+	            const okAuto = await exportViaCanvas();
+	            if (!okAuto) {
+	                console.warn("[save_png] Export auto échoué; clique sur 'Télécharger en PNG' ou vérifie la console.");
+	            }
+	        }
+	    };
 })();
 """)

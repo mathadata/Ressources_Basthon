@@ -74,7 +74,13 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
                             zone_colors=None, panel_w=None, panel_h=None, left_ratio=None,
                             hide_expected_labels=False, expected_point_color=None,
                             keep_aspect_ratio=True,
-                            image_caption_html=None, show_legend=False, force_origin=False):
+                            image_caption_html=None, show_legend=False, force_origin=False, 
+                            preplace_known_points=False, preplace_mystere=False,
+                            interactive=True, known_points_animate=True,
+                            checkpoint_enabled=True, show_status=True, exercise_validation=True,
+                            auto_pass_on_known_points_done=False,
+                            match_tolerance=0.35, click_delete_tolerance=0.45,
+                            hide_left_panel=False, instance_id=None):
     """
     Render the JSXGraph iframe in a Jupyter notebook cell and show a 2x2 image grid
     to the left. Accepts expected_points_A and expected_points_B as dicts:
@@ -99,8 +105,8 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
     if left_ratio is None:
         left_ratio = 0.35
 
-    match_tolerance = 0.35
-    click_delete_tolerance = 0.45
+    match_tolerance = float(match_tolerance)
+    click_delete_tolerance = float(click_delete_tolerance)
 
     image_mode = "contain"
     # normalize images list to length 4
@@ -109,7 +115,10 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
     else:
         images = list(images)[:4] + [None] * max(0, 4 - len(images))
 
-    instance_id = uuid.uuid4().hex
+    if instance_id is None:
+        instance_id = uuid.uuid4().hex
+    else:
+        instance_id = str(instance_id)
 
     def to_data_uri_if_local(src):
         if src is None:
@@ -184,6 +193,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
       .container { display:flex; gap:8px; padding:8px; height: PANEL_H_PX; box-sizing:border-box; }
       .left { width: LEFT_W_PX; min-width:120px; display:flex; flex-direction:column; align-items:stretch; justify-content:center; gap:6px; }
       .right { flex:1; display:flex; flex-direction:column; align-items:stretch; justify-content:center; gap:6px; }
+      HIDE_LEFT_PANEL_CSS
 
       .imggrid {
         display:grid;
@@ -264,14 +274,15 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
         </div>
       </div>
 
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/jsxgraph/1.4.0/jsxgraphcore.js"></script>
-      <script>
-        (function(){
-          // expectedPoints are JS objects: { label: [x,y], ... }
-          var expectedPointsA = EXPECTED_A_PLACEHOLDER;
-          var expectedPointsB = EXPECTED_B_PLACEHOLDER;
-          var knownPointsA = KNOWN_A_PLACEHOLDER;
-          var knownPointsB = KNOWN_B_PLACEHOLDER;
+	      <script src="https://cdnjs.cloudflare.com/ajax/libs/jsxgraph/1.4.0/jsxgraphcore.js"></script>
+	      <script>
+	        (function(){
+	          var parentInstanceId = INSTANCE_ID_PLACEHOLDER;
+	          // expectedPoints are JS objects: { label: [x,y], ... }
+	          var expectedPointsA = EXPECTED_A_PLACEHOLDER;
+	          var expectedPointsB = EXPECTED_B_PLACEHOLDER;
+	          var knownPointsA = KNOWN_A_PLACEHOLDER;
+	          var knownPointsB = KNOWN_B_PLACEHOLDER;
           var lineParams = LINE_PARAMS_PLACEHOLDER;
           var showZones = SHOW_ZONES_PLACEHOLDER;
           var showLegend = SHOW_LEGEND_PLACEHOLDER;
@@ -279,6 +290,11 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
           var zoneColors = ZONE_COLORS_PLACEHOLDER;
           var hideExpectedLabels = HIDE_EXPECTED_LABELS_PLACEHOLDER;
           var expectedPointColor = EXPECTED_POINT_COLOR_PLACEHOLDER;
+          var preplaceKnownPoints = PREPLACE_KNOWN_POINTS;
+          var preplaceMystere = PREPLACE_MYSTERE_PLACEHOLDER;
+          var interactive = INTERACTIVE_PLACEHOLDER;
+          var knownPointsAnimate = KNOWN_POINTS_ANIMATE_PLACEHOLDER;
+          var exerciseValidation = EXERCISE_VALIDATION_PLACEHOLDER;
 
           function normalizePoints(obj) {
               if (!obj) return [];
@@ -370,7 +386,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
               }
           }
 
-          // -------- matching helpers that use labeled dicts ----------
+	          // -------- matching helpers that use labeled dicts ----------
           // check coords against expectedPointsA/B; returns {group:'A'|'B', label: 'label'} or null
           function whichMatchCoords(x, y) {
             try {
@@ -395,7 +411,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
             return null;
           }
 
-          var knownPlaced = false;
+	          var knownPlaced = false;
           function drawLineAndZones() {
             if (!lineParams) return;
             try {
@@ -489,9 +505,14 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
             } catch (e) { console.error('drawLineAndZones error', e); }
           }
           
-          function placeKnownPoints() {
-            if (knownPlaced) return;
-            try {
+	          function placeKnownPoints(onComplete) {
+	            if (knownPlaced) return;
+	            try {
+	              function notifyKnownPointsDone() {
+	                try {
+	                  window.parent.postMessage({type:'known_points_done', instance_id: parentInstanceId}, '*');
+	                } catch (e) {}
+	              }
               var addPoint = function(coords, color, label) {
                 var p = board.create('point', coords, {
                   withLabel: true,
@@ -520,23 +541,68 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
                 if (!Object.prototype.hasOwnProperty.call(knownPointsB, label2)) continue;
                 queue.push({coords: knownPointsB[label2], color: matchedColorB, label: '7'});
               }
+
+              function preplaceMysterePoint() {
+                if (!preplaceMystere) return;
+                if (!expectedPointsA || Object.keys(expectedPointsA).length === 0) return;
+                try {
+                  for (var label in expectedPointsA) {
+                    if (!Object.prototype.hasOwnProperty.call(expectedPointsA, label)) continue;
+                    var coords = expectedPointsA[label];
+                    var p0 = board.create('point', coords, {
+                      withLabel: false, size: 6, name: '',
+                      snapToGrid: true, snapSizeX: GRID_STEP, snapSizeY: GRID_STEP
+                    });
+                    if (typeof p0.snapToGrid === 'function') p0.snapToGrid(true);
+                    userPoints.push(p0);
+                    updatePointColorAndLabel(p0);
+                  }
+                  sendPointsToParent();
+                } catch (e) {
+                  console.error('Error preplacing mystere point', e);
+                }
+              }
+
+	              if (!knownPointsAnimate) {
+	                queue.forEach(function(item) {
+	                  addPoint(item.coords, item.color, item.label);
+	                });
+	                drawLineAndZones();
+	                knownPlaced = true;
+	                preplaceMysterePoint();
+	                notifyKnownPointsDone();
+	                if (onComplete) onComplete();
+	                return;
+	              }
+
               var delay = 300;
+
               queue.forEach(function(item, idx) {
                 setTimeout(function() {
                   addPoint(item.coords, item.color, item.label);
                 }, idx * delay);
               });
-              // draw line/zones after the last point
-              setTimeout(function() {
-                drawLineAndZones();
-              }, queue.length * delay + 50);
-              knownPlaced = true;
+
+	              setTimeout(function() {
+	                drawLineAndZones();
+	                knownPlaced = true;
+
+	                if (preplaceMystere) {
+	                  setTimeout(function() { preplaceMysterePoint(); }, 200);
+	                  setTimeout(function() { notifyKnownPointsDone(); }, 260);
+	                } else {
+	                  notifyKnownPointsDone();
+	                }
+
+	                if (onComplete) onComplete();
+	              }, queue.length * delay + 50);
             } catch (e) { console.error('placeKnownPoints error', e); }
           }
 
           // Check if all expected points are visible
           function checkAllExpectedPointsVisible() {
             try {
+              if (!exerciseValidation) return;
               var expectedLabelsA = Object.keys(expectedPointsA);
               var expectedLabelsB = Object.keys(expectedPointsB);
               var allExpectedLabels = expectedLabelsA.concat(expectedLabelsB);
@@ -641,42 +707,59 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
                     }
                     userPoints.splice(idx, 1);
                     sendPointsToParent();
-                    checkAllExpectedPointsVisible();
+                    if (exerciseValidation) checkAllExpectedPointsVisible();
                   }
                 } catch (e) { console.error('auto-delete error', e); }
               }, 2000);
             }
-            checkAllExpectedPointsVisible();
+            if (exerciseValidation) checkAllExpectedPointsVisible();
           }
 
           // initialize board with requested bounding box
-          var xmin = 50, xmax = 165, ymin = 50, ymax = 160;
-          // Try to adapt bounds to expected points when provided
+          // boundingbox = [left, top, right, bottom] so we need top > bottom.
+          // Let expected points or known points guide the bounding box
+          var xmin = 0, xmax = 0, ymin = 0, ymax = 0;
+          // Try to adapt bounds to expected points (or known points if no expected points)
           try {
               var allPts = [];
               normalizePoints(expectedPointsA).forEach(function(p){ allPts.push(p); });
               normalizePoints(expectedPointsB).forEach(function(p){ allPts.push(p); });
-              normalizePoints(knownPointsA).forEach(function(p){ allPts.push(p); });
-              normalizePoints(knownPointsB).forEach(function(p){ allPts.push(p); });
+              // If there are no expected points (ex: display-only with preplaced known points),
+              // use known points for computing bounds, but robustly to avoid a single outlier
+              // stretching the axes too much.
+              if (allPts.length === 0) {
+                  normalizePoints(knownPointsA).forEach(function(p){ allPts.push(p); });
+                  normalizePoints(knownPointsB).forEach(function(p){ allPts.push(p); });
+              }
+
+              function percentile(arr, q) {
+                  if (!arr || arr.length === 0) return null;
+                  var a = arr.slice().sort(function(x, y){ return x - y; });
+                  var idx = (a.length - 1) * q;
+                  var lo = Math.floor(idx);
+                  var hi = Math.ceil(idx);
+                  if (lo === hi) return a[lo];
+                  var h = idx - lo;
+                  return a[lo] * (1 - h) + a[hi] * h;
+              }
+
               if (allPts.length > 0) {
-                  var xs = allPts.map(function(p){ return p[0]; });
-                  var ys = allPts.map(function(p){ return p[1]; });
-                  var minX = Math.min.apply(null, xs);
-                  var maxX = Math.max.apply(null, xs);
-                  var minY = Math.min.apply(null, ys);
-                  var maxY = Math.max.apply(null, ys);
+                  var xs = allPts.map(function(p){ return p[0]; }).filter(function(v){ return typeof v === 'number' && isFinite(v); });
+                  var ys = allPts.map(function(p){ return p[1]; }).filter(function(v){ return typeof v === 'number' && isFinite(v); });
+                  var maxX = percentile(xs, 0.98);
+                  var maxY = percentile(ys, 0.98);
                   var margin = 20;
-                  xmin = Math.max(0, Math.floor(minX - margin));
-                  ymin = Math.max(0, Math.floor(minY - margin));
-                  xmax = Math.ceil(maxX + margin);
-                  ymax = Math.ceil(maxY + margin);
+                  xmin = 0;
+                  ymin = 0;
+                  if (typeof maxX === 'number' && isFinite(maxX)) xmax = Math.max(xmax, Math.ceil(maxX + margin));
+                  if (typeof maxY === 'number' && isFinite(maxY)) ymax = Math.max(ymax, Math.ceil(maxY + margin));
               }
           } catch (e) { /* fallback to defaults */ }
           var xaxisdisplacement = 10;
           
           var board = JXG.JSXGraph.initBoard('box', {
-            boundingbox: [xmin, ymax, xmax, ymin],
-            axis: true,
+            boundingbox: [xmin - xaxisdisplacement, ymax, xmax, ymin - xaxisdisplacement],
+            axis: false,
             showNavigation: false,
             keepaspectratio: keepAspectRatio,
             showCopyright: false,
@@ -686,7 +769,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
           var MINOR_COUNT = 1;
           var GRID_STEP = MAJOR / (MINOR_COUNT + 1);
 
-          var xAxis = board.create('axis', [[xmin+xaxisdisplacement, ymin+5], [xmax, ymin+5]], {
+          var xAxis = board.create('axis', [[0,0],[1,0]], {
             name: '', withLabel: false,
             ticks: {
               insertTicks: false,
@@ -694,7 +777,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
               minorTicks: MINOR_COUNT,
               minorHeight: -1,
               majorHeight: -1,
-              drawZero: false,
+              drawZero: true,
               drawLabels: true,
               label: { offset: [-9, -8], anchorX: 'top' }
             }
@@ -703,7 +786,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
             xAxis.ticks.labels[0].setText('');
           }
 
-          var yAxis = board.create('axis', [[xmin+xaxisdisplacement, ymin+5], [xmin+xaxisdisplacement, ymax]], {
+          var yAxis = board.create('axis', [[0,0],[0,1]], {
             name: '', withLabel: false,
             ticks: {
               insertTicks: false,
@@ -719,6 +802,13 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
 
 	          // store user-created points (and optionally preplaced expected points)
 	          var userPoints = [];
+	          
+	          // Placer les points connus au démarrage si demandé
+	          if (preplaceKnownPoints) {
+	            setTimeout(function() {
+	              placeKnownPoints();
+	            }, 100);
+	          }
 
 	          // Optionnel : préplacer les points du groupe A (ex: A et B en bleu)
 	          if (preplaceGroupA) {
@@ -772,7 +862,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
           }
 
           // On click: delete nearby or create a new snapped point
-          board.on('down', function(evt) {
+          if (interactive) board.on('down', function(evt) {
             try {
               var raw = board.getUsrCoordsOfMouse(evt);
               var nearbyIdx = findNearbyUserPointIndex(raw);
@@ -838,7 +928,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
           });
 
           // during drag send updates (not too chatty)
-          board.on('move', function(evt) {
+          if (interactive) board.on('move', function(evt) {
             if (board.hasMouseDown) sendPointsToParent();
           });
 
@@ -862,6 +952,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
     """
 
     # replacements
+    page = page.replace("INSTANCE_ID_PLACEHOLDER", json.dumps(instance_id))
     page = page.replace("PANEL_H_PX", f"{panel_h}px")
     page = page.replace("LEFT_W_PX", f"{left_w_px}px")
     page = page.replace("HUMAN_TITLE_PLACEHOLDER", html_title)
@@ -887,29 +978,42 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
     page = page.replace("INJECTED_IMG_CSS", img_css_rules)
     page = page.replace("SHOW_LEGEND_PLACEHOLDER", "true" if show_legend else "false")
     page = page.replace("FORCE_ORIGIN_PLACEHOLDER", "true" if force_origin else "false")
+    page = page.replace("PREPLACE_KNOWN_POINTS", "true" if preplace_known_points else "false")
+    page = page.replace("PREPLACE_MYSTERE_PLACEHOLDER", "true" if preplace_mystere else "false")
+    page = page.replace("INTERACTIVE_PLACEHOLDER", "true" if interactive else "false")
+    page = page.replace("KNOWN_POINTS_ANIMATE_PLACEHOLDER", "true" if known_points_animate else "false")
+    page = page.replace("EXERCISE_VALIDATION_PLACEHOLDER", "true" if exercise_validation else "false")
+    page = page.replace(
+        "HIDE_LEFT_PANEL_CSS",
+        ".left { display:none !important; }\n      .container { gap:0; }\n" if hide_left_panel else ""
+    )
 
     page_bytes = page.encode('utf-8')
     page_b64 = base64.b64encode(page_bytes).decode('ascii')
     data_uri = f"data:text/html;base64,{page_b64}"
     iframe_html = f"""
     <div id="{instance_id}-wrapper" style="display:flex; flex-direction:column; align-items:center; gap:8px;">
-      <div id="{instance_id}-status" style="text-align:center; font-weight:bold; min-height:1.5rem;"></div>
+	      <div id="{instance_id}-status" style="text-align:center; font-weight:bold; min-height:1.5rem;{'' if show_status else 'display:none; min-height:0;'}"></div>
       <iframe id="{instance_id}-jsxframe" src="{data_uri}" style="width:{width}px; height:{iframe_height}px; border:none;" sandbox="allow-scripts allow-same-origin"></iframe>
     </div>
     """
 
     listener_script = f"""
     (function(){{
-      const instanceId = {json.dumps(instance_id)};
+	      const instanceId = {json.dumps(instance_id)};
       const statusEl = document.getElementById(instanceId + '-status');
+	      const showStatus = {json.dumps(bool(show_status))};
+	      const checkpointEnabled = {json.dumps(bool(checkpoint_enabled))};
+	      const exerciseValidation = {json.dumps(bool(exercise_validation))};
+	      const autoPassOnKnownPointsDone = {json.dumps(bool(auto_pass_on_known_points_done))};
 
       const checkpointPayload = {checkpoint_payload_json};
-      const checkpointId = (window.mathadata && window.mathadata.checkpoints)
+      const checkpointId = (checkpointEnabled && window.mathadata && window.mathadata.checkpoints)
         ? ('placer_points_' + window.mathadata.checkpoints.hash(checkpointPayload))
         : null;
 
       function setStatus(text, color, italic) {{
-        if (!statusEl) return;
+        if (!statusEl || !showStatus) return;
         statusEl.textContent = text || '';
         statusEl.style.color = color || '';
         statusEl.style.fontStyle = italic ? 'italic' : 'normal';
@@ -941,13 +1045,17 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
 
       let alreadyPassed = false;
 
-      // Si l'exercice a déjà été validé, afficher un message et passer automatiquement.
-      if (checkpointId && window.mathadata && window.mathadata.checkpoints && window.mathadata.checkpoints.check(checkpointId)) {{
-        setStatus('✓ Tu as déjà réussi cet exercice précédemment. Tu peux continuer.', 'green', true);
-        alreadyPassed = true;
-        tryRunPython("set_exercice_droite_carac_ok()");
-        tryPassBreakpoint();
-      }}
+	      // Si l'exercice a déjà été validé, afficher un message et passer automatiquement.
+	      try {{
+	        if (checkpointId && window.mathadata && window.mathadata.checkpoints && window.mathadata.checkpoints.check(checkpointId)) {{
+	          setStatus('✓ Tu as déjà réussi cet exercice précédemment. Tu peux continuer.', 'green', true);
+	          alreadyPassed = true;
+	          tryRunPython("set_exercice_droite_carac_ok()");
+	          tryPassBreakpoint();
+	        }}
+	      }} catch (e) {{
+	        console.warn('Checkpoint check failed, continuing without checkpoint:', e);
+	      }}
 
       var hidden = document.getElementById(instanceId + '_jsx_points_hidden');
       if (!hidden) {{
@@ -968,25 +1076,33 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
             }} else {{
               console.log('jsx_points received (kernel injection not available) — stored in hidden DOM element.');
             }}
-          }} else if (data && data.type === 'all_points_matched') {{
-            if (data.status === true) {{
-              if (!alreadyPassed) {{
-                setStatus('Bravo ! Tu as bien placé les points. Tu peux continuer.', 'green', false);
-                if (checkpointId && window.mathadata && window.mathadata.checkpoints) {{
-                  window.mathadata.checkpoints.save(checkpointId);
-                }}
-                alreadyPassed = true;
-                tryPassBreakpoint();
-              }}
-              tryRunPython("set_exercice_droite_carac_ok()");
-            }} else if (data.status === false) {{
-              tryRunPython("reset_exercice_droite_carac()");
-            }}
-          }}
-        }} catch (err) {{ console.error('Listener error', err); }}
-      }}, false);
-    }})();
-    """
+	          }} else if (exerciseValidation && data && data.type === 'all_points_matched') {{
+	            if (data.status === true) {{
+	              if (!alreadyPassed) {{
+	                setStatus('Bravo ! Tu as bien placé les points. Tu peux continuer.', 'green', false);
+	                try {{
+	                  if (checkpointId && window.mathadata && window.mathadata.checkpoints) {{
+	                    window.mathadata.checkpoints.save(checkpointId);
+	                  }}
+	                }} catch (e) {{
+	                  console.warn('Checkpoint save failed:', e);
+	                }}
+	                alreadyPassed = true;
+	              }}
+	              // Toujours tenter de passer le breakpoint (Basthon/Capytale séquencé)
+	              tryPassBreakpoint();
+	              tryRunPython("set_exercice_droite_carac_ok()");
+	            }} else if (data.status === false) {{
+	              tryRunPython("reset_exercice_droite_carac()");
+	            }}
+	          }}
+	          else if (autoPassOnKnownPointsDone && data && data.type === 'known_points_done' && data.instance_id === instanceId) {{
+	            tryPassBreakpoint();
+	          }}
+	        }} catch (err) {{ console.error('Listener error', err); }}
+	      }}, false);
+	    }})();
+	    """
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message="Consider using IPython.display.IFrame instead")
@@ -997,7 +1113,10 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
 def placer_mystere(html_title="Place le point C", images=None, expected_point=None,
                    known_points_a=None, known_points_b=None,
                    line_params=None, show_zones=False,
-                   image_caption_html=None, show_legend=False, force_origin=False):
+                   image_caption_html=None, show_legend=False, force_origin=False, preplace_known_points=True,
+                    preplace_mystere=False, interactive=True, known_points_animate=True, hide_left_panel=False,
+                    checkpoint_enabled=True, show_status=True, exercise_validation=True,
+                    auto_pass_on_known_points_done=False):
     if expected_point is None:
         expected_point = [0, 0]
     if known_points_a is None:
@@ -1022,6 +1141,15 @@ def placer_mystere(html_title="Place le point C", images=None, expected_point=No
         image_caption_html=image_caption_html,
         show_legend=show_legend,
         force_origin=force_origin,
+        preplace_known_points=preplace_known_points,
+        preplace_mystere=preplace_mystere,
+        interactive=interactive,
+        known_points_animate=known_points_animate,
+        hide_left_panel=hide_left_panel,
+        checkpoint_enabled=checkpoint_enabled,
+        show_status=show_status,
+        exercise_validation=exercise_validation,
+        auto_pass_on_known_points_done=auto_pass_on_known_points_done,
     )
 
 
@@ -1082,7 +1210,617 @@ def meilleures_caracteristiques(custom=True):
 
 
 def placer_2_points():
-    meilleures_caracteristiques(False)
+    reset_exercice_droite_carac()
+
+    # Utiliser les zones exo au lieu de zones hardcodées 
+    zone_1 = getattr(common.challenge, "zone_1_exo", None)
+    zone_2 = getattr(common.challenge, "zone_2_exo", None)
+    
+    if zone_1 is None or zone_2 is None:
+        print_error("Les zones zone_1_exo et zone_2_exo doivent être définies dans le challenge.")
+        return
+    
+    zones = [zone_1, zone_2]
+
+    # Choix des images
+    ids_images_ref = getattr(common.challenge, "ids_images_ref", None)
+    if ids_images_ref is not None:
+        try:
+            ids_images_ref = tuple(ids_images_ref)
+        except Exception:
+            ids_images_ref = None
+
+    if ids_images_ref and len(ids_images_ref) >= 2:
+        id1 = int(ids_images_ref[0])
+        id2 = int(ids_images_ref[1])
+    else:
+        # Fallback : une de chaque classe
+        try:
+            r = common.challenge.r_train
+            classes = common.challenge.classes
+            id1 = int(np.where(r == classes[0])[0][0])
+            id2 = int(np.where(r == classes[1])[0][0])
+        except Exception:
+            id1 = 0
+            id2 = 1
+
+    # Calcul des points caractéristiques (sur image seuillée 0/200/250) 
+    def _seuillage_0_200_250(img):
+        a = np.asarray(img)
+        a = np.clip(a, 0, 255)
+        out = np.empty_like(a, dtype=np.uint8)
+        out[a < 180] = 0
+        out[(a >= 180) & (a < 220)] = 200
+        out[a >= 220] = 250
+        return out
+
+    def _moyenne_zone(img, zone):
+        if zone is None:
+            return 0.0
+        A, B = zone
+        r0, c0 = int(A[0]), int(A[1])
+        r1, c1 = int(B[0]), int(B[1])
+        rmin, rmax = min(r0, r1), max(r0, r1)
+        cmin, cmax = min(c0, c1), max(c0, c1)
+        return float(np.mean(img[rmin:rmax + 1, cmin:cmax + 1]))
+
+    img_a = common.challenge.d_train[id1]
+    img_b = common.challenge.d_train[id2]
+    img_a_t = _seuillage_0_200_250(img_a)
+    img_b_t = _seuillage_0_200_250(img_b)
+
+    x_a = _moyenne_zone(img_a_t, zones[0])
+    y_a = _moyenne_zone(img_a_t, zones[1])
+    x_b = _moyenne_zone(img_b_t, zones[0])
+    y_b = _moyenne_zone(img_b_t, zones[1])
+
+    expected_points_a = {"A": [x_a, y_a]}
+    expected_points_b = {"B": [x_b, y_b]}
+
+    # --- Layout : widget MNIST (gauche) + plan JSXGraph (droite) ---
+    layout_id = uuid.uuid4().hex
+    widget_id = f"{layout_id}-mnist"
+    board_id = f"{layout_id}-board"
+    status_id = f"{layout_id}-status"
+
+    display(HTML(f"""
+    <div id="{layout_id}" class="mathadata-placer2points-layout">
+      <div id="{layout_id}-left" class="mathadata-placer2points-left">
+        <div id="{widget_id}" class="mathadata-mnist-exemples-zones"></div>
+      </div>
+      <div id="{layout_id}-right" class="mathadata-placer2points-right">
+        <div class="title" style="width:100%; text-align:center; font-size:16px; font-weight:700; padding:6px 0;">Placer les 2 points</div>
+        <div id="{status_id}" style="text-align:center; font-weight:bold; min-height:1.5rem; margin-bottom:8px;"></div>
+        <div id="{board_id}" class="jxgbox" style="width:600px; height:434px; border:1px solid #e6e6e6; border-radius:6px; box-sizing:border-box;"></div>
+      </div>
+    </div>
+    """))
+
+    run_js(f"""
+    (function(){{
+      const styleId = "mathadata-style-placer2points";
+      const existing = document.getElementById(styleId);
+      if (existing) existing.remove();
+
+      const s = document.createElement("style");
+      s.id = styleId;
+      s.textContent = `
+        .mathadata-placer2points-layout {{
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+          justify-content: center;
+          flex-wrap: wrap;
+          width: 100%;
+          margin: 0.75rem 0;
+        }}
+        .mathadata-placer2points-left {{
+          flex: 0 0 240px;
+          width: 240px;
+          max-width: 240px;
+        }}
+        .mathadata-placer2points-right {{
+          flex: 1 1 auto;
+          min-width: 600px;
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+        }}
+
+        /* Version compacte du widget MNIST dans ce layout */
+        .mathadata-placer2points-left .mathadata-mnist-exemples-zones-grid {{
+          gap: 0.75rem;
+        }}
+        .mathadata-placer2points-left .mathadata-mnist-exemples-zones-item {{
+          max-width: 120px;
+        }}
+        .mathadata-placer2points-left .mathadata-mnist-exemples-zones-point {{
+          font-size: 1.4rem;
+          line-height: 1.1;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }}
+
+        .mathadata-placer2points-right .title {{
+          width: 100%;
+          text-align: center;
+          font-size: 16px;
+          font-weight: 700;
+          padding: 6px 0;
+        }}
+      `;
+      document.head.appendChild(s);
+    }})(); 
+    """)
+
+    # Rendu du widget avec les zones exo
+    params_widget = {
+        "ids": [id1, id2],
+        "zones": zones,  # Utilise zone_1_exo et zone_2_exo
+        "show_points": True,
+        "show_zones": True,
+        "fontsize": 4,
+        "grid_gap_px": 0,
+        "max_width_px": 120,
+        "show_values": True,
+        "zone_lw": 5,
+        "point_names": ["A", "B"],
+    }
+    params_widget_json = json.dumps(params_widget, cls=NpEncoder)
+    run_js(f"""
+    mathadata.add_observer('{widget_id}', () => {{
+      const el = document.getElementById('{widget_id}');
+      if (!window.mathadata || typeof window.mathadata.afficher_deux_exemples_zones !== "function") {{
+        if (el) {{
+          el.innerHTML = "<div style=\\"font-family:sans-serif;color:#b00020;\\">Erreur : afficher_deux_exemples_zones n'est pas disponible. As-tu bien importé le challenge MNIST ?</div>";
+        }}
+        return;
+      }}
+      window.mathadata.afficher_deux_exemples_zones('{widget_id}', '{params_widget_json}');
+    }});
+    """)
+
+    # Initialisation JSXGraph directement dans le DOM (sans iframe)
+    expected_json_a = json.dumps(expected_points_a, sort_keys=True)
+    expected_json_b = json.dumps(expected_points_b, sort_keys=True)
+    
+    checkpoint_payload = {
+        "type": "placer_caracteristiques",
+        "title": "De l'image au plan",
+        "expected_points_a": expected_points_a,
+        "expected_points_b": expected_points_b,
+    }
+    checkpoint_payload_json = json.dumps(checkpoint_payload, sort_keys=True, ensure_ascii=False)
+    
+    run_js(f"""
+    (function(){{
+      // Capytale/JupyterLite: le JS peut s'exécuter AVANT que l'output HTML soit inséré.
+      // On utilise la même stratégie que les gros widgets: `mathadata.add_observer(...)`.
+      const boardId = {json.dumps(board_id)};
+
+      function boot() {{
+        const boardContainer = document.getElementById(boardId);
+        if (!boardContainer) {{
+          console.error('Container JSXGraph introuvable:', boardId);
+          return;
+        }}
+        // anti double-init (si observer rappelé)
+        if (boardContainer.dataset && boardContainer.dataset.jxgInit === '1') return;
+        if (boardContainer.dataset) boardContainer.dataset.jxgInit = '1';
+
+        // Charger JSXGraph si pas déjà chargé
+        if (typeof JXG === 'undefined') {{
+          const link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = 'https://jsxgraph.org/distrib/jsxgraph.css';
+          document.head.appendChild(link);
+          
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jsxgraph/1.4.0/jsxgraphcore.js';
+          script.onload = function() {{
+            initJSXGraph();
+          }};
+          document.head.appendChild(script);
+        }} else {{
+          initJSXGraph();
+        }}
+      }}
+
+      if (window.mathadata && typeof window.mathadata.add_observer === 'function') {{
+        window.mathadata.add_observer(boardId, boot);
+      }} else {{
+        // Fallback si `mathadata.add_observer` indisponible: retry court
+        (function retry(n) {{
+          if (document.getElementById(boardId)) return boot();
+          if (n <= 0) return console.error('Container JSXGraph introuvable (retry épuisé):', boardId);
+          requestAnimationFrame(() => retry(n - 1));
+        }})(120);
+      }}
+      
+      function initJSXGraph() {{
+        const statusId = {json.dumps(status_id)};
+        const instanceId = {json.dumps(layout_id)};
+        
+        const statusEl = document.getElementById(statusId);
+        const boardContainer = document.getElementById(boardId);
+        
+        if (!boardContainer) {{
+          console.error('Container JSXGraph introuvable:', boardId);
+          return;
+        }}
+        
+        function setStatus(text, color, italic) {{
+          if (!statusEl) return;
+          statusEl.textContent = text || '';
+          statusEl.style.color = color || '';
+          statusEl.style.fontStyle = italic ? 'italic' : 'normal';
+        }}
+        
+        function tryRunPython(code) {{
+          try {{
+            if (window.mathadata && typeof window.mathadata.run_python === 'function') {{
+              window.mathadata.run_python(code);
+              return;
+            }}
+            if (window.Jupyter && Jupyter.notebook && Jupyter.notebook.kernel) {{
+              Jupyter.notebook.kernel.execute(code);
+            }}
+          }} catch (e) {{
+            console.error('tryRunPython error', e);
+          }}
+        }}
+        
+        function tryPassBreakpoint() {{
+          try {{
+            if (window.mathadata && typeof window.mathadata.pass_breakpoint === 'function') {{
+              window.mathadata.pass_breakpoint();
+            }}
+          }} catch (e) {{
+            console.error('tryPassBreakpoint error', e);
+          }}
+        }}
+        
+        const checkpointPayload = {checkpoint_payload_json};
+        const checkpointId = (window.mathadata && window.mathadata.checkpoints)
+          ? ('placer_points_' + window.mathadata.checkpoints.hash(checkpointPayload))
+          : null;
+        
+        let alreadyPassed = false;
+        
+        if (checkpointId && window.mathadata && window.mathadata.checkpoints && window.mathadata.checkpoints.check(checkpointId)) {{
+          setStatus('✓ Tu as déjà réussi cet exercice précédemment. Tu peux continuer.', 'green', true);
+          alreadyPassed = true;
+          tryRunPython("set_exercice_droite_carac_ok()");
+          tryPassBreakpoint();
+        }}
+        
+        // Variables JSXGraph
+        var expectedPointsA = {expected_json_a};
+        var expectedPointsB = {expected_json_b};
+        var preplaceGroupA = false;
+        var matchTol = 3.0;
+        var clickDeleteTol = 0.45;
+        var defaultColor = "#8c1fb4";
+        var matchedColorA = "#4C6EF5";
+        var matchedColorB = "#F6C85F";
+        var keepAspectRatio = false;
+        
+        // Calculer les bornes du graphique à partir des points attendus
+        var xmin = 0, xmax = 165, ymin = 0, ymax = 160;
+        try {{
+          var allPts = [];
+          Object.values(expectedPointsA).forEach(function(p){{ allPts.push(p); }});
+          Object.values(expectedPointsB).forEach(function(p){{ allPts.push(p); }});
+          if (allPts.length > 0) {{
+            var xs = allPts.map(function(p){{ return p[0]; }});
+            var ys = allPts.map(function(p){{ return p[1]; }});
+            var minX = Math.min.apply(null, xs);
+            var maxX = Math.max.apply(null, xs);
+            var minY = Math.min.apply(null, ys);
+            var maxY = Math.max.apply(null, ys);
+            var margin = 20;
+            xmin = Math.max(0, Math.floor(minX - margin));
+            ymin = Math.max(0, Math.floor(minY - margin));
+            xmax = Math.ceil(maxX + margin);
+            ymax = Math.ceil(maxY + margin);
+          }}
+        }} catch (e) {{ console.error('Error calculating bounds:', e); }}
+        
+        var xaxisdisplacement = 10;
+        var yaxisdisplacement = 5;
+        var MAJOR = 10;
+        var MINOR_COUNT = 1;
+        var GRID_STEP = MAJOR / (MINOR_COUNT + 1);
+        
+        // Initialiser le board JSXGraph
+        var board = JXG.JSXGraph.initBoard(boardId, {{
+          boundingbox: [xmin - xaxisdisplacement, ymax, xmax, ymin- yaxisdisplacement],
+          axis: false,
+          showNavigation: false,
+          keepaspectratio: keepAspectRatio,
+          showCopyright: false,
+        }});
+        
+        var xAxis = board.create('axis',
+          [[0, 0], [1, 0]],
+        {{
+          withLabel: false,
+          ticks: {{
+            insertTicks: false,
+            ticksDistance: MAJOR,
+            minorTicks: MINOR_COUNT,
+            minorHeight: -1,
+            majorHeight: -1,
+            drawZero: true,
+            drawLabels: true,
+            label: {{ offset: [-9, -8], anchorX: 'top' }}
+          }}
+        }});
+        
+        var yAxis = board.create('axis',
+          [[0, 0], [0, 1]],
+        {{
+          withLabel: false,
+          ticks: {{
+            insertTicks: false,
+            ticksDistance: MAJOR,
+            minorTicks: MINOR_COUNT,
+            drawZero: false,
+            minorHeight: -1,
+            majorHeight: -1,
+            drawLabels: true,
+            label: {{ offset: [-2, 0], anchorX: 'right' }}
+          }}
+        }});
+        
+        var userPoints = [];
+        
+        // Fonction pour vérifier si les coordonnées correspondent à un point attendu
+        function whichMatchCoords(x, y) {{
+          try {{
+            for (var label in expectedPointsA) {{
+              if (!Object.prototype.hasOwnProperty.call(expectedPointsA, label)) continue;
+              var ex = expectedPointsA[label][0], ey = expectedPointsA[label][1];
+              if (Math.abs(x - ex) <= matchTol && Math.abs(y - ey) <= matchTol) {{
+                return {{group: 'A', label: label}};
+              }}
+            }}
+            for (var label2 in expectedPointsB) {{
+              if (!Object.prototype.hasOwnProperty.call(expectedPointsB, label2)) continue;
+              var bx = expectedPointsB[label2][0], by = expectedPointsB[label2][1];
+              if (Math.abs(x - bx) <= matchTol && Math.abs(y - by) <= matchTol) {{
+                return {{group: 'B', label: label2}};
+              }}
+            }}
+          }} catch (e) {{
+            console.error('whichMatchCoords error', e);
+          }}
+          return null;
+        }}
+        
+        // Fonction pour envoyer les points à Python
+        function sendPointsToPython() {{
+          try {{
+            var pts = [];
+            userPoints.forEach(function(pt) {{
+              if (board.objectsList.indexOf(pt) !== -1) {{
+                pts.push([ +pt.X().toFixed(6), +pt.Y().toFixed(6) ]);
+              }}
+            }});
+            var code = "jsx_points = " + JSON.stringify(pts) + "\\n";
+            // même logique que le reste: privilégier `mathadata.run_python` (Capytale/JupyterLite)
+            tryRunPython(code);
+          }} catch (err) {{
+            console.error('sendPointsToPython error', err);
+          }}
+        }}
+        
+        // Fonction pour vérifier si tous les points attendus sont placés
+        function checkAllExpectedPointsVisible() {{
+          try {{
+            var expectedLabelsA = Object.keys(expectedPointsA);
+            var expectedLabelsB = Object.keys(expectedPointsB);
+            var allExpectedLabels = expectedLabelsA.concat(expectedLabelsB);
+            
+            var matchedLabels = {{}};
+            userPoints.forEach(function(pt) {{
+              if (board.objectsList.indexOf(pt) === -1) return;
+              var x = pt.X(), y = pt.Y();
+              var res = whichMatchCoords(x, y);
+              if (res) {{
+                matchedLabels[res.label] = true;
+              }}
+            }});
+            
+            var allVisible = allExpectedLabels.every(function(label) {{
+              return matchedLabels[label] === true;
+            }});
+            
+            console.log('Expected labels:', allExpectedLabels);
+            console.log('Matched labels:', Object.keys(matchedLabels));
+            console.log('All visible:', allVisible);
+            
+            if (allVisible) {{
+              console.log('All expected points are correctly placed!');
+              if (!alreadyPassed) {{
+                setStatus('Bravo ! Tu as bien placé les points. Tu peux continuer.', 'green', false);
+                if (checkpointId && window.mathadata && window.mathadata.checkpoints) {{
+                  window.mathadata.checkpoints.save(checkpointId);
+                }}
+                alreadyPassed = true;
+                tryPassBreakpoint();
+              }}
+              tryRunPython("set_exercice_droite_carac_ok()");
+            }} else {{
+              tryRunPython("reset_exercice_droite_carac()");
+            }}
+          }} catch (e) {{
+            console.error('checkAllExpectedPointsVisible error', e);
+          }}
+        }}
+        
+        // Fonction pour mettre à jour la couleur et le label d'un point
+        function updatePointColorAndLabel(pt) {{
+          var x = pt.X(), y = pt.Y();
+          var res = whichMatchCoords(x, y);
+          if (res && res.group === 'A') {{
+            pt.setAttribute({{
+              fillColor: matchedColorA,
+              strokeColor: matchedColorA,
+              name: res.label,
+              withLabel: true,
+              fixed: true,
+              frozen: true,
+              highlight: false,
+              showInfobox: false
+            }});
+            pt.isMatched = true;
+          }} else if (res && res.group === 'B') {{
+            pt.setAttribute({{
+              fillColor: matchedColorB,
+              strokeColor: matchedColorB,
+              name: res.label,
+              withLabel: true,
+              fixed: true,
+              frozen: true,
+              highlight: false,
+              showInfobox: false
+            }});
+            pt.isMatched = true;
+          }} else {{
+            pt.setAttribute({{
+              fillColor: defaultColor,
+              strokeColor: defaultColor,
+              name: 'Mauvais point',
+              withLabel: true,
+              fixed: false,
+              frozen: false
+            }});
+            pt.isMatched = false;
+            setTimeout(function() {{
+              try {{
+                var idx = userPoints.indexOf(pt);
+                if (idx !== -1) {{
+                  if (board.objectsList.indexOf(pt) !== -1) {{
+                    board.removeObject(pt);
+                  }}
+                  userPoints.splice(idx, 1);
+                  sendPointsToPython();
+                  checkAllExpectedPointsVisible();
+                }}
+              }} catch (e) {{ console.error('auto-delete error', e); }}
+            }}, 2000);
+          }}
+          checkAllExpectedPointsVisible();
+        }}
+        
+        // Fonction pour trouver un point proche
+        function dist(a, b) {{
+          var dx = a[0] - b[0];
+          var dy = a[1] - b[1];
+          return Math.sqrt(dx*dx + dy*dy);
+        }}
+        
+        function findNearbyUserPointIndex(coords) {{
+          for (var i = 0; i < userPoints.length; i++) {{
+            var pt = userPoints[i];
+            if (board.objectsList.indexOf(pt) === -1) continue;
+            var pcoords = [pt.X(), pt.Y()];
+            if (dist(coords, pcoords) <= clickDeleteTol) return i;
+          }}
+          return -1;
+        }}
+        
+        // Gestion des clics sur le board
+        board.on('down', function(evt) {{
+          try {{
+            var raw = board.getUsrCoordsOfMouse(evt);
+            var nearbyIdx = findNearbyUserPointIndex(raw);
+            if (nearbyIdx !== -1) {{
+              var p = userPoints[nearbyIdx];
+              if (p && p.isMatched) {{
+                return;
+              }}
+              if (board.objectsList.indexOf(p) !== -1) board.removeObject(p);
+              userPoints.splice(nearbyIdx, 1);
+              sendPointsToPython();
+              return;
+            }}
+            
+            var snapped = (function(coords) {{
+              var x = Math.round(coords[0]);
+              var y = Math.round(coords[1]);
+              var bb = board.getBoundingBox();
+              var xmin = bb[0], ymax = bb[1], xmax = bb[2], ymin = bb[3];
+              if (x < xmin) x = xmin;
+              if (x > xmax) x = xmax;
+              if (y < ymin) y = ymin;
+              if (y > ymax) y = ymax;
+              return [x, y];
+            }})(raw);
+            
+            var p = board.create('point', snapped, {{
+              withLabel: false, size: 6, name: '',
+              snapToGrid: true, snapSizeX: GRID_STEP, snapSizeY: GRID_STEP
+            }});
+            if (typeof p.snapToGrid === 'function') p.snapToGrid(true);
+            
+            userPoints.push(p);
+            updatePointColorAndLabel(p);
+            
+            p.on('drag', function() {{
+              try {{
+                if (this.isMatched) {{ return; }}
+                var s = (function(coords) {{
+                  var x = Math.round(coords[0]);
+                  var y = Math.round(coords[1]);
+                  var bb = board.getBoundingBox();
+                  var xmin = bb[0], ymax = bb[1], xmax = bb[2], ymin = bb[3];
+                  if (x < xmin) x = xmin;
+                  if (x > xmax) x = xmax;
+                  if (y < ymin) y = ymin;
+                  if (y > ymax) y = ymax;
+                  return [x, y];
+                }})([this.X(), this.Y()]);
+                this.moveTo(JXG.COORDS_BY_USER, s);
+                updatePointColorAndLabel(this);
+                sendPointsToPython();
+              }} catch (e) {{ console.error('drag error', e); }}
+            }});
+            
+            p.on('up', function() {{
+              try {{
+                if (this.isMatched) {{ return; }}
+                var s = (function(coords) {{
+                  var x = Math.round(coords[0]);
+                  var y = Math.round(coords[1]);
+                  var bb = board.getBoundingBox();
+                  var xmin = bb[0], ymax = bb[1], xmax = bb[2], ymin = bb[3];
+                  if (x < xmin) x = xmin;
+                  if (x > xmax) x = xmax;
+                  if (y < ymin) y = ymin;
+                  if (y > ymax) y = ymax;
+                  return [x, y];
+                }})([this.X(), this.Y()]);
+                this.moveTo(JXG.COORDS_BY_USER, s);
+                updatePointColorAndLabel(this);
+                sendPointsToPython();
+              }} catch (e) {{ console.error('up error', e); }}
+            }});
+            
+            sendPointsToPython();
+          }} catch (err) {{ console.error('Error handling down event', err); }}
+        }});
+        
+        board.on('move', function(evt) {{
+          if (board.hasMouseDown) sendPointsToPython();
+        }});
+        
+        boardContainer.tabIndex = 0;
+        console.log('JSXGraph initialisé avec succès dans le conteneur direct');
+      }}
+    }})();
+    """)
 
 
 ### --------------------------------- ###
@@ -3329,7 +4067,7 @@ def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banqu
             if success_msg is None:
                 pretty_print_success("Bravo, tu peux passer à la suite.")
             else:
-                print(success_msg)
+                pretty_print_success(success_msg)
             pass_breakpoint()
 
     calculer_score(algorithme, cb=cb,
@@ -3555,6 +4293,83 @@ validation_carac = MathadataValidateVariables({
     'y_2': None
 }, function_validation=function_validation_carac)
 
+def _mnist_seuillage_0_200_250_np(img):
+    a = np.asarray(img)
+    a = np.clip(a, 0, 255)
+    out = np.empty_like(a, dtype=np.uint8)
+    out[a < 180] = 0
+    out[(a >= 180) & (a < 220)] = 200
+    out[a >= 220] = 250
+    return out
+
+
+def _mnist_mean_zone_inclusive(arr, zone):
+    (r0, c0), (r1, c1) = zone
+    rmin, rmax = min(int(r0), int(r1)), max(int(r0), int(r1))
+    cmin, cmax = min(int(c0), int(c1)), max(int(c0), int(c1))
+    return float(np.mean(arr[rmin:rmax + 1, cmin:cmax + 1]))
+
+def _mnist_zone_dims(zone):
+    (r0, c0), (r1, c1) = zone
+    rmin, rmax = min(int(r0), int(r1)), max(int(r0), int(r1))
+    cmin, cmax = min(int(c0), int(c1)), max(int(c0), int(c1))
+    n_rows = (rmax - rmin + 1)
+    n_cols = (cmax - cmin + 1)
+    return n_rows, n_cols, n_rows * n_cols
+
+
+def _mnist_ref_id_for_class(target):
+    ids_images_ref = getattr(common.challenge, "ids_images_ref", None)
+    if ids_images_ref is not None:
+        try:
+            ids_images_ref = tuple(ids_images_ref)
+        except Exception:
+            ids_images_ref = None
+
+    r = getattr(common.challenge, "r_train", None)
+    if ids_images_ref and r is not None:
+        for idx in ids_images_ref:
+            try:
+                i = int(idx)
+                if int(r[i]) == int(target):
+                    return i
+            except Exception:
+                continue
+
+    if r is None:
+        return None
+    try:
+        return int(np.where(np.asarray(r) == int(target))[0][0])
+    except Exception:
+        return None
+
+
+def _mnist_expected_carac_exo_for_ref_image():
+    zone_x = getattr(common.challenge, "zone_1_exo", None)
+    zone_y = getattr(common.challenge, "zone_2_exo", None)
+    if zone_x is None or zone_y is None:
+        # Fallback (anciens notebooks) : zones de référence génériques
+        zone_x = getattr(common.challenge, "zone_1_ref", None)
+        zone_y = getattr(common.challenge, "zone_2_ref", None)
+    if zone_x is None or zone_y is None:
+        return None
+
+    classes = getattr(common.challenge, "classes", (2, 7))
+    target = int(classes[1]) if classes and len(classes) >= 2 else 7
+    ref_id = _mnist_ref_id_for_class(target)
+    if ref_id is None:
+        return None
+
+    d = getattr(common.challenge, "d_train", None)
+    if d is None:
+        return None
+
+    img = d[ref_id]
+    img_t = _mnist_seuillage_0_200_250_np(img)
+    expected_x = _mnist_mean_zone_inclusive(img_t, zone_x)
+    expected_y = _mnist_mean_zone_inclusive(img_t, zone_y)
+    return expected_x, expected_y, ref_id
+
 
 def function_validation_carac_x(errors, answers):
     x_7 = answers["x_7"]
@@ -3568,7 +4383,10 @@ def function_validation_carac_x(errors, answers):
     if isinstance(x_7, str):
         errors.append('x_7 doit être un nombre, pas un texte (enlève les guillemets).')
         return False
-    if isinstance(x_7, (list, tuple, dict, np.ndarray)):
+    if isinstance(x_7, tuple) and len(x_7) == 2:
+        errors.append("Pour écrire un nombre décimal, utilise un point : par exemple `183.3` (pas `183,3`).")
+        return False
+    if isinstance(x_7, (list, dict, np.ndarray, tuple)):
         errors.append("x_7 doit être un nombre (pas une liste/tuple).")
         return False
     # bool est un sous-type de int -> on l'exclut explicitement
@@ -3586,14 +4404,45 @@ def function_validation_carac_x(errors, answers):
         errors.append("x_7 doit être un nombre.")
         return False
 
-    if compare(x, 100):
+    expected = _mnist_expected_carac_exo_for_ref_image()
+    if expected is None:
+        errors.append("Erreur interne : impossible de calculer la valeur attendue (images/zones de référence manquantes).")
+        return False
+    expected_x, _, _ref_id = expected
+
+    # Tolérance : si la moyenne attendue est décimale, on accepte un arrondi au dixième / à l'unité.
+    expected_is_integerish = abs(expected_x - round(expected_x)) <= 0.05
+    tol = 0.05 if expected_is_integerish else 0.55
+    if abs(x - expected_x) <= tol:
         return True
 
     if x < 0 or x > 255:
-        errors.append("x_7 doit être compris entre 0 et 255 (moyenne de pixels).")
+        # Si l'élève donne une valeur >255, c'est presque toujours la somme des pixels (oubli de la division).
+        try:
+            zone_x = getattr(common.challenge, "zone_1_exo", None) or getattr(common.challenge, "zone_1_ref", None)
+            if zone_x is not None:
+                n_rows, n_cols, n = _mnist_zone_dims(zone_x)
+                errors.append(
+                    f"Ta réponse est trop grande pour une moyenne de pixels (elle doit être entre 0 et 255). "
+                    f"As-tu oublié de diviser par le nombre total de pixels du rectangle ({n_rows}×{n_cols}={n}) ?"
+                )
+            else:
+                errors.append("Ta réponse est trop grande pour une moyenne de pixels : elle doit être comprise entre 0 et 255.")
+        except Exception:
+            errors.append("x_7 doit être compris entre 0 et 255 (moyenne de pixels).")
         return False
 
-    errors.append("Ce n'est pas la bonne valeur , réessaie encore.")
+    try:
+        zone_x = getattr(common.challenge, "zone_1_exo", None) or getattr(common.challenge, "zone_1_ref", None)
+        if zone_x is not None:
+            n_rows, n_cols, n = _mnist_zone_dims(zone_x)
+            errors.append(
+                "Ce n'est pas la bonne valeur. Calcule la moyenne des pixels du rectangle rouge, pour l'image de 7."
+            )
+        else:
+            errors.append("Ce n'est pas la bonne valeur. Recompte bien les pixels du rectangle et calcule la moyenne.")
+    except Exception:
+        errors.append("Ce n'est pas la bonne valeur. Réessaie encore.")
     return False
 
 
@@ -3601,6 +4450,24 @@ validation_carac_x = MathadataValidateVariables(
     {"x_7": None},
     function_validation=function_validation_carac_x,
     success="Bravo, tu peux passer à la suite.",
+    get_tips=lambda: (lambda _z: [
+        {
+            'seconds': 15,
+            'trials': 1,
+            'operator': 'OR',
+            'tip': (
+                f"Commence par compter le nombre total de pixels du rectangle : {_z[0]} lignes × {_z[1]} colonnes = ? "
+            )
+        },
+        {
+            'seconds': 30,
+            'trials': 2,
+            'operator': 'OR',
+            'tip': (
+                "Tu peux compter combien de pixels valent 200 et combien valent 250, puis faire la somme et diviser par le total."
+            )
+        },
+    ])(_mnist_zone_dims(getattr(common.challenge, "zone_1_exo", None) or getattr(common.challenge, "zone_1_ref", None) or [(0, 0), (0, 0)])),
 )
 
 def function_validation_carac_y(errors, answers):
@@ -3615,7 +4482,10 @@ def function_validation_carac_y(errors, answers):
     if isinstance(y_7, str):
         errors.append('y_7 doit être un nombre, pas un texte (enlève les guillemets).')
         return False
-    if isinstance(y_7, (list, tuple, dict, np.ndarray)):
+    if isinstance(y_7, tuple) and len(y_7) == 2:
+        errors.append("Pour écrire un nombre décimal, utilise un point : par exemple `12.5` (pas `12,5`).")
+        return False
+    if isinstance(y_7, (list, dict, np.ndarray, tuple)):
         errors.append("y_7 doit être un nombre (pas une liste/tuple).")
         return False
     # bool est un sous-type de int -> on l'exclut explicitement
@@ -3633,14 +4503,43 @@ def function_validation_carac_y(errors, answers):
         errors.append("y_7 doit être un nombre.")
         return False
 
-    if compare(y, 0):
+    expected = _mnist_expected_carac_exo_for_ref_image()
+    if expected is None:
+        errors.append("Erreur interne : impossible de calculer la valeur attendue (images/zones de référence manquantes).")
+        return False
+    _, expected_y, _ref_id = expected
+
+    expected_is_integerish = abs(expected_y - round(expected_y)) <= 0.05
+    tol = 0.05 if expected_is_integerish else 0.55
+    if abs(y - expected_y) <= tol:
         return True
 
     if y < 0 or y > 255:
-        errors.append("y_7 doit être compris entre 0 et 255 (moyenne de pixels).")
+        try:
+            zone_y = getattr(common.challenge, "zone_2_exo", None) or getattr(common.challenge, "zone_2_ref", None)
+            if zone_y is not None:
+                n_rows, n_cols, n = _mnist_zone_dims(zone_y)
+                errors.append(
+                    f"Ta réponse est trop grande pour une moyenne de pixels (elle doit être entre 0 et 255). "
+                    f"As-tu oublié de diviser par le nombre total de pixels du rectangle ({n_rows}×{n_cols}={n}) ?"
+                )
+            else:
+                errors.append("Ta réponse est trop grande pour une moyenne de pixels : elle doit être comprise entre 0 et 255.")
+        except Exception:
+            errors.append("y_7 doit être compris entre 0 et 255 (moyenne de pixels).")
         return False
 
-    errors.append("Ce n'est pas la bonne valeur , réessaie encore.")
+    try:
+        zone_y = getattr(common.challenge, "zone_2_exo", None) or getattr(common.challenge, "zone_2_ref", None)
+        if zone_y is not None:
+            n_rows, n_cols, n = _mnist_zone_dims(zone_y)
+            errors.append(
+                "Ce n'est pas la bonne valeur. Calcule la moyenne des pixels du rectangle bleu, pour l'image de 7."
+            )
+        else:
+            errors.append("Ce n'est pas la bonne valeur. Recompte bien les pixels du rectangle et calcule la moyenne.")
+    except Exception:
+        errors.append("Ce n'est pas la bonne valeur. Réessaie encore.")
     return False
 
 
@@ -3648,6 +4547,24 @@ validation_carac_y = MathadataValidateVariables(
     {"y_7": None},
     function_validation=function_validation_carac_y,
     success="Bravo, tu peux passer à la suite.",
+    get_tips=lambda: (lambda _z: [
+        {
+            'seconds': 15,
+            'trials': 1,
+            'operator': 'OR',
+            'tip': (
+                f"Commence par compter le nombre total de pixels du rectangle : {_z[0]} lignes × {_z[1]} colonnes = ? "
+            )
+        },
+        {
+            'seconds': 30,
+            'trials': 2,
+            'operator': 'OR',
+            'tip': (
+                "Vérifie bien que tu prends les pixels du rectangle bleu (caractéristique y). "
+            )
+        },
+    ])(_mnist_zone_dims(getattr(common.challenge, "zone_2_exo", None) or getattr(common.challenge, "zone_2_ref", None) or [(0, 0), (0, 0)])),
 )
 
 def set_exercice_droite_carac_ok():

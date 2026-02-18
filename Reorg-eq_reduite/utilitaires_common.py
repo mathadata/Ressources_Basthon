@@ -3321,7 +3321,7 @@ run_js("""
                 data: {
                     labels: t_values,  // Assuming t_values is already a JavaScript array
                     datasets: [{
-                        label: "Erreur d'entrainement",
+                        label: "Erreur d'entraînement",
                         data: scores_array,  // Assuming scores_array is already a JavaScript array
                         backgroundColor: 'rgba(75, 192, 192, 0.2)',
                         borderColor: 'rgba(75, 192, 192, 1)',
@@ -6136,7 +6136,8 @@ run_js('''
       const btn = document.createElement('div');
       btn.className = 'mathadata-stepbar__item';
       btn.setAttribute('data-step-index', String(idx));
-      btn.textContent = String(idx);
+      // Affichage 0-indexé (But du TP = 0, Images numériques = 1, ...)
+      btn.textContent = String(Math.max(0, Number(idx) - 1));
 
       // Toujours grisé par défaut (sera coloré lors de l'activation)
       btn.style.backgroundColor = '#d9d9d9';

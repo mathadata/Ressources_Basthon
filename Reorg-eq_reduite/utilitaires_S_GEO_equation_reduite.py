@@ -47,6 +47,26 @@ new_steps_mnist_equ_red = {
 ## pas optimal car affiche quand même la base config
 common.init_stepbar(new_steps_mnist_equ_red)
 
+# Stepbar plus compacte pour ce notebook (largeur + tailles de police)
+run_js(r"""
+(function(){
+  const styleId = "mathadata-style-stepbar-mnist-equ-red";
+  const existing = document.getElementById(styleId);
+  if (existing) existing.remove();
+
+  const s = document.createElement("style");
+  s.id = styleId;
+  s.textContent = `
+    #stepbar.mathadata-stepbar__container { width: 180px; }
+    #stepbar .mathadata-stepbar__backdrop { width: 180px; padding: 16px 0; }
+    #stepbar .mathadata-stepbar__labelHard { font-size: 14px; line-height: 1.15; }
+    #stepbar .mathadata-stepbar__itemRow { padding: 0 10px; }
+    #stepbar .mathadata-stepbar__item { width: 50px; height: 50px; flex: 0 0 50px; }
+  `;
+  document.head.appendChild(s);
+})();
+""")
+
 def tracer_20_points_droite(slider_p=False, slider_m=False, show_eq=False):
     afficher_separation_line(show_slider_p=slider_p, show_slider_m=slider_m, show_equation=show_eq)
 
@@ -103,13 +123,29 @@ def _mystere_data():
     return known_a, known_b
 
 
-def _mystere_exo(show_zones=False, line_params=None):
+def _mystere_exo(
+    show_zones=False,
+    line_params=None,
+    preplace_mystere=False,
+    interactive=True,
+    known_points_animate=True,
+    preplace_known_points=True,
+    hide_left_panel=False,
+    html_title="Place le point C",
+    checkpoint_enabled=True,
+    show_status=True,
+    exercise_validation=True,
+    auto_pass_on_known_points_done=False,
+):
     k2 = (40, 60)
+
     images = [_mystere_placeholder()]
     known_a, known_b = _mystere_data()
+
     caption_html = f"<div style='font-weight:600;'>X = {k2[0]} , Y = {k2[1]}</div>"
+
     placer_mystere(
-        html_title="Place le point C",
+        html_title=html_title,
         images=images,
         expected_point=[k2[0], k2[1]],
         known_points_a=known_a,
@@ -119,16 +155,50 @@ def _mystere_exo(show_zones=False, line_params=None):
         image_caption_html=caption_html,
         show_legend=True,
         force_origin=True,
+        preplace_known_points=preplace_known_points,
+        preplace_mystere=preplace_mystere,
+        interactive=interactive,
+        known_points_animate=known_points_animate,
+        hide_left_panel=hide_left_panel,
+        checkpoint_enabled=checkpoint_enabled,
+        show_status=show_status,
+        exercise_validation=exercise_validation,
+        auto_pass_on_known_points_done=auto_pass_on_known_points_done,
     )
+
+def mystere_qcm():
     create_qcm({
-        'question': "À ton avis, l'image C correspond à quelle classe ?",
-        'choices': ["2", "7"],
-        'answer': "2",
-    })
+            'question': " À ton avis, l’image de caractéristique $C$ correspond à quel chiffre ?",
+            'choices': ["2", "7"],
+            'answer': "2",
+        })
+
+
+def points_connus_animation():
+    known_a, known_b = _mystere_data()
+    placer_caracteristiques(
+        html_title="Points caractéristiques (exemples)",
+        images=[],
+        expected_points_a={},
+        expected_points_b={},
+        known_points_a=known_a,
+        known_points_b=known_b,
+        show_legend=True,
+        force_origin=True,
+        preplace_known_points=True,
+        interactive=False,
+        known_points_animate=True,
+        checkpoint_enabled=False,
+        show_status=False,
+        exercise_validation=False,
+        auto_pass_on_known_points_done=True,
+        hide_left_panel=True,
+        keep_aspect_ratio=False,
+    )
 
 
 def exercice_image_mystere():
-    _mystere_exo(show_zones=False)
+    _mystere_exo(show_zones=False, interactive=True, known_points_animate=False, preplace_mystere=False)
 
 
 def exercice_image_mystere_droite():
@@ -136,7 +206,18 @@ def exercice_image_mystere_droite():
         'm': common.challenge.droite_20_points['m'],
         'p': common.challenge.droite_20_points['p'],
     }
-    _mystere_exo(show_zones=True, line_params=line_params)
+    _mystere_exo(
+        show_zones=True,
+        line_params=line_params,
+        preplace_mystere=True,
+        interactive=False,
+        known_points_animate=False,
+        preplace_known_points=True,
+        checkpoint_enabled=False,
+        show_status=False,
+        exercise_validation=False,
+        auto_pass_on_known_points_done=True,
+    )
 
 
 def tracer_10_points_droite(dataset=common.challenge.dataset_10_points, labels=common.challenge.labels_10_points):
@@ -173,15 +254,10 @@ def tracer_points_droite(id_content=None, display_value="range", carac=None, ini
     global last_tracer_points_id
     last_tracer_points_id = id_content
 
-    btn_m_minus = f'<button onclick="const el = document.getElementById(\'{id_content}-input-m\'); el.stepDown(); el.dispatchEvent(new Event(\'input\'))" style="width: 30px; height: 30px; cursor: pointer;">-</button>' if display_value == "range" else ""
-    btn_m_plus = f'<button onclick="const el = document.getElementById(\'{id_content}-input-m\'); el.stepUp(); el.dispatchEvent(new Event(\'input\'))" style="width: 30px; height: 30px; cursor: pointer;">+</button>' if display_value == "range" else ""
-    btn_p_minus = f'<button onclick="const el = document.getElementById(\'{id_content}-input-p\'); el.stepDown(); el.dispatchEvent(new Event(\'input\'))" style="width: 30px; height: 30px; cursor: pointer;">-</button>' if display_value == "range" else ""
-    btn_p_plus = f'<button onclick="const el = document.getElementById(\'{id_content}-input-p\'); el.stepUp(); el.dispatchEvent(new Event(\'input\'))" style="width: 30px; height: 30px; cursor: pointer;">+</button>' if display_value == "range" else ""
-
-    btn_m_minus = f'<button onclick="const el = document.getElementById(\'{id_content}-input-m\'); el.stepDown(); el.dispatchEvent(new Event(\'input\'))" style="width: 30px; height: 30px; cursor: pointer;">-</button>' if display_value == "range" else ""
-    btn_m_plus = f'<button onclick="const el = document.getElementById(\'{id_content}-input-m\'); el.stepUp(); el.dispatchEvent(new Event(\'input\'))" style="width: 30px; height: 30px; cursor: pointer;">+</button>' if display_value == "range" else ""
-    btn_p_minus = f'<button onclick="const el = document.getElementById(\'{id_content}-input-p\'); el.stepDown(); el.dispatchEvent(new Event(\'input\'))" style="width: 30px; height: 30px; cursor: pointer;">-</button>' if display_value == "range" else ""
-    btn_p_plus = f'<button onclick="const el = document.getElementById(\'{id_content}-input-p\'); el.stepUp(); el.dispatchEvent(new Event(\'input\'))" style="width: 30px; height: 30px; cursor: pointer;">+</button>' if display_value == "range" else ""
+    btn_m_minus = f'<button id="{id_content}-btn-m-minus" onclick="const el = document.getElementById(\'{id_content}-input-m\'); el.stepDown(); el.dispatchEvent(new Event(\'input\'))" style="width: 30px; height: 30px; cursor: pointer;">-</button>' if display_value == "range" else ""
+    btn_m_plus = f'<button id="{id_content}-btn-m-plus" onclick="const el = document.getElementById(\'{id_content}-input-m\'); el.stepUp(); el.dispatchEvent(new Event(\'input\'))" style="width: 30px; height: 30px; cursor: pointer;">+</button>' if display_value == "range" else ""
+    btn_p_minus = f'<button id="{id_content}-btn-p-minus" onclick="const el = document.getElementById(\'{id_content}-input-p\'); el.stepDown(); el.dispatchEvent(new Event(\'input\'))" style="width: 30px; height: 30px; cursor: pointer;">-</button>' if display_value == "range" else ""
+    btn_p_plus = f'<button id="{id_content}-btn-p-plus" onclick="const el = document.getElementById(\'{id_content}-input-p\'); el.stepUp(); el.dispatchEvent(new Event(\'input\'))" style="width: 30px; height: 30px; cursor: pointer;">+</button>' if display_value == "range" else ""
 
     display(HTML(f'''
         <div id="{id_content}-container" style="{'visibility:hidden;' if initial_hidden else ''} max-width: 900px; margin: 0 auto;">
@@ -374,11 +450,7 @@ def grid_search_animate(id_content=None, readonly=True, nb_faux=10, create_graph
         print_error("Aucun graphe actif. Exécute d'abord tracer_points_droite().")
         return
 
-    m_min, m_max = m_range
-    p_min, p_max = p_range
     delay_ms = 1000
-    m_step = 0.1
-    p_step = 0.1
 
     pairs = grid_search_pairs(target_error, m_range, p_range, custom=custom, nb_faux=nb_faux)
 
@@ -398,6 +470,10 @@ def grid_search_animate(id_content=None, readonly=True, nb_faux=10, create_graph
       function tryStart() {{
         var mInput = document.getElementById(id + "-input-m");
         var pInput = document.getElementById(id + "-input-p");
+        var mMinus = document.getElementById(id + "-btn-m-minus");
+        var mPlus  = document.getElementById(id + "-btn-m-plus");
+        var pMinus = document.getElementById(id + "-btn-p-minus");
+        var pPlus  = document.getElementById(id + "-btn-p-plus"); 
         var scoreEl = document.getElementById(id + "-score");
         var container = document.getElementById(id + "-container");
         if (!mInput || !pInput || !scoreEl) {{
@@ -413,6 +489,13 @@ def grid_search_animate(id_content=None, readonly=True, nb_faux=10, create_graph
           pInput.style.pointerEvents = 'none';
           mInput.style.opacity = '0.5';
           pInput.style.opacity = '0.5';
+          [mMinus, mPlus, pMinus, pPlus].forEach(btn => {{
+            if (btn) {{
+                btn.disabled = true;
+                btn.style.pointerEvents = 'none';
+                btn.style.opacity = '0.3';
+            }}
+        }});
         }}
 
         function step() {{
@@ -476,6 +559,8 @@ def animate_pairs(id_content, pairs, readonly=True, delay_ms=1000):
           pInput.readOnly = true;
           mInput.style.pointerEvents = 'none';
           pInput.style.pointerEvents = 'none';
+          mInput.style.opacity = '0.5';
+          pInput.style.opacity = '0.5';
         }}
 
         function step() {{
@@ -538,31 +623,38 @@ def tracer_droite(ax, m, p, x_min, x_max, color='black'):
 
     # Display the equation of the line
     equation = f'$y = {m}x {"+" if p >= 0 else "-"} {abs(p)}$'
-    ax.text(20, 3, equation, color=color, verticalalignment='top', horizontalalignment='left')
+    ax.text(15, 3, equation, color=color, verticalalignment='top', horizontalalignment='left')
 
+## Point de référence    
+pointC1 = (20, 40)
+pointC2 = (30, 10)
+## Points à classer
+pointM1 = (20, 30)
+pointM2 = (30, 25)
 
-def tracer_exercice_classification(display_m_coords=False, point_b=False):
+def tracer_exercice_classification(display_point_coords=False, point_name="M1"):
+
+    ## Droite de référence (mx + p)
     m = 0.5
     p = 20
 
-    x = [pointA[0]]
-    y = [pointA[1]]
-
-    if point_b:
-        x = [pointB[0]]
-        y = [pointB[1]]
+    x = [pointC1[0]]
+    y = [pointC1[1]]
+    if point_name == "M2":
+        x = [pointC2[0]]
+        y = [pointC2[1]]
 
     y += [m * k1 + p for k1 in x]
     x += x
 
-    fig, ax = create_graph(figsize=(figw_full * 0.50, figw_full * 0.50))
+    _, ax = create_graph(figsize=(figw_full * 0.50, figw_full * 0.50))
 
     # Définir les borne inf et sup des axes. On veut que le point (0,0) soit toujours sur le graphe
     x_min, x_max = min(0, np.min(x) - 2, np.min(y) - 2), max(0, np.max(x) + 2, np.max(y) + 2)
     x_max *= 1.2
-    mk2 = m * pointA[0] + p
-    if point_b:
-        mk2 = m * pointB[0] + p
+    mk2 = m * pointC1[0] + p
+    if point_name == "M2":
+        mk2 = m * pointC2[0] + ps
 
     ax.set_xlim((x_min, x_max))
     ax.set_ylim((x_min, x_max))
@@ -575,12 +667,12 @@ def tracer_exercice_classification(display_m_coords=False, point_b=False):
     ax.set_yticks([round(mk2, 2)])
     # remove the y axis ticks and labels
     ax.yaxis.set_ticks_position('none')
-    ax.yaxis.set_ticklabels(['à calculer'])
+    ax.yaxis.set_ticklabels(['$y_M = ?$'])
 
-    labels = [f'A({pointA[0]}, {pointA[1]})', f'M({pointA[0]}, {round(mk2, 2)})' if display_m_coords else 'M(20, ?)']
-    if point_b:
-        labels = [f'B({pointB[0]}, {pointB[1]})',
-                  f'N({pointB[0]}, {round(mk2, 2)})' if display_m_coords else 'N(30, ?)']
+    labels = [f'C({pointC1[0]}, {pointC1[1]})', f'M({pointM1[0]}, {round(mk2, 2)})' if display_point_coords else f'M(30, ?)']
+    if point_name == "M2":
+        labels = [f'C({pointC2[0]}, {pointC2[1]})',
+                  f'M({pointM2[0]}, {round(mk2, 2)})' if display_point_coords else 'M(30, ?)']
     colors = ['C4', 'C3']
     for i in range(len(labels)):
         # Draw a dotted line from the point to the x-axis
@@ -610,30 +702,36 @@ def exercice_calcul_au_dessus():
 
 def qcm_dessus():
     create_qcm({
-        'question': "Est-ce que l\'ordonnée du point M est plus petite ou plus grande que l\'ordonnée du point A ?",
+        'question': "Est-ce que l\'ordonnée du point M est plus petite ou plus grande que l\'ordonnée du point C ?",
         'choices': ['plus petite', 'plus grande'],
         'answer': 'plus petite',
+    })
+
+def qcm_dessous():
+    create_qcm({
+        'question': "Cette fois, l'ordonnée de M est-elle plus grande ou plus petit que celle de C ? En déduire le chiffre de l'image associée au point M",
+        'choices': ["l'image est un 2, car le point C est au-dessus de la droite", "l'image est un 7, car le point C est en dessous de la droite"],
+        'answer': "l'image est un 7, car le point C est en dessous de la droite",
     })
 
 
 def qcm_dessus_dessous():
     create_qcm({
         'question': (
-            "Pour savoir si un point A(x<sub>A</sub>, y<sub>A</sub>) est au-dessus ou en-dessous d’une droite d’équation y = mx + p, que faut-il comparer ?"
+            "Pour savoir où se trouve un point C(x<sub>C</sub>, y<sub>C</sub>) par rapport à une droite d’équation y = mx + p :<br/><br/>"
+            "Si y<sub>C</sub> &gt; m x<sub>C</sub> + p, alors le point C est..."
         ),
         'choices': [
-            "Comparer y<sub>A</sub> avec px<sub>A</sub> + m.",
-            "Comparer x<sub>A</sub> avec y<sub>A</sub>.",
-            "Comparer y<sub>A</sub> avec mx<sub>A</sub> + p.",
-            "Comparer x<sub>A</sub> avec l'abscisse d'un point quelconque sur la droite."
+            "Au-dessus de la droite.",
+            "En-dessous de la droite.",
         ],
-        'answer': "Comparer y<sub>A</sub> avec mx<sub>A</sub> + p.",
+        'answer': "Au-dessus de la droite.",
         'multiline': True,
     })
 
 
 def exercice_calcul_au_dessous():
-    tracer_exercice_classification(point_b=True)
+    tracer_exercice_classification(point_name="M2")
     plt.show()
     try:
         plt.close()
@@ -652,7 +750,7 @@ def afficher_customisation(enable_optimizer=False):
     display_id = uuid.uuid4().hex
     button_html = f'''
         <div style="display:flex; justify-content:center; align-items:center; margin: 10px 0;">
-            <button id="{display_id}-grid-btn" class="mathadata-button mathadata-button--primary" style="max-width: 300px; width: 100%;">Optimiser mon erreur</button>
+            <button id="{display_id}-grid-btn" class="mathadata-button mathadata-button--primary" style="max-width: 300px; width: 100%;">Lancer la recherche de la meilleure droite</button>
         </div>
     ''' if enable_optimizer else ''
     
@@ -678,26 +776,55 @@ def afficher_customisation(enable_optimizer=False):
                     if (el) el.style.visibility = visible ? 'visible' : 'hidden';
                 }}
 
-                function applyBase() {{
-                    const mInput = document.getElementById('{display_id}-input-m');
-                    const pInput = document.getElementById('{display_id}-input-p');
-                    if (!mInput || !pInput) return;
-                    mInput.value = base.m;
-                    pInput.value = base.p;
-                    mInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    pInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                }}
+	                function applyBase() {{
+	                    const mInput = document.getElementById('{display_id}-input-m');
+	                    const pInput = document.getElementById('{display_id}-input-p');
+	                    if (!mInput || !pInput) return;
+	                    mInput.value = base.m;
+	                    pInput.value = base.p;
+	                    mInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+	                    pInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+	                }}
 
-                window.mathadata.on_custom_update = () => {{
-                    window.mathadata.run_python('update_custom()', (points) => {{
-                        mathadata.update_points('{display_id}', {{points}});
-                        document.getElementById('{display_id}-container').style.visibility = 'visible';
-                        applyBase();
-                        setLineVisible(true);
-                        setScoreVisible(false);
-                        if (msgEl) {{ msgEl.textContent = ''; msgEl.style.visibility = 'hidden'; }}
-                    }});
-                }}
+	                function disableInputsOnce() {{
+	                    const mInput = document.getElementById('{display_id}-input-m');
+	                    const pInput = document.getElementById('{display_id}-input-p');
+	                    if (!mInput || !pInput) return false;
+	                    mInput.readOnly = true;
+	                    pInput.readOnly = true;
+	                    mInput.disabled = true;
+	                    pInput.disabled = true;
+	                    mInput.style.pointerEvents = 'none';
+	                    pInput.style.pointerEvents = 'none';
+	                    mInput.style.opacity = '0.5';
+	                    pInput.style.opacity = '0.5';
+	                    return true;
+	                }}
+
+	                function ensureInputsDisabled() {{
+	                    let attempts = 0;
+	                    const timer = setInterval(() => {{
+	                        attempts += 1;
+	                        if (disableInputsOnce() || attempts > 50) {{
+	                            clearInterval(timer);
+	                        }}
+	                    }}, 100);
+	                }}
+
+	                // In optimizer mode, keep m/p inputs disabled at all times.
+	                ensureInputsDisabled();
+
+	                window.mathadata.on_custom_update = () => {{
+	                    window.mathadata.run_python('update_custom()', (points) => {{
+	                        mathadata.update_points('{display_id}', {{points}});
+	                        document.getElementById('{display_id}-container').style.visibility = 'visible';
+	                        applyBase();
+	                        ensureInputsDisabled();
+	                        setLineVisible(true);
+	                        setScoreVisible(false);
+	                        if (msgEl) {{ msgEl.textContent = ''; msgEl.style.visibility = 'hidden'; }}
+	                    }});
+	                }}
 
                 const btn = document.getElementById('{display_id}-grid-btn');
                 if (btn) {{
@@ -770,16 +897,18 @@ def afficher_customisation(enable_optimizer=False):
             if (!mInput || !pInput) return;
             mInput.readOnly = true;
             pInput.readOnly = true;
+            mInput.style.opacity = '0.5';
+            pInput.style.opacity = '0.5';
             mInput.style.pointerEvents = 'none';
             pInput.style.pointerEvents = 'none';
             window.mathadata._gridAnimating = true;
 
             let idx = 0;
-            function finish() {{
-                const msgEl = document.getElementById(id + '-grid-msg');
-                const target = window.mathadata._grid_target;
-                const m = Number(mInput.value).toFixed(1);
-                const p = Number(pInput.value).toFixed(1);
+	            function finish() {{
+	                const msgEl = document.getElementById(id + '-grid-msg');
+	                const target = window.mathadata._grid_target;
+	                const m = Number(mInput.value).toFixed(1);
+	                const p = Number(pInput.value).toFixed(1);
                 const eVal = errors.length ? errors[errors.length - 1] : null;
                 if (msgEl && eVal !== null) {{
                     const eTxt = Number(eVal).toFixed(2);
@@ -794,10 +923,10 @@ def afficher_customisation(enable_optimizer=False):
                 newValues.a = Number(mInput.value)
                 newValues.b = -1
                 newValues.c = Number(pInput.value)
-           
-                mathadata.run_python(`set_input_values('${{JSON.stringify(newValues)}}')`)
-                
-            }}
+	           
+	                mathadata.run_python(`set_input_values('${{JSON.stringify(newValues)}}')`)
+	                
+	            }}
 
             function step() {{
                 if (idx >= pairs.length) return finish();
@@ -873,6 +1002,9 @@ def calculer_score_droite(ensure_draw=True):
         test_d = common.challenge.d_train_test
     calculer_score_droite_geo(validate=common.challenge.objectif_score_droite, ensure_draw=ensure_draw, test_d=test_d, test_r=test_r)
 
+def verifier_score_droite():
+    calculer_score_droite_geo(custom=False, validate=common.challenge.objectif_score_droite, error_msg=None, banque=False, success_msg="Super tu as trouvé une bonne droite de séparation !",
+                              animation=False, ensure_draw=False, test_r = None, test_d = None)
 
 def calculer_score_custom_droite(ensure_draw=True):
     test_r = None
@@ -1647,35 +1779,36 @@ validation_execution_point_droite_dessous = MathadataValidate(success="")
 
 
 def function_validation_equation(errors, answers):
-    m = geo.input_values['m']
-    p = geo.input_values['p']
-    ordonnee_m = answers['ordonnee_M']
+    m = 0.5
+    p = 20
+    y_m = answers['y_M']
 
-    if not (isinstance(ordonnee_m, (int, float))):
+    if not (isinstance(y_m, (int, float))):
         errors.append(
             "Les coordonnées de M doivent être des nombres. "
             "Pour les nombres à virgule, utilise un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
 
-    if ordonnee_m != m * pointA[0] + p:
+    if y_m != m * pointM1[0] + p:
         errors.append("L'ordonnée de M n'est pas correcte.")
+        errors.append(f"m={m}, p={p}")
         return False
 
     return True
 
 
 def function_validation_equation_b(errors, answers):
-    m = geo.input_values['m']
-    p = geo.input_values['p']
-    ordonnee_m = answers['ordonnee_N']
+    m = 0.5
+    p = 20
+    y_m = answers['y_M']
 
-    if not (isinstance(ordonnee_m, (int, float))):
+    if not (isinstance(y_m, (int, float))):
         errors.append(
             "Les coordonnées de M doivent être des nombres. "
             "Pour les nombres à virgule, utilise un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
 
-    if ordonnee_m != m * pointB[0] + p:
+    if y_m != m * pointM2[0] + p:
         errors.append("L'ordonnée de M n'est pas correcte.")
         return False
 
@@ -1796,7 +1929,7 @@ def function_validation_pente(errors, answers):
 
 
 validation_question_equation = MathadataValidateVariables({
-    'ordonnee_M': None},
+    'y_M': None},
     tips=[
         {
             'seconds': 20,
@@ -1815,16 +1948,16 @@ validation_question_equation = MathadataValidateVariables({
     ],
     function_validation=function_validation_equation)
 validation_question_equation_dessous = MathadataValidateVariables({
-    'ordonnee_N': None
+    'y_M': None
 },
     tips=[
         {
             'seconds': 20,
-            'tip': 'Retrouvez l\'ordonnée de N en remplaçant x par x_N dans l\'équation de la droite.'
+            'tip': 'Retrouvez l\'ordonnée de M en remplaçant x par x_M dans l\'équation de la droite.'
         },
         {
             'trials': 3,
-            'tip': 'Retrouvez l\'ordonnée de N en remplaçant x par x_N = 30 dans l\'équation de la droite.'
+            'tip': 'Retrouvez l\'ordonnée de M en remplaçant x par x_M = 30 dans l\'équation de la droite.'
         },
         {
             'seconds': 30,
