@@ -23,7 +23,7 @@ new_steps_mnist_equ_red = {
         'color': 'rgb(250,181,29)',
     },
     'data': {
-        'name': 'Image numériques',
+        'name': 'Images numériques',
         'color': 'rgb(244,167,198)',
     },
     'carac': {
@@ -39,7 +39,7 @@ new_steps_mnist_equ_red = {
         'color': 'rgb(62,178,136)',
     },
     'custom': {
-        'name': 'Ta caractéristique',
+        'name': 'Tes caractéristiques',
         'color': 'rgb(20,129,173)',
     },
 }
