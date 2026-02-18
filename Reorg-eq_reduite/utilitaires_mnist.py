@@ -118,6 +118,10 @@ d_train[23][7, 6] = 0
 d_train[23][7, 9] = 0
 d_train[23][9, 8] = 0
 
+# Modifier l'image 9
+d_train[9][6, 10] = 240
+d_train[9][20, 21] = 200
+
 # 10 images en tableau format 3x3
 d_train_simple = [
     [[195, 195, 195], [0, 190, 1], [190, 0, 0]],
@@ -2980,6 +2984,8 @@ run_js(r"""
     // - 180 <= v < 220 -> 200
     // - 220 <= v <=255 -> 250
     // + clip dans [0;255]
+    //
+    // Exception (dev) : v == 240 reste 240 (pour permettre de “marquer” un pixel sans qu'il soit ramené à 250).
     // ---------------------------------------------------------------------
     window.mathadata.mnist_seuillage_0_200_250 = (img) => {
         if (!Array.isArray(img) || img.length === 0 || !Array.isArray(img[0])) {
@@ -2997,6 +3003,7 @@ run_js(r"""
 
                 if (v < 180) oRow[c] = 0;
                 else if (v < 220) oRow[c] = 200;
+                else if (v === 240) oRow[c] = 240;
                 else oRow[c] = 250;
             }
             out[r] = oRow;

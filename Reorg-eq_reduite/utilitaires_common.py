@@ -6122,7 +6122,14 @@ run_js('''
       if (!this.container) return;
       const computedRight = window.getComputedStyle(this.container).right;
       const isCollapsed = parseInt(computedRight) < 0;
-      this.container.style.right = isCollapsed ? '0px' : '-240px';
+
+      // Calculer dynamiquement le décalage à appliquer
+      const backdrop = this.container.querySelector('.mathadata-stepbar__backdrop');
+      const tabWidth = this.collapseButton ? this.collapseButton.offsetWidth : 30; // largeur de l'onglet visible
+      const panelWidth = backdrop ? backdrop.offsetWidth : (this.container.offsetWidth || 240);
+      const hiddenRight = -(panelWidth - tabWidth); // garder l'onglet visible
+
+      this.container.style.right = isCollapsed ? '0px' : `${hiddenRight}px`;
 
       // Faire pivoter l'icône du bouton
       if (this.collapseButton) {

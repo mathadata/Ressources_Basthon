@@ -80,7 +80,8 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
                             checkpoint_enabled=True, show_status=True, exercise_validation=True,
                             auto_pass_on_known_points_done=False,
                             match_tolerance=0.35, click_delete_tolerance=0.45,
-                            hide_left_panel=False, instance_id=None):
+                            hide_left_panel=False, instance_id=None,
+                            known_points_order=None):
     """
     Render the JSXGraph iframe in a Jupyter notebook cell and show a 2x2 image grid
     to the left. Accepts expected_points_A and expected_points_B as dicts:
@@ -150,6 +151,11 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
         zone_colors = {"above": "rgba(76,110,245,0.15)", "below": "rgba(246,200,95,0.15)"}
     known_json_a = json.dumps(known_points_a, sort_keys=True)
     known_json_b = json.dumps(known_points_b, sort_keys=True)
+    # Optionnelle : séquence d'apparition des points connus pour l'animation
+    known_queue = None
+    if known_points_order:
+        known_queue = known_points_order
+    known_queue_json = json.dumps(known_queue) if known_queue is not None else "null"
     expected_color_json = json.dumps(expected_point_color) if expected_point_color is not None else "null"
     line_json = json.dumps(line_params) if line_params is not None else "null"
     zones_json = json.dumps(zone_colors)
@@ -318,6 +324,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
           var defaultColor = "DEFAULT_COLOR_PLACEHOLDER";
           var matchedColorA = "MATCHED_COLOR_A_PLACEHOLDER";
           var matchedColorB = "MATCHED_COLOR_B_PLACEHOLDER";
+          var knownQueue = KNOWN_QUEUE_PLACEHOLDER;
 
           var images = IMAGES_PLACEHOLDER || [null, null, null, null];
           var imageCaptionHtml = IMAGE_CAPTION_PLACEHOLDER;
@@ -533,13 +540,28 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
                 }
               };
               var queue = [];
-              for (var label in knownPointsA) {
-                if (!Object.prototype.hasOwnProperty.call(knownPointsA, label)) continue;
-                queue.push({coords: knownPointsA[label], color: matchedColorA, label: '2'});
-              }
-              for (var label2 in knownPointsB) {
-                if (!Object.prototype.hasOwnProperty.call(knownPointsB, label2)) continue;
-                queue.push({coords: knownPointsB[label2], color: matchedColorB, label: '7'});
+              if (knownQueue && Array.isArray(knownQueue) && knownQueue.length > 0) {
+                // Utiliser la séquence d'apparition fournie par Python
+                knownQueue.forEach(function(item) {
+                  if (!item || !item.group || !item.key) return;
+                  var src = (item.group === 'A') ? knownPointsA : knownPointsB;
+                  if (!src || !Object.prototype.hasOwnProperty.call(src, item.key)) return;
+                  var coords = src[item.key];
+                  if (!coords) return;
+                  var color = (item.group === 'A') ? matchedColorA : matchedColorB;
+                  var labelText = (item.group === 'A') ? '2' : '7';
+                  queue.push({coords: coords, color: color, label: labelText});
+                });
+              } else {
+                // Comportement par défaut : tous les A puis tous les B
+                for (var label in knownPointsA) {
+                  if (!Object.prototype.hasOwnProperty.call(knownPointsA, label)) continue;
+                  queue.push({coords: knownPointsA[label], color: matchedColorA, label: '2'});
+                }
+                for (var label2 in knownPointsB) {
+                  if (!Object.prototype.hasOwnProperty.call(knownPointsB, label2)) continue;
+                  queue.push({coords: knownPointsB[label2], color: matchedColorB, label: '7'});
+                }
               }
 
               function preplaceMysterePoint() {
@@ -973,6 +995,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
     page = page.replace("DEFAULT_COLOR_PLACEHOLDER", default_color)
     page = page.replace("MATCHED_COLOR_A_PLACEHOLDER", matched_color_a)
     page = page.replace("MATCHED_COLOR_B_PLACEHOLDER", matched_color_b)
+    page = page.replace("KNOWN_QUEUE_PLACEHOLDER", known_queue_json)
     page = page.replace("IMAGES_PLACEHOLDER", images_json)
     page = page.replace("IMAGE_CAPTION_PLACEHOLDER", json.dumps(image_caption_html or ""))
     page = page.replace("INJECTED_IMG_CSS", img_css_rules)
@@ -985,7 +1008,7 @@ def placer_caracteristiques(html_title="Calcul des caractéristiques", left_widt
     page = page.replace("EXERCISE_VALIDATION_PLACEHOLDER", "true" if exercise_validation else "false")
     page = page.replace(
         "HIDE_LEFT_PANEL_CSS",
-        ".left { display:none !important; }\n      .container { gap:0; }\n" if hide_left_panel else ""
+        ".left { display:none !important; }\n      .container { gap:0;justify-content:center; }  .right { width:513px !important; height:333px !important; flex:none; }\n" if hide_left_panel else ""
     )
 
     page_bytes = page.encode('utf-8')
@@ -1251,7 +1274,10 @@ def placer_2_points():
         out = np.empty_like(a, dtype=np.uint8)
         out[a < 180] = 0
         out[(a >= 180) & (a < 220)] = 200
-        out[a >= 220] = 250
+        # Exception (dev) : conserver 240 tel quel (ne pas le ramener à 250)
+        out[(a >= 220) & (a <= 239)] = 250
+        out[a == 240] = 240
+        out[a > 240] = 250
         return out
 
     def _moyenne_zone(img, zone):
@@ -4299,7 +4325,10 @@ def _mnist_seuillage_0_200_250_np(img):
     out = np.empty_like(a, dtype=np.uint8)
     out[a < 180] = 0
     out[(a >= 180) & (a < 220)] = 200
-    out[a >= 220] = 250
+    # Exception (dev) : conserver 240 tel quel (ne pas le ramener à 250)
+    out[(a >= 220) & (a <= 239)] = 250
+    out[a == 240] = 240
+    out[a > 240] = 250
     return out
 
 

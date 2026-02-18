@@ -90,6 +90,17 @@ def qcm_ordonnee_origine():
     })
 
 
+def qcm_train_test_proche():
+    create_qcm({
+        'question': "Pourquoi le pourcentage d’erreur sur les images de test est-il proche du pourcentage d’erreur sur les images d’entraînement ?",
+        'choices': [
+            "Car ce sont les mêmes images.",
+            "Car ce sont des images du même type, mais différentes (elles n’ont pas été utilisées pendant l’entraînement).",
+        ],
+        'answer': "Car ce sont des images du même type, mais différentes (elles n’ont pas été utilisées pendant l’entraînement).",
+    })
+
+
 def qcm_pente():
     create_qcm({
         'question': 'Quelle droite a un coefficient directeur négatif ?',
@@ -112,15 +123,39 @@ def _mystere_placeholder():
 
 
 def _mystere_data():
+    
+    # Sélectionne des points connus dans le même ordre que la banque classique.
+    # On parcourt d_train / r_train dans l'ordre naturel et on retient jusqu'à 20 exemples de chaque classe (2 puis 7) pour construire les dictionnaires known_points_a / known_points_b, ainsi qu'une séquence d'apparition pour l'animation.
+    
     r = common.challenge.r_train
     d = common.challenge.d_train
-    idxs_2 = list(np.where(r == 2)[0])[:20]
-    idxs_7 = list(np.where(r == 7)[0])[:20]
-    points_2 = [common.challenge.deux_caracteristiques(d[i]) for i in idxs_2]
-    points_7 = [common.challenge.deux_caracteristiques(d[i]) for i in idxs_7]
-    known_a = {f"A{i+1}": [float(points_2[i][0]), float(points_2[i][1])] for i in range(len(points_2))}
-    known_b = {f"B{i+1}": [float(points_7[i][0]), float(points_7[i][1])] for i in range(len(points_7))}
-    return known_a, known_b
+
+    max_per_class = 20
+    count_2 = 0
+    count_7 = 0
+
+    known_a = {}
+    known_b = {}
+    sequence = []  # liste de dicts {'group': 'A'/'B', 'key': 'A1'/'B3', ...}
+
+    for i, label in enumerate(r):
+        if label == 2 and count_2 < max_per_class:
+            key = f"A{count_2 + 1}"
+            coords = common.challenge.deux_caracteristiques(d[i])
+            known_a[key] = [float(coords[0]), float(coords[1])]
+            sequence.append({'group': 'A', 'key': key})
+            count_2 += 1
+        elif label == 7 and count_7 < max_per_class:
+            key = f"B{count_7 + 1}"
+            coords = common.challenge.deux_caracteristiques(d[i])
+            known_b[key] = [float(coords[0]), float(coords[1])]
+            sequence.append({'group': 'B', 'key': key})
+            count_7 += 1
+
+        if count_2 >= max_per_class and count_7 >= max_per_class:
+            break
+
+    return known_a, known_b, sequence
 
 
 def _mystere_exo(
@@ -140,9 +175,9 @@ def _mystere_exo(
     k2 = (40, 60)
 
     images = [_mystere_placeholder()]
-    known_a, known_b = _mystere_data()
+    known_a, known_b, _ = _mystere_data()
 
-    caption_html = f"<div style='font-weight:600;'>X = {k2[0]} , Y = {k2[1]}</div>"
+    caption_html = f"<div style='font-weight:600;'>x<sub>C</sub> = {k2[0]} ; y<sub>C</sub> = {k2[1]}</div>"
 
     placer_mystere(
         html_title=html_title,
@@ -175,7 +210,7 @@ def mystere_qcm():
 
 
 def points_connus_animation():
-    known_a, known_b = _mystere_data()
+    known_a, known_b, order = _mystere_data()
     placer_caracteristiques(
         html_title="Points caractéristiques (exemples)",
         images=[],
@@ -183,6 +218,7 @@ def points_connus_animation():
         expected_points_b={},
         known_points_a=known_a,
         known_points_b=known_b,
+        known_points_order=order,
         show_legend=True,
         force_origin=True,
         preplace_known_points=True,
@@ -654,7 +690,7 @@ def tracer_exercice_classification(display_point_coords=False, point_name="M1"):
     x_max *= 1.2
     mk2 = m * pointC1[0] + p
     if point_name == "M2":
-        mk2 = m * pointC2[0] + ps
+        mk2 = m * pointC2[0] + p
 
     ax.set_xlim((x_min, x_max))
     ax.set_ylim((x_min, x_max))
@@ -669,7 +705,7 @@ def tracer_exercice_classification(display_point_coords=False, point_name="M1"):
     ax.yaxis.set_ticks_position('none')
     ax.yaxis.set_ticklabels(['$y_M = ?$'])
 
-    labels = [f'C({pointC1[0]}, {pointC1[1]})', f'M({pointM1[0]}, {round(mk2, 2)})' if display_point_coords else f'M(30, ?)']
+    labels = [f'C({pointC1[0]}, {pointC1[1]})', f'M({pointM1[0]}, {round(mk2, 2)})' if display_point_coords else f'M(20, ?)']
     if point_name == "M2":
         labels = [f'C({pointC2[0]}, {pointC2[1]})',
                   f'M({pointM2[0]}, {round(mk2, 2)})' if display_point_coords else 'M(30, ?)']
@@ -750,7 +786,9 @@ def afficher_customisation(enable_optimizer=False):
     display_id = uuid.uuid4().hex
     button_html = f'''
         <div style="display:flex; justify-content:center; align-items:center; margin: 10px 0;">
-            <button id="{display_id}-grid-btn" class="mathadata-button mathadata-button--primary" style="max-width: 300px; width: 100%;">Lancer la recherche de la meilleure droite</button>
+            <button id="{display_id}-grid-btn" class="mathadata-button mathadata-button--primary" style="max-width: 300px; width: 100%;" disabled title="Sélectionne des zones avant de lancer la recherche">
+                Lancer la recherche de la meilleure droite
+            </button>
         </div>
     ''' if enable_optimizer else ''
     
@@ -823,6 +861,8 @@ def afficher_customisation(enable_optimizer=False):
 	                        setLineVisible(true);
 	                        setScoreVisible(false);
 	                        if (msgEl) {{ msgEl.textContent = ''; msgEl.style.visibility = 'hidden'; }}
+                            const btn = document.getElementById('{display_id}-grid-btn');
+                            if (btn) btn.disabled = false;
 	                    }});
 	                }}
 
@@ -913,8 +953,8 @@ def afficher_customisation(enable_optimizer=False):
                 if (msgEl && eVal !== null) {{
                     const eTxt = Number(eVal).toFixed(2);
                     msgEl.textContent = (eVal <= target)
-                      ? `Meilleur couple trouvé : m=${{m}}, p=${{p}} (erreur = ${{eTxt}}%)`
-                      : `Meilleur couple trouvé : m=${{m}}, p=${{p}} (erreur = ${{eTxt}}%). Objectif ${{target}}% non atteignable avec ces zones.`;
+                      ? `Couple minimisant l’erreur : m=${{m}}, p=${{p}} (erreur = ${{eTxt}}%)`
+                      : `Couple minimisant l’erreur : m=${{m}}, p=${{p}} (erreur = ${{eTxt}}%). Objectif ${{target}}% non atteignable avec ces zones.`;
                     msgEl.style.visibility = 'visible';
                 }}
                 window.mathadata._gridAnimating = false;
