@@ -1,7 +1,9 @@
-from IPython.display import display  # Pour afficher des DataFrames avec display(df)
-import pandas as pd
+import base64
+import math
+import mimetypes
 import os
 import sys
+import warnings
 
 try:
     from sklearn.linear_model import LogisticRegression
@@ -32,7 +34,6 @@ def tracer_2_points():
     c_train = [deux_caracteristiques(d) for d in data]
 
     id = uuid.uuid4().hex
-    display(HTML(f'<canvas id="{id}"></canvas>'))
 
     params = {
         'd1': data[0],
@@ -49,7 +50,10 @@ def tracer_2_points():
     A_true = [params['x1'], params['y1']]
     B_true = [params['x2'], params['y2']]
 
-    run_js(f"setTimeout(() => window.mathadata.tracer_2_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
+    run_js(
+        f"mathadata.add_observer('{id}', () => window.mathadata.tracer_2_points('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
+
+    display(HTML(f'<canvas id="{id}"></canvas>'))
 
     df = pd.DataFrame()
     labels = ['Point A :', 'Point B :']
@@ -62,11 +66,1994 @@ def tracer_2_points():
     return
 
 
+### PLACER 2 POINTS ###
+
+def placer_caracteristiques(html_title="Calcul des caractéristiques", left_width=None, images=None,
+                            expected_points_a=None, expected_points_b=None, preplace_points_a=False,
+                            known_points_a=None, known_points_b=None,
+                            line_params=None, show_zones=False,
+                            zone_colors=None, panel_w=None, panel_h=None, left_ratio=None,
+                            hide_expected_labels=False, expected_point_color=None,
+                            keep_aspect_ratio=True,
+                            image_caption_html=None, show_legend=False, force_origin=False, 
+                            preplace_known_points=False, preplace_mystere=False,
+                            interactive=True, known_points_animate=True,
+                            checkpoint_enabled=True, show_status=True, exercise_validation=True,
+                            auto_pass_on_known_points_done=False,
+                            match_tolerance=0.35, click_delete_tolerance=0.45,
+                            hide_left_panel=False, instance_id=None,
+                            known_points_order=None):
+    """
+    Render the JSXGraph iframe in a Jupyter notebook cell and show a 2x2 image grid
+    to the left. Accepts expected_points_A and expected_points_B as dicts:
+      e.g. expected_points_A = {'A':[120,90], 'B':[135,105]}
+    When a placed point matches (within match_tolerance) one of those, the point
+    is colored with the group's matched color and the label is shown.
+    """
+
+    # --- defaults (now dictionaries) ---
+    if expected_points_a is None:
+        expected_points_a = {"A": [2, 3], "B": [10, 12]}
+    if expected_points_b is None:
+        expected_points_b = {"C": [5, 5], "D": [7, 8]}
+
+    matched_color_a = "#4C6EF5"
+    matched_color_b = "#F6C85F"
+    default_color = "#8c1fb4"
+
+    width = 830 if panel_w is None else int(panel_w)
+    panel_h = 370 if panel_h is None else int(panel_h)
+
+    if left_ratio is None:
+        left_ratio = 0.35
+
+    match_tolerance = float(match_tolerance)
+    click_delete_tolerance = float(click_delete_tolerance)
+
+    image_mode = "contain"
+    # normalize images list to length 4
+    if images is None:
+        images = [None, None, None, None]
+    else:
+        images = list(images)[:4] + [None] * max(0, 4 - len(images))
+
+    if instance_id is None:
+        instance_id = uuid.uuid4().hex
+    else:
+        instance_id = str(instance_id)
+
+    def to_data_uri_if_local(src):
+        if src is None:
+            return None
+        if isinstance(src, str) and src.startswith("data:"):
+            return src
+        if isinstance(src, str) and (src.startswith("http://") or src.startswith("https://")):
+            return src
+        if isinstance(src, str) and os.path.exists(src) and os.path.isfile(src):
+            mime, _ = mimetypes.guess_type(src)
+            mime = mime or "application/octet-stream"
+            with open(src, "rb") as f:
+                b = f.read()
+            return f"data:{mime};base64," + base64.b64encode(b).decode("ascii")
+        return src
+
+    images_prepared = [to_data_uri_if_local(i) for i in images]
+    images_json = json.dumps(images_prepared)
+
+    # pass the dicts through to JS as objects
+    expected_json_a = json.dumps(expected_points_a, sort_keys=True)
+    expected_json_b = json.dumps(expected_points_b, sort_keys=True)
+
+    if known_points_a is None:
+        known_points_a = {}
+    if known_points_b is None:
+        known_points_b = {}
+    if zone_colors is None:
+        zone_colors = {"above": "rgba(76,110,245,0.15)", "below": "rgba(246,200,95,0.15)"}
+    known_json_a = json.dumps(known_points_a, sort_keys=True)
+    known_json_b = json.dumps(known_points_b, sort_keys=True)
+    # Optionnelle : séquence d'apparition des points connus pour l'animation
+    known_queue = None
+    if known_points_order:
+        known_queue = known_points_order
+    known_queue_json = json.dumps(known_queue) if known_queue is not None else "null"
+    expected_color_json = json.dumps(expected_point_color) if expected_point_color is not None else "null"
+    line_json = json.dumps(line_params) if line_params is not None else "null"
+    zones_json = json.dumps(zone_colors)
+
+    checkpoint_payload = {
+        "type": "placer_caracteristiques",
+        "title": html_title,
+        "expected_points_a": expected_points_a,
+        "expected_points_b": expected_points_b,
+    }
+    checkpoint_payload_json = json.dumps(checkpoint_payload, sort_keys=True, ensure_ascii=False)
+
+    if left_width is None:
+        left_w_px = int(round(left_ratio * width))
+    else:
+        left_w_px = int(left_width)
+
+    iframe_height = panel_h + 64
+
+    # Choose CSS snippet for the selected image_mode
+    if image_mode == "fit-height":
+        img_css_rules = "width:auto; height:100%; object-fit:unset; object-position:center; display:block; margin:0 auto;"
+    else:
+        img_css_rules = "width:100%; height:100%; object-fit:contain; object-position:center; display:block;"
+
+    if image_caption_html is None:
+        image_caption_html = ""
+
+    # --- Orthonormal bounding box (Python-side, mirrors afficher_separation_line) ---
+    _axis_disp = 10
+    _margin = 20
+    _all_bbox_pts = []
+    for _d in [known_points_a, known_points_b, expected_points_a, expected_points_b]:
+        for _v in _d.values():
+            if _v and len(_v) >= 2:
+                try:
+                    _all_bbox_pts.append([float(_v[0]), float(_v[1])])
+                except (TypeError, ValueError):
+                    pass
+    if _all_bbox_pts:
+        _xs = sorted(p[0] for p in _all_bbox_pts)
+        _ys = sorted(p[1] for p in _all_bbox_pts)
+        _p98_x = _xs[min(int(0.98 * len(_xs)), len(_xs) - 1)]
+        _p98_y = _ys[min(int(0.98 * len(_ys)), len(_ys) - 1)]
+        _bb_xmax = math.ceil(_p98_x + _margin)
+        _bb_ymax = math.ceil(_p98_y + _margin)
+    else:
+        _bb_xmax, _bb_ymax = 100, 100
+    _bb_ymin = -_axis_disp
+    _legend_h = 30 if show_legend else 0
+    if hide_left_panel:
+        _chart_w, _chart_h = 513, 333
+    else:
+        _chart_w = width - 16 - 8 - left_w_px
+        _chart_h = panel_h - _legend_h - 6
+    _y_range = _bb_ymax - _bb_ymin
+    _x_range = _y_range * (_chart_w / _chart_h)
+    _x_center = (-_axis_disp + _bb_xmax) / 2
+    _bb_xmin_f = _x_center - _x_range / 2
+    _bb_xmax_f = _x_center + _x_range / 2
+    if _bb_xmin_f > 0:
+        _bb_xmin_f = -_axis_disp
+        _bb_xmax_f = _x_range - _axis_disp
+    if force_origin and _bb_xmin_f < -_axis_disp:
+        _shift = (-_axis_disp) - _bb_xmin_f
+        _bb_xmin_f += _shift
+        _bb_xmax_f += _shift
+    bb_js_xmin = round(_bb_xmin_f, 1)
+    bb_js_xmax = round(_bb_xmax_f, 1)
+    bb_js_ymin = float(_bb_ymin)
+    bb_js_ymax = float(_bb_ymax)
+    # ---
+
+    page = r"""
+    <!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8"/>
+      <title>IFRAME_TITLE_PLACEHOLDER</title>
+      <meta name="viewport" content="width=device-width,initial-scale=1"/>
+      <link rel="stylesheet" type="text/css" href="https://jsxgraph.org/distrib/jsxgraph.css" />
+    <style>
+      html, body { margin:0; padding:0; overflow:hidden; font-family: sans-serif; }
+      .title { width:100%; text-align:center; font-size:16px; font-weight:700; padding:6px 0; }
+
+      .container { display:flex; gap:8px; padding:8px; height: PANEL_H_PX; box-sizing:border-box; }
+      .left { width: LEFT_W_PX; min-width:120px; display:flex; flex-direction:column; align-items:stretch; justify-content:center; gap:6px; }
+      .right { flex:1; display:flex; flex-direction:column; align-items:stretch; justify-content:center; gap:6px; }
+      HIDE_LEFT_PANEL_CSS
+
+      .imggrid {
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+        gap:8px;
+        width:100%;
+        height:100%;
+        box-sizing:border-box;
+      }
+
+      .img-cell {
+        overflow:hidden;
+        border:0px solid #e6e6e6;
+        border-radius:6px;
+        background:#fff;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+      }
+
+      .img-wrap {
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        width:100%;
+        height:100%;
+        gap:6px;
+      }
+
+      /* injected rule for chosen mode */
+      .img-cell img {
+        INJECTED_IMG_CSS
+      }
+
+      .img-placeholder-text {
+        padding:8px;
+        color:#444;
+        font-size:13px;
+        text-align:center;
+      }
+
+      .img-caption { width:100%; font-size:12px; color:#333; text-align:center; margin-top:6px; }
+
+      .legend { display:flex; gap:14px; align-items:center; justify-content:center; font-size:13px; color:#333; }
+      .legend-item { display:flex; align-items:center; gap:6px; }
+      .legend-dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+
+      #box, .jxgbox { width:100%; height:100%; min-height:0; border:1px solid #e6e6e6; border-radius:6px; box-sizing:border-box; }
+
+      @media (max-width: 820px) {
+        .container { flex-direction:column; height:auto; }
+        .left, .right { width:100%; min-height:220px; }
+      }
+    </style>
+    </head>
+    <body>
+      <div class="title">HUMAN_TITLE_PLACEHOLDER</div>
+
+      <div class="container">
+        <div class="left" aria-label="images column">
+          <div class="imggrid" role="group" aria-label="2 by 2 image placeholders">
+            <div class="img-cell" id="img1"></div>
+            <div class="img-cell" id="img2"></div>
+            <div class="img-cell" id="img3"></div>
+            <div class="img-cell" id="img4"></div>
+          </div>
+          <div class="img-caption" id="img-caption" style="display:none;"></div>
+        </div>
+
+        <div class="right" aria-label="interactive column">
+          <div class="legend" id="legend" style="display:none;">
+            <div class="legend-item"><span class="legend-dot" id="legend-dot-a"></span>Exemples d'images de 2</div>
+            <div class="legend-item"><span class="legend-dot" id="legend-dot-b"></span>Exemples d'images de 7</div>
+          </div>
+          <div id="box"></div>
+        </div>
+      </div>
+
+	      <script src="https://cdnjs.cloudflare.com/ajax/libs/jsxgraph/1.4.0/jsxgraphcore.js"></script>
+	      <script>
+	        (function(){
+	          var parentInstanceId = INSTANCE_ID_PLACEHOLDER;
+	          // expectedPoints are JS objects: { label: [x,y], ... }
+	          var expectedPointsA = EXPECTED_A_PLACEHOLDER;
+	          var expectedPointsB = EXPECTED_B_PLACEHOLDER;
+	          var knownPointsA = KNOWN_A_PLACEHOLDER;
+	          var knownPointsB = KNOWN_B_PLACEHOLDER;
+          var lineParams = LINE_PARAMS_PLACEHOLDER;
+          var showZones = SHOW_ZONES_PLACEHOLDER;
+          var showLegend = SHOW_LEGEND_PLACEHOLDER;
+          var forceOrigin = FORCE_ORIGIN_PLACEHOLDER;
+          var zoneColors = ZONE_COLORS_PLACEHOLDER;
+          var hideExpectedLabels = HIDE_EXPECTED_LABELS_PLACEHOLDER;
+          var expectedPointColor = EXPECTED_POINT_COLOR_PLACEHOLDER;
+          var preplaceKnownPoints = PREPLACE_KNOWN_POINTS;
+          var preplaceMystere = PREPLACE_MYSTERE_PLACEHOLDER;
+          var interactive = INTERACTIVE_PLACEHOLDER;
+          var knownPointsAnimate = KNOWN_POINTS_ANIMATE_PLACEHOLDER;
+          var exerciseValidation = EXERCISE_VALIDATION_PLACEHOLDER;
+
+          function normalizePoints(obj) {
+              if (!obj) return [];
+              if (Array.isArray(obj)) return obj;
+              if (typeof obj === 'string') {
+                  try {
+                      var parsed = JSON.parse(obj);
+                      if (Array.isArray(parsed)) return parsed;
+                      if (parsed && typeof parsed === 'object') return Object.values(parsed);
+                  } catch (e) {
+                      return [];
+                  }
+              }
+              if (typeof obj === 'object') return Object.values(obj);
+              return [];
+          }
+          var preplaceGroupA = PREPLACE_A_PLACEHOLDER;
+          var matchTol = MATCH_TOL_PLACEHOLDER;
+          var clickDeleteTol = CLICK_DELETE_TOL_PLACEHOLDER;
+          var defaultColor = "DEFAULT_COLOR_PLACEHOLDER";
+          var matchedColorA = "MATCHED_COLOR_A_PLACEHOLDER";
+          var matchedColorB = "MATCHED_COLOR_B_PLACEHOLDER";
+          var knownQueue = KNOWN_QUEUE_PLACEHOLDER;
+
+          var images = IMAGES_PLACEHOLDER || [null, null, null, null];
+          var imageCaptionHtml = IMAGE_CAPTION_PLACEHOLDER;
+          // Filtrer les images non-null pour obtenir les images réelles
+          var actualImages = images.filter(function (img) {
+              return img !== null && img !== undefined;
+          });
+          var imageCount = actualImages.length;
+
+          // legend (optional)
+          if (showLegend) {
+              var legend = document.getElementById('legend');
+              if (legend) {
+                  legend.style.display = 'flex';
+                  var dotA = document.getElementById('legend-dot-a');
+                  var dotB = document.getElementById('legend-dot-b');
+                  if (dotA) dotA.style.background = matchedColorA;
+                  if (dotB) dotB.style.background = matchedColorB;
+              }
+          }
+    
+          function fillImageCell(id, src, idx) {
+              var el = document.getElementById(id);
+              if (!el) return; // Si l'élément n'existe pas, on ignore
+    
+              el.innerHTML = "";
+              if (!src) {
+                  // Ne plus afficher de placeholder, masquer la cellule
+                  el.style.display = 'none';
+                  return;
+              }
+              var wrap = document.createElement('div');
+              wrap.className = 'img-wrap';
+              var img = document.createElement('img');
+              img.src = src;
+              img.alt = 'image ' + (idx + 1);
+              wrap.appendChild(img);
+              if (imageCaptionHtml && imageCount === 1 && id === 'img2') {
+                  var cap = document.createElement('div');
+                  cap.className = 'img-caption';
+                  cap.innerHTML = imageCaptionHtml;
+                  wrap.appendChild(cap);
+              }
+              el.appendChild(wrap);
+              el.style.display = 'block';
+          }
+    
+          // Gérer l'affichage selon le nombre d'images
+          if (imageCount === 1) {
+              // Cas d'1 image : centrer l'affichage (cellule 2)
+              fillImageCell('img1', null, 0); // Masquer
+              fillImageCell('img2', actualImages[0], 1); // Image
+              fillImageCell('img3', null, 2); // Masquer
+              fillImageCell('img4', null, 3); // Masquer
+          } else if (imageCount === 2) {
+              // Cas de 2 images : centrer l'affichage
+              // Masquer les cellules 1 et 4, utiliser les cellules 2 et 3 pour centrer
+              fillImageCell('img1', null, 0); // Masquer
+              fillImageCell('img2', actualImages[0], 1); // Première image
+              fillImageCell('img3', actualImages[1], 2); // Deuxième image  
+              fillImageCell('img4', null, 3); // Masquer
+          } else if (imageCount === 4) {
+              // Cas de 4 images : affichage normal
+              for (var i = 0; i < 4; i++) {
+                  fillImageCell('img' + (i + 1), images[i], i);
+              }
+          }
+
+	          // -------- matching helpers that use labeled dicts ----------
+          // check coords against expectedPointsA/B; returns {group:'A'|'B', label: 'label'} or null
+          function whichMatchCoords(x, y) {
+            try {
+              // A has precedence
+              for (var label in expectedPointsA) {
+                if (!Object.prototype.hasOwnProperty.call(expectedPointsA, label)) continue;
+                var ex = expectedPointsA[label][0], ey = expectedPointsA[label][1];
+                if (Math.abs(x - ex) <= matchTol && Math.abs(y - ey) <= matchTol) {
+                  return {group: 'A', label: label};
+                }
+              }
+              for (var label2 in expectedPointsB) {
+                if (!Object.prototype.hasOwnProperty.call(expectedPointsB, label2)) continue;
+                var bx = expectedPointsB[label2][0], by = expectedPointsB[label2][1];
+                if (Math.abs(x - bx) <= matchTol && Math.abs(y - by) <= matchTol) {
+                  return {group: 'B', label: label2};
+                }
+              }
+            } catch (e) {
+              console.error('whichMatchCoords error', e);
+            }
+            return null;
+          }
+
+	          var knownPlaced = false;
+          function drawLineAndZones() {
+            if (!lineParams) return;
+            try {
+              var bb = board.getBoundingBox();
+              var xminB = bb[0], ymaxB = bb[1], xmaxB = bb[2], yminB = bb[3];
+              var m = lineParams.m;
+              var p = lineParams.p;
+              var x1 = xminB;
+              var x2 = xmaxB;
+              var y1 = m * x1 + p;
+              var y2 = m * x2 + p;
+              board.create('line', [[x1, y1], [x2, y2]], {
+                strokeWidth: 2,
+                strokeColor: '#000',
+                fixed: true
+              });
+
+              if (showZones) {
+                // compute line intersections with bounding box
+                var pts = [];
+                function addIfValid(px, py) {
+                  if (px >= xminB - 1e-6 && px <= xmaxB + 1e-6 && py >= yminB - 1e-6 && py <= ymaxB + 1e-6) {
+                    pts.push([px, py]);
+                  }
+                }
+                // vertical edges
+                addIfValid(xminB, m * xminB + p);
+                addIfValid(xmaxB, m * xmaxB + p);
+                // horizontal edges
+                if (m !== 0) {
+                  addIfValid((yminB - p) / m, yminB);
+                  addIfValid((ymaxB - p) / m, ymaxB);
+                }
+                // keep two unique points
+                var uniquePts = [];
+                pts.forEach(function(pt) {
+                  if (!uniquePts.some(function(u){ return Math.abs(u[0]-pt[0])<1e-6 && Math.abs(u[1]-pt[1])<1e-6; })) {
+                    uniquePts.push(pt);
+                  }
+                });
+                if (uniquePts.length < 2) {
+                  uniquePts = [[xminB, m * xminB + p], [xmaxB, m * xmaxB + p]];
+                }
+                var A = uniquePts[0];
+                var B = uniquePts[1];
+                if (A[0] > B[0]) { var tmp = A; A = B; B = tmp; }
+
+                var polyAbove = board.create('polygon', [
+                  [xminB, ymaxB], [xmaxB, ymaxB], [B[0], B[1]], [A[0], A[1]]
+                ], {
+                  fillColor: zoneColors.above || "rgba(76,110,245,0.25)",
+                  fillOpacity: 0.28,
+                  hasInnerPoints: true,
+                  borders: {visible: false},
+                  fixed: true,
+                  withLabel: false,
+                  name: '',
+                  highlight: false,
+                  highlightFillColor: zoneColors.above || "rgba(76,110,245,0.25)",
+                  highlightFillOpacity: 0.28,
+                  highlightStrokeColor: 'transparent'
+                });
+                var polyBelow = board.create('polygon', [
+                  [xminB, yminB], [xmaxB, yminB], [B[0], B[1]], [A[0], A[1]]
+                ], {
+                  fillColor: zoneColors.below || "rgba(246,200,95,0.25)",
+                  fillOpacity: 0.28,
+                  hasInnerPoints: true,
+                  borders: {visible: false},
+                  fixed: true,
+                  withLabel: false,
+                  name: '',
+                  highlight: false,
+                  highlightFillColor: zoneColors.below || "rgba(246,200,95,0.25)",
+                  highlightFillOpacity: 0.28,
+                  highlightStrokeColor: 'transparent'
+                });
+                if (polyAbove && polyAbove.vertices) {
+                  polyAbove.vertices.forEach(function(v){ v.setAttribute({visible:false}); });
+                }
+                if (polyBelow && polyBelow.vertices) {
+                  polyBelow.vertices.forEach(function(v){ v.setAttribute({visible:false}); });
+                }
+                if (polyAbove && polyAbove.label) {
+                  polyAbove.label.setAttribute({visible:false});
+                }
+                if (polyBelow && polyBelow.label) {
+                  polyBelow.label.setAttribute({visible:false});
+                }
+              }
+            } catch (e) { console.error('drawLineAndZones error', e); }
+          }
+          
+	          function placeKnownPoints(onComplete) {
+	            if (knownPlaced) return;
+	            try {
+	              function notifyKnownPointsDone() {
+	                try {
+	                  window.parent.postMessage({type:'known_points_done', instance_id: parentInstanceId}, '*');
+	                } catch (e) {}
+	              }
+              var addPoint = function(coords, color, label) {
+                var p = board.create('point', coords, {
+                  withLabel: true,
+                  size: 4,
+                  name: label || '',
+                  color: color,
+                  fillColor: color,
+                  strokeColor: '#000',
+                  fixed: true,
+                  frozen: true,
+                  highlight: true,
+                  showInfobox: false
+                });
+                if (p && p.label) {
+                  p.label.setAttribute({visible: false});
+                  p.on('over', function () { p.label.setAttribute({visible: true}); });
+                  p.on('out', function () { p.label.setAttribute({visible: false}); });
+                }
+              };
+              var queue = [];
+              if (knownQueue && Array.isArray(knownQueue) && knownQueue.length > 0) {
+                // Utiliser la séquence d'apparition fournie par Python
+                knownQueue.forEach(function(item) {
+                  if (!item || !item.group || !item.key) return;
+                  var src = (item.group === 'A') ? knownPointsA : knownPointsB;
+                  if (!src || !Object.prototype.hasOwnProperty.call(src, item.key)) return;
+                  var coords = src[item.key];
+                  if (!coords) return;
+                  var color = (item.group === 'A') ? matchedColorA : matchedColorB;
+                  var labelText = (item.group === 'A') ? '2' : '7';
+                  queue.push({coords: coords, color: color, label: labelText});
+                });
+              } else {
+                // Comportement par défaut : tous les A puis tous les B
+                for (var label in knownPointsA) {
+                  if (!Object.prototype.hasOwnProperty.call(knownPointsA, label)) continue;
+                  queue.push({coords: knownPointsA[label], color: matchedColorA, label: '2'});
+                }
+                for (var label2 in knownPointsB) {
+                  if (!Object.prototype.hasOwnProperty.call(knownPointsB, label2)) continue;
+                  queue.push({coords: knownPointsB[label2], color: matchedColorB, label: '7'});
+                }
+              }
+
+              function preplaceMysterePoint() {
+                if (!preplaceMystere) return;
+                if (!expectedPointsA || Object.keys(expectedPointsA).length === 0) return;
+                try {
+                  for (var label in expectedPointsA) {
+                    if (!Object.prototype.hasOwnProperty.call(expectedPointsA, label)) continue;
+                    var coords = expectedPointsA[label];
+                    var p0 = board.create('point', coords, {
+                      withLabel: false, size: 6, name: '',
+                      snapToGrid: true, snapSizeX: GRID_STEP, snapSizeY: GRID_STEP
+                    });
+                    if (typeof p0.snapToGrid === 'function') p0.snapToGrid(true);
+                    userPoints.push(p0);
+                    updatePointColorAndLabel(p0);
+                  }
+                  sendPointsToParent();
+                } catch (e) {
+                  console.error('Error preplacing mystere point', e);
+                }
+              }
+
+	              if (!knownPointsAnimate) {
+	                queue.forEach(function(item) {
+	                  addPoint(item.coords, item.color, item.label);
+	                });
+	                drawLineAndZones();
+	                knownPlaced = true;
+	                preplaceMysterePoint();
+	                notifyKnownPointsDone();
+	                if (onComplete) onComplete();
+	                return;
+	              }
+
+              var delay = 300;
+
+              queue.forEach(function(item, idx) {
+                setTimeout(function() {
+                  addPoint(item.coords, item.color, item.label);
+                }, idx * delay);
+              });
+
+	              setTimeout(function() {
+	                drawLineAndZones();
+	                knownPlaced = true;
+
+	                if (preplaceMystere) {
+	                  setTimeout(function() { preplaceMysterePoint(); }, 200);
+	                  setTimeout(function() { notifyKnownPointsDone(); }, 260);
+	                } else {
+	                  notifyKnownPointsDone();
+	                }
+
+	                if (onComplete) onComplete();
+	              }, queue.length * delay + 50);
+            } catch (e) { console.error('placeKnownPoints error', e); }
+          }
+
+          // Check if all expected points are visible
+          function checkAllExpectedPointsVisible() {
+            try {
+              if (!exerciseValidation) return;
+              var expectedLabelsA = Object.keys(expectedPointsA);
+              var expectedLabelsB = Object.keys(expectedPointsB);
+              var allExpectedLabels = expectedLabelsA.concat(expectedLabelsB);
+
+              var matchedLabels = {};
+              userPoints.forEach(function(pt) {
+                if (board.objectsList.indexOf(pt) === -1) return;
+                var x = pt.X(), y = pt.Y();
+                var res = whichMatchCoords(x, y);
+                if (res) {
+                  matchedLabels[res.label] = true;
+                }
+              });
+
+              var allVisible = allExpectedLabels.every(function(label) {
+                return matchedLabels[label] === true;
+              });
+
+              console.log('Expected labels:', allExpectedLabels);
+              console.log('Matched labels:', Object.keys(matchedLabels));
+              console.log('All visible:', allVisible);
+
+              if (allVisible) {
+                console.log('All expected points are correctly placed!');
+                placeKnownPoints();
+                // Send message to parent window to update Python
+                window.parent.postMessage({type:'all_points_matched', status: true, instance_id: parentInstanceId}, '*');
+              } else {
+                // Send message to reset Python variable when not all points are matched
+                window.parent.postMessage({type:'all_points_matched', status: false, instance_id: parentInstanceId}, '*');
+              }
+            } catch (e) {
+              console.error('checkAllExpectedPointsVisible error', e);
+            }
+          }
+
+          // update a point's color and label according to which expected point it matches
+          function updatePointColorAndLabel(pt) {
+            var x = pt.X(), y = pt.Y();
+            var res = whichMatchCoords(x, y);
+            if (res && res.group === 'A') {
+              pt.setAttribute({
+                fillColor: expectedPointColor || matchedColorA,
+                strokeColor: expectedPointColor || matchedColorA,
+                name: hideExpectedLabels ? '' : res.label,
+                withLabel: hideExpectedLabels ? false : true,
+                fixed: true,
+                frozen: true,
+                highlight: false,
+                showInfobox: false
+              });
+              if (hideExpectedLabels && pt.label) {
+                pt.label.setAttribute({visible: false});
+                pt.on('over', function () {
+                  if (pt.label) pt.label.setAttribute({visible: false});
+                });
+                pt.on('out', function () {
+                  if (pt.label) pt.label.setAttribute({visible: false});
+                });
+              }
+              // Marquer comme point validé (non-interactif)
+              pt.isMatched = true;
+            } else if (res && res.group === 'B') {
+              pt.setAttribute({
+                fillColor: expectedPointColor || matchedColorB,
+                strokeColor: expectedPointColor || matchedColorB,
+                name: hideExpectedLabels ? '' : res.label,
+                withLabel: hideExpectedLabels ? false : true,
+                fixed: true,
+                frozen: true,
+                highlight: false,
+                showInfobox: false
+              });
+              if (hideExpectedLabels && pt.label) {
+                pt.label.setAttribute({visible: false});
+                pt.on('over', function () {
+                  if (pt.label) pt.label.setAttribute({visible: false});
+                });
+                pt.on('out', function () {
+                  if (pt.label) pt.label.setAttribute({visible: false});
+                });
+              }
+              // Marquer comme point validé (non-interactif)
+              pt.isMatched = true;
+            } else {
+              pt.setAttribute({
+                fillColor: defaultColor,
+                strokeColor: defaultColor,
+                name: 'Mauvais point',
+                withLabel: true,
+                fixed: false,
+                frozen: false
+              });
+              pt.isMatched = false;
+              // Schedule auto-deletion after 2 seconds for bad points
+              setTimeout(function() {
+                try {
+                  var idx = userPoints.indexOf(pt);
+                  if (idx !== -1) {
+                    if (board.objectsList.indexOf(pt) !== -1) {
+                      board.removeObject(pt);
+                    }
+                    userPoints.splice(idx, 1);
+                    sendPointsToParent();
+                    if (exerciseValidation) checkAllExpectedPointsVisible();
+                  }
+                } catch (e) { console.error('auto-delete error', e); }
+              }, 2000);
+            }
+            if (exerciseValidation) checkAllExpectedPointsVisible();
+          }
+
+	          var board = JXG.JSXGraph.initBoard('box', {
+	            boundingbox: [BB_XMIN_PLACEHOLDER, BB_YMAX_PLACEHOLDER, BB_XMAX_PLACEHOLDER, BB_YMIN_PLACEHOLDER],
+	            axis: false,
+	            showNavigation: false,
+	            keepaspectratio: KEEP_ASPECT_RATIO_PLACEHOLDER,
+	            showCopyright: false,
+	          });
+
+          var MAJOR = 10;
+          var MINOR_COUNT = 1;
+          var GRID_STEP = MAJOR / (MINOR_COUNT + 1);
+
+          var xAxis = board.create('axis', [[0,0],[1,0]], {
+            name: '', withLabel: false,
+            ticks: {
+              insertTicks: false,
+              ticksDistance: MAJOR,
+              minorTicks: MINOR_COUNT,
+              minorHeight: -1,
+              majorHeight: -1,
+              drawZero: true,
+              drawLabels: true,
+              label: { offset: [-9, -8], anchorX: 'top' }
+            }
+          });
+          if (xAxis && xAxis.ticks && xAxis.ticks.labels && xAxis.ticks.labels.length > 0) {
+            xAxis.ticks.labels[0].setText('');
+          }
+
+          var yAxis = board.create('axis', [[0,0],[0,1]], {
+            name: '', withLabel: false,
+            ticks: {
+              insertTicks: false,
+              ticksDistance: MAJOR,
+              minorTicks: MINOR_COUNT,
+              minorHeight: -1,
+              majorHeight: -1,
+              drawZero: false,
+              drawLabels: true,
+              label: { offset: [-2, 0], anchorX: 'right' }
+            }
+          });
+
+	          // store user-created points (and optionally preplaced expected points)
+	          var userPoints = [];
+	          
+	          // Placer les points connus au démarrage si demandé
+	          if (preplaceKnownPoints) {
+	            setTimeout(function() {
+	              placeKnownPoints();
+	            }, 100);
+	          }
+
+	          // Optionnel : préplacer les points du groupe A (ex: A et B en bleu)
+	          if (preplaceGroupA) {
+	            try {
+	              for (var label in expectedPointsA) {
+	                if (!Object.prototype.hasOwnProperty.call(expectedPointsA, label)) continue;
+	                var coords = expectedPointsA[label];
+	                var p0 = board.create('point', coords, {
+	                  withLabel: false, size: 6, name: '',
+	                  snapToGrid: true, snapSizeX: GRID_STEP, snapSizeY: GRID_STEP
+	                });
+	                if (typeof p0.snapToGrid === 'function') p0.snapToGrid(true);
+	                userPoints.push(p0);
+	                updatePointColorAndLabel(p0);
+	              }
+	              sendPointsToParent();
+	            } catch (e) {
+	              console.error('Error preplacing group A points', e);
+	            }
+	          }
+
+          function sendPointsToParent() {
+            try {
+              var pts = [];
+              userPoints.forEach(function(pt) {
+                if (board.objectsList.indexOf(pt) !== -1) {
+                  pts.push([ +pt.X().toFixed(6), +pt.Y().toFixed(6) ]);
+                }
+              });
+              window.parent.postMessage({type:'jxg_points', points: pts, instance_id: parentInstanceId}, '*');
+            } catch (err) {
+              console.error('sendPointsToParent error', err);
+            }
+          }
+
+          // distance + neighbor finder
+          function dist(a, b) {
+            var dx = a[0] - b[0];
+            var dy = a[1] - b[1];
+            return Math.sqrt(dx*dx + dy*dy);
+          }
+
+          function findNearbyUserPointIndex(coords) {
+            for (var i = 0; i < userPoints.length; i++) {
+              var pt = userPoints[i];
+              if (board.objectsList.indexOf(pt) === -1) continue;
+              var pcoords = [pt.X(), pt.Y()];
+              if (dist(coords, pcoords) <= clickDeleteTol) return i;
+            }
+            return -1;
+          }
+
+          // On click: delete nearby or create a new snapped point
+          if (interactive) board.on('down', function(evt) {
+            try {
+              var raw = board.getUsrCoordsOfMouse(evt);
+              var nearbyIdx = findNearbyUserPointIndex(raw);
+              if (nearbyIdx !== -1) {
+                var p = userPoints[nearbyIdx];
+                // Si le point est validé (bon point), ne rien faire (pas de suppression, pas de copie)
+                if (p && p.isMatched) {
+                  return;
+                }
+                // Sinon, suppression classique du point cliqué
+                if (board.objectsList.indexOf(p) !== -1) board.removeObject(p);
+                userPoints.splice(nearbyIdx, 1);
+                sendPointsToParent();
+                return;
+              }
+
+              var snapped = snapCoords = (function(coords) {
+                var x = Math.round(coords[0]);
+                var y = Math.round(coords[1]);
+                var bb = board.getBoundingBox();
+                var xmin = bb[0], ymax = bb[1], xmax = bb[2], ymin = bb[3];
+                if (x < xmin) x = xmin;
+                if (x > xmax) x = xmax;
+                if (y < ymin) y = ymin;
+                if (y > ymax) y = ymax;
+                return [x, y];
+              })(raw);
+
+              var p = board.create('point', snapped, {
+                withLabel: false, size: 6, name: '',
+                snapToGrid: true, snapSizeX: GRID_STEP, snapSizeY: GRID_STEP
+              });
+              if (typeof p.snapToGrid === 'function') p.snapToGrid(true);
+
+              userPoints.push(p);
+              updatePointColorAndLabel(p);
+
+              // drag: enforce snapping & colour/label update
+              p.on('drag', function() {
+                try {
+                  // Empêcher tout déplacement si le point est validé
+                  if (this.isMatched) { return; }
+                  var s = snapCoords([this.X(), this.Y()]);
+                  this.moveTo(JXG.COORDS_BY_USER, s);
+                  updatePointColorAndLabel(this);
+                  sendPointsToParent();
+                } catch (e) { console.error('drag error', e); }
+              });
+
+              // up: final snap & update
+              p.on('up', function() {
+                try {
+                  if (this.isMatched) { return; }
+                  var s = snapCoords([this.X(), this.Y()]);
+                  this.moveTo(JXG.COORDS_BY_USER, s);
+                  updatePointColorAndLabel(this);
+                  sendPointsToParent();
+                } catch (e) { console.error('up error', e); }
+              });
+
+              sendPointsToParent();
+            } catch (err) { console.error('Error handling down event', err); }
+          });
+
+          // during drag send updates (not too chatty)
+          if (interactive) board.on('move', function(evt) {
+            if (board.hasMouseDown) sendPointsToParent();
+          });
+
+          // clear API
+          window.__jsx_clear_points = function() {
+            try {
+              for (var i = 0; i < userPoints.length; i++) {
+                var el = userPoints[i];
+                if (board.objectsList.indexOf(el) !== -1) board.removeObject(el);
+              }
+              userPoints = [];
+              sendPointsToParent();
+            } catch (err) { console.error('clear error', err); }
+          };
+
+          document.getElementById('box').tabIndex = 0;
+        })();
+      </script>
+    </body>
+    </html>
+    """
+
+    # replacements
+    page = page.replace("INSTANCE_ID_PLACEHOLDER", json.dumps(instance_id))
+    page = page.replace("PANEL_H_PX", f"{panel_h}px")
+    page = page.replace("LEFT_W_PX", f"{left_w_px}px")
+    page = page.replace("HUMAN_TITLE_PLACEHOLDER", html_title)
+    page = page.replace("IFRAME_TITLE_PLACEHOLDER", html_title)
+    page = page.replace("EXPECTED_A_PLACEHOLDER", expected_json_a)
+    page = page.replace("EXPECTED_B_PLACEHOLDER", expected_json_b)
+    page = page.replace("KNOWN_A_PLACEHOLDER", known_json_a)
+    page = page.replace("KNOWN_B_PLACEHOLDER", known_json_b)
+    page = page.replace("LINE_PARAMS_PLACEHOLDER", line_json)
+    page = page.replace("SHOW_ZONES_PLACEHOLDER", "true" if show_zones else "false")
+    page = page.replace("ZONE_COLORS_PLACEHOLDER", zones_json)
+    page = page.replace("HIDE_EXPECTED_LABELS_PLACEHOLDER", "true" if hide_expected_labels else "false")
+    page = page.replace("EXPECTED_POINT_COLOR_PLACEHOLDER", expected_color_json)
+    page = page.replace("BB_XMIN_PLACEHOLDER", str(bb_js_xmin))
+    page = page.replace("BB_XMAX_PLACEHOLDER", str(bb_js_xmax))
+    page = page.replace("BB_YMIN_PLACEHOLDER", str(bb_js_ymin))
+    page = page.replace("BB_YMAX_PLACEHOLDER", str(bb_js_ymax))
+    page = page.replace("PREPLACE_A_PLACEHOLDER", "true" if preplace_points_a else "false")
+    page = page.replace("MATCH_TOL_PLACEHOLDER", str(match_tolerance))
+    page = page.replace("CLICK_DELETE_TOL_PLACEHOLDER", str(click_delete_tolerance))
+    page = page.replace("DEFAULT_COLOR_PLACEHOLDER", default_color)
+    page = page.replace("MATCHED_COLOR_A_PLACEHOLDER", matched_color_a)
+    page = page.replace("MATCHED_COLOR_B_PLACEHOLDER", matched_color_b)
+    page = page.replace("KNOWN_QUEUE_PLACEHOLDER", known_queue_json)
+    page = page.replace("IMAGES_PLACEHOLDER", images_json)
+    page = page.replace("IMAGE_CAPTION_PLACEHOLDER", json.dumps(image_caption_html or ""))
+    page = page.replace("INJECTED_IMG_CSS", img_css_rules)
+    page = page.replace("SHOW_LEGEND_PLACEHOLDER", "true" if show_legend else "false")
+    page = page.replace("FORCE_ORIGIN_PLACEHOLDER", "true" if force_origin else "false")
+    page = page.replace("PREPLACE_KNOWN_POINTS", "true" if preplace_known_points else "false")
+    page = page.replace("PREPLACE_MYSTERE_PLACEHOLDER", "true" if preplace_mystere else "false")
+    page = page.replace("INTERACTIVE_PLACEHOLDER", "true" if interactive else "false")
+    page = page.replace("KNOWN_POINTS_ANIMATE_PLACEHOLDER", "true" if known_points_animate else "false")
+    page = page.replace("EXERCISE_VALIDATION_PLACEHOLDER", "true" if exercise_validation else "false")
+    page = page.replace("KEEP_ASPECT_RATIO_PLACEHOLDER", "true" if keep_aspect_ratio else "false")
+    page = page.replace(
+        "HIDE_LEFT_PANEL_CSS",
+        ".left { display:none !important; }\n      .container { gap:0;justify-content:center; }  .right { width:513px !important; height:333px !important; flex:none; }\n" if hide_left_panel else ""
+    )
+
+    page_bytes = page.encode('utf-8')
+    page_b64 = base64.b64encode(page_bytes).decode('ascii')
+    data_uri = f"data:text/html;base64,{page_b64}"
+    iframe_html = f"""
+    <div id="{instance_id}-wrapper" style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+	      <div id="{instance_id}-status" style="text-align:center; font-weight:bold; min-height:1.5rem;{'' if show_status else 'display:none; min-height:0;'}"></div>
+      <iframe id="{instance_id}-jsxframe" src="{data_uri}" style="width:{width}px; height:{iframe_height}px; border:none;" sandbox="allow-scripts allow-same-origin"></iframe>
+    </div>
+    """
+
+    listener_script = f"""
+    (function(){{
+	      const instanceId = {json.dumps(instance_id)};
+      const statusEl = document.getElementById(instanceId + '-status');
+	      const showStatus = {json.dumps(bool(show_status))};
+	      const checkpointEnabled = {json.dumps(bool(checkpoint_enabled))};
+	      const exerciseValidation = {json.dumps(bool(exercise_validation))};
+	      const autoPassOnKnownPointsDone = {json.dumps(bool(auto_pass_on_known_points_done))};
+
+      const checkpointPayload = {checkpoint_payload_json};
+      const checkpointId = (checkpointEnabled && window.mathadata && window.mathadata.checkpoints)
+        ? ('placer_points_' + window.mathadata.checkpoints.hash(checkpointPayload))
+        : null;
+
+      function setStatus(text, color, italic) {{
+        if (!statusEl || !showStatus) return;
+        statusEl.textContent = text || '';
+        statusEl.style.color = color || '';
+        statusEl.style.fontStyle = italic ? 'italic' : 'normal';
+      }}
+
+      function tryRunPython(code) {{
+        try {{
+          if (window.mathadata && typeof window.mathadata.run_python === 'function') {{
+            window.mathadata.run_python(code);
+            return;
+          }}
+          if (window.Jupyter && Jupyter.notebook && Jupyter.notebook.kernel) {{
+            Jupyter.notebook.kernel.execute(code);
+          }}
+        }} catch (e) {{
+          console.error('tryRunPython error', e);
+        }}
+      }}
+
+      function tryPassBreakpoint() {{
+        try {{
+          if (window.mathadata && typeof window.mathadata.pass_breakpoint === 'function') {{
+            window.mathadata.pass_breakpoint();
+          }}
+        }} catch (e) {{
+          console.error('tryPassBreakpoint error', e);
+        }}
+      }}
+
+      let alreadyPassed = false;
+
+	      // Si l'exercice a déjà été validé, afficher un message et passer automatiquement.
+	      try {{
+	        if (checkpointId && window.mathadata && window.mathadata.checkpoints && window.mathadata.checkpoints.check(checkpointId)) {{
+	          setStatus('✓ Tu as déjà réussi cet exercice précédemment. Tu peux continuer.', 'green', true);
+	          alreadyPassed = true;
+	          tryRunPython("set_exercice_droite_carac_ok()");
+	          tryPassBreakpoint();
+	        }}
+	      }} catch (e) {{
+	        console.warn('Checkpoint check failed, continuing without checkpoint:', e);
+	      }}
+
+      var hidden = document.getElementById(instanceId + '_jsx_points_hidden');
+      if (!hidden) {{
+        hidden = document.createElement('div');
+        hidden.id = instanceId + '_jsx_points_hidden';
+        hidden.style.display = 'none';
+        document.body.appendChild(hidden);
+      }}
+
+      window.addEventListener('message', function(e) {{
+        try {{
+          var data = e.data;
+          if (!data || data.instance_id !== instanceId) {{
+            return;
+          }}
+          if (data.type === 'jxg_points') {{
+            hidden.textContent = JSON.stringify(data.points || []);
+            if (window.Jupyter && Jupyter.notebook && Jupyter.notebook.kernel) {{
+              var code = "jsx_points = " + JSON.stringify(data.points || []) + "\\n";
+              Jupyter.notebook.kernel.execute(code);
+            }} else {{
+              console.log('jsx_points received (kernel injection not available) — stored in hidden DOM element.');
+            }}
+		          }} else if (exerciseValidation && data.type === 'all_points_matched') {{
+		            if (data.status === true) {{
+		              if (!alreadyPassed) {{
+		                setStatus('Bravo ! Tu as bien placé les points. Tu peux continuer.', 'green', false);
+		                try {{
+		                  if (checkpointId && window.mathadata && window.mathadata.checkpoints) {{
+	                    window.mathadata.checkpoints.save(checkpointId);
+	                  }}
+	                }} catch (e) {{
+	                  console.warn('Checkpoint save failed:', e);
+	                }}
+	                alreadyPassed = true;
+	              }}
+	              // Toujours tenter de passer le breakpoint (Basthon/Capytale séquencé)
+	              tryPassBreakpoint();
+	              tryRunPython("set_exercice_droite_carac_ok()");
+	            }} else if (data.status === false) {{
+	              tryRunPython("reset_exercice_droite_carac()");
+	            }}
+		          }}
+		          else if (autoPassOnKnownPointsDone && data.type === 'known_points_done') {{
+		            tryPassBreakpoint();
+		          }}
+		        }} catch (err) {{ console.error('Listener error', err); }}
+		      }}, false);
+	    }})();
+	    """
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Consider using IPython.display.IFrame instead")
+        display(HTML(iframe_html))
+        run_js(listener_script)
+
+
+def placer_mystere(html_title="Place le point C", images=None, expected_point=None,
+                   known_points_a=None, known_points_b=None,
+                   line_params=None, show_zones=False,
+                   image_caption_html=None, show_legend=False, force_origin=False, preplace_known_points=True,
+                    preplace_mystere=False, interactive=True, known_points_animate=True, hide_left_panel=False,
+                    checkpoint_enabled=True, show_status=True, exercise_validation=True,
+                    auto_pass_on_known_points_done=False):
+    if expected_point is None:
+        expected_point = [0, 0]
+    if known_points_a is None:
+        known_points_a = {}
+    if known_points_b is None:
+        known_points_b = {}
+
+    placer_caracteristiques(
+        html_title=html_title,
+        images=images,
+        expected_points_a={'C': [expected_point[0], expected_point[1]]},
+        expected_points_b={},
+        known_points_a=known_points_a,
+        known_points_b=known_points_b,
+        line_params=line_params,
+        show_zones=show_zones,
+        zone_colors={"above": "rgba(76,110,245,0.15)", "below": "rgba(246,200,95,0.15)"},
+        hide_expected_labels=False,
+        expected_point_color="red",
+        keep_aspect_ratio=False,
+        left_width=240,
+        panel_w=860,
+        panel_h=434,
+        preplace_points_a=False,
+        image_caption_html=image_caption_html,
+        show_legend=show_legend,
+        force_origin=force_origin,
+        preplace_known_points=preplace_known_points,
+        preplace_mystere=preplace_mystere,
+        interactive=interactive,
+        known_points_animate=known_points_animate,
+        hide_left_panel=hide_left_panel,
+        checkpoint_enabled=checkpoint_enabled,
+        show_status=show_status,
+        exercise_validation=exercise_validation,
+        auto_pass_on_known_points_done=auto_pass_on_known_points_done,
+        match_tolerance=3.0,
+        click_delete_tolerance=0.45,
+    )
+
+
+moyenne_carac = False
+
+
+def reset_exercice_droite_carac():
+    global moyenne_carac
+    moyenne_carac = False
+
+
+def mauvaises_caracteristiques():
+    reset_exercice_droite_carac()
+    similar_image_caracteristics = [
+        files_url + "image_2_5x3_180_similaire.png",
+        files_url + "image_2_5x3_210-180_similaire.png",
+        files_url + "image_7_5x3_180_similaire.png",
+        files_url + "image_7_5x3_210-150_similaire.png"
+    ]
+
+    placer_caracteristiques(
+        html_title="Des mauvaises caractéristiques",
+        expected_points_a={'A': [120, 90], 'B': [135, 105]},  # mettre les valeurs pour 2
+        expected_points_b={'C': [120, 105], 'D': [130, 90]},  # mettre les valeurs pour 7
+        images=similar_image_caracteristics,
+        preplace_points_a=True,
+    )
+
+
+def meilleures_caracteristiques(custom=True):
+    reset_exercice_droite_carac()
+    if custom:
+        title = "Des meilleures caractéristiques"
+        different_image_caracteristics = [
+            files_url + "image_2_5x3_180_differentiante.png",
+            files_url + "image_2_5x3_210-180_differentiante.png",
+            files_url + "image_7_5x3_180_differentiante.png",
+            files_url + "image_7_5x3_210-150_differentiante.png"
+        ]
+        exp_a = {'E': [140, 120], 'F': [160, 135]}
+        exp_b = {'G': [100, 70], 'H': [110, 60]}
+
+    else:
+        title = "De l'image au plan"
+        different_image_caracteristics = [
+            files_url + "image_7_6x3_caracteristique.png",
+            files_url + "image_2_6x3_caracteristique.png",
+        ]
+        exp_a = {'B': [140, 140]}
+        exp_b = {'A': [100, 60]}
+    placer_caracteristiques(
+        html_title=title,
+        expected_points_a=exp_a,  # mettre les valeurs pour 2
+        expected_points_b=exp_b,  # mettre les valeurs pour 7
+        images=different_image_caracteristics,
+        preplace_points_a=False,
+    )
+
+
+def _build_known_points_for_animation(known_points_per_class):
+    known_points_a = {}
+    known_points_b = {}
+    known_points_order = []
+    try:
+        classes = list(getattr(common.challenge, "classes", [2, 7]))
+        class_a = classes[0] if len(classes) > 0 else 2
+        class_b = classes[1] if len(classes) > 1 else 7
+        max_per_class = int(known_points_per_class)
+        count_a = 0
+        count_b = 0
+        r = common.challenge.r_train
+        d = common.challenge.d_train
+        for i, label in enumerate(r):
+            if label == class_a and count_a < max_per_class:
+                key = f"A{count_a + 1}"
+                coords = common.challenge.deux_caracteristiques(d[i])
+                known_points_a[key] = [float(coords[0]), float(coords[1])]
+                known_points_order.append({"group": "A", "key": key})
+                count_a += 1
+            elif label == class_b and count_b < max_per_class:
+                key = f"B{count_b + 1}"
+                coords = common.challenge.deux_caracteristiques(d[i])
+                known_points_b[key] = [float(coords[0]), float(coords[1])]
+                known_points_order.append({"group": "B", "key": key})
+                count_b += 1
+            if count_a >= max_per_class and count_b >= max_per_class:
+                break
+    except Exception:
+        known_points_a = {}
+        known_points_b = {}
+        known_points_order = []
+    return known_points_a, known_points_b, known_points_order
+
+
+def placer_2_points(
+    animate_known_points=False,
+    known_points_per_class=20,
+    transition_seconds=5,
+    transition_text="Bravo vous avez placé les 2 points. Maintenant on passe à la suite qui est donc voir le reste des points connus",
+):
+    reset_exercice_droite_carac()
+
+    # Utiliser les zones exo au lieu de zones hardcodées.
+    zone_1 = getattr(common.challenge, "zone_1_exo", None)
+    zone_2 = getattr(common.challenge, "zone_2_exo", None)
+    if zone_1 is None or zone_2 is None:
+        print_error("Les zones zone_1_exo et zone_2_exo doivent être définies dans le challenge.")
+        return
+    zones = [zone_1, zone_2]
+
+    # Choix des images.
+    ids_images_ref = getattr(common.challenge, "ids_images_ref", None)
+    if ids_images_ref is not None:
+        try:
+            ids_images_ref = tuple(ids_images_ref)
+        except Exception:
+            ids_images_ref = None
+
+    if ids_images_ref and len(ids_images_ref) >= 2:
+        id1 = int(ids_images_ref[0])
+        id2 = int(ids_images_ref[1])
+    else:
+        # Fallback : une de chaque classe.
+        try:
+            r = common.challenge.r_train
+            classes = common.challenge.classes
+            id1 = int(np.where(r == classes[0])[0][0])
+            id2 = int(np.where(r == classes[1])[0][0])
+        except Exception:
+            id1 = 0
+            id2 = 1
+
+    # Calcul des points caractéristiques (sur image seuillée 0/200/250).
+    def _seuillage_0_200_250(img):
+        a = np.asarray(img)
+        a = np.clip(a, 0, 255)
+        out = np.empty_like(a, dtype=np.uint8)
+        out[a < 180] = 0
+        out[(a >= 180) & (a < 220)] = 200
+        # Exception (dev) : conserver 240 tel quel (ne pas le ramener à 250).
+        out[(a >= 220) & (a <= 239)] = 250
+        out[a == 240] = 240
+        out[a > 240] = 250
+        return out
+
+    def _moyenne_zone(img, zone):
+        if zone is None:
+            return 0.0
+        A, B = zone
+        r0, c0 = int(A[0]), int(A[1])
+        r1, c1 = int(B[0]), int(B[1])
+        rmin, rmax = min(r0, r1), max(r0, r1)
+        cmin, cmax = min(c0, c1), max(c0, c1)
+        return float(np.mean(img[rmin:rmax + 1, cmin:cmax + 1]))
+
+    img_a = common.challenge.d_train[id1]
+    img_b = common.challenge.d_train[id2]
+    img_a_t = _seuillage_0_200_250(img_a)
+    img_b_t = _seuillage_0_200_250(img_b)
+
+    x_a = _moyenne_zone(img_a_t, zones[0])
+    y_a = _moyenne_zone(img_a_t, zones[1])
+    x_b = _moyenne_zone(img_b_t, zones[0])
+    y_b = _moyenne_zone(img_b_t, zones[1])
+
+    expected_points_a = {"A": [x_a, y_a]}
+    expected_points_b = {"B": [x_b, y_b]}
+
+    known_points_a = {}
+    known_points_b = {}
+    known_points_order = []
+    if animate_known_points:
+        known_points_a, known_points_b, known_points_order = _build_known_points_for_animation(
+            known_points_per_class
+        )
+
+    # --- Layout : widget MNIST (gauche) + plan JSXGraph (droite) ---
+    layout_id = uuid.uuid4().hex
+    widget_id = f"{layout_id}-mnist"
+    board_id = f"{layout_id}-board"
+    status_id = f"{layout_id}-status"
+    overlay_id = f"{layout_id}-overlay"
+
+    display(HTML(f"""
+    <div id="{layout_id}" class="mathadata-placer2points-layout">
+      <div id="{layout_id}-left" class="mathadata-placer2points-left">
+        <div id="{widget_id}" class="mathadata-mnist-exemples-zones"></div>
+      </div>
+      <div id="{layout_id}-right" class="mathadata-placer2points-right">
+        <div class="title" style="width:100%; text-align:center; font-size:16px; font-weight:700; padding:6px 0;">Placer les 2 points</div>
+        <div id="{status_id}" style="text-align:center; font-weight:bold; min-height:1.5rem; margin-bottom:8px;"></div>
+        <div style="position:relative; width:600px; height:434px;">
+          <div id="{board_id}" class="jxgbox" style="width:600px; height:434px; border:1px solid #e6e6e6; border-radius:6px; box-sizing:border-box;"></div>
+          <div id="{overlay_id}" style="display:none; position:absolute; inset:0; background:#000; color:#fff; border-radius:6px; align-items:center; justify-content:center; text-align:center; padding:24px; box-sizing:border-box; font-family:sans-serif; font-size:15px; line-height:1.35; z-index:10; flex-direction:column; gap:16px;">
+            <div class="overlay-text"></div>
+            <div class="overlay-progress" style="width:100%; max-width:260px; height:8px; background:rgba(255,255,255,0.2); border-radius:999px; overflow:hidden;">
+              <div class="overlay-progress-fill" style="width:0%; height:100%; background:#2ecc71; border-radius:999px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """))
+
+    run_js(f"""
+    (function(){{
+      const styleId = "mathadata-style-placer2points";
+      const existing = document.getElementById(styleId);
+      if (existing) existing.remove();
+
+      const s = document.createElement("style");
+      s.id = styleId;
+      s.textContent = `
+        .mathadata-placer2points-layout {{
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+          justify-content: center;
+          flex-wrap: wrap;
+          width: 100%;
+          margin: 0.75rem 0;
+        }}
+        .mathadata-placer2points-left {{
+          flex: 0 0 240px;
+          width: 240px;
+          max-width: 240px;
+        }}
+        .mathadata-placer2points-right {{
+          flex: 1 1 auto;
+          min-width: 600px;
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+        }}
+
+        /* Version compacte du widget MNIST dans ce layout */
+        .mathadata-placer2points-left .mathadata-mnist-exemples-zones-grid {{
+          gap: 0.75rem;
+        }}
+        .mathadata-placer2points-left .mathadata-mnist-exemples-zones-item {{
+          max-width: 120px;
+        }}
+        .mathadata-placer2points-left .mathadata-mnist-exemples-zones-point {{
+          font-size: 1.4rem;
+          line-height: 1.1;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }}
+
+        .mathadata-placer2points-right .title {{
+          width: 100%;
+          text-align: center;
+          font-size: 16px;
+          font-weight: 700;
+          padding: 6px 0;
+        }}
+      `;
+      document.head.appendChild(s);
+    }})(); 
+    """)
+
+    # Rendu du widget avec les zones exo
+    params_widget = {
+        "ids": [id1, id2],
+        "zones": zones,  # Utilise zone_1_exo et zone_2_exo
+        "show_points": True,
+        "show_zones": True,
+        "fontsize": 4,
+        "grid_gap_px": 0,
+        "max_width_px": 120,
+        "show_values": True,
+        "zone_lw": 5,
+        "point_names": ["A", "B"],
+    }
+    params_widget_json = json.dumps(params_widget, cls=NpEncoder)
+    run_js(f"""
+    mathadata.add_observer('{widget_id}', () => {{
+      const el = document.getElementById('{widget_id}');
+      if (!window.mathadata || typeof window.mathadata.afficher_deux_exemples_zones !== "function") {{
+        if (el) {{
+          el.innerHTML = "<div style=\\"font-family:sans-serif;color:#b00020;\\">Erreur : afficher_deux_exemples_zones n'est pas disponible. As-tu bien importé le challenge MNIST ?</div>";
+        }}
+        return;
+      }}
+      window.mathadata.afficher_deux_exemples_zones('{widget_id}', '{params_widget_json}');
+    }});
+    """)
+
+    # Initialisation JSXGraph directement dans le DOM (sans iframe)
+    expected_json_a = json.dumps(expected_points_a, sort_keys=True)
+    expected_json_b = json.dumps(expected_points_b, sort_keys=True)
+    known_json_a = json.dumps(known_points_a, sort_keys=True)
+    known_json_b = json.dumps(known_points_b, sort_keys=True)
+    known_queue_json = json.dumps(known_points_order) if known_points_order else "null"
+    
+    checkpoint_payload = {
+        "type": "placer_caracteristiques",
+        "title": "De l'image au plan",
+        "expected_points_a": expected_points_a,
+        "expected_points_b": expected_points_b,
+    }
+    checkpoint_payload_json = json.dumps(checkpoint_payload, sort_keys=True, ensure_ascii=False)
+    
+    run_js(f"""
+    (function(){{
+      // Capytale/JupyterLite: le JS peut s'exécuter AVANT que l'output HTML soit inséré.
+      // On utilise la même stratégie que les gros widgets: `mathadata.add_observer(...)`.
+      const boardId = {json.dumps(board_id)};
+
+      function boot() {{
+        const boardContainer = document.getElementById(boardId);
+        if (!boardContainer) {{
+          console.error('Container JSXGraph introuvable:', boardId);
+          return;
+        }}
+        // anti double-init (si observer rappelé)
+        if (boardContainer.dataset && boardContainer.dataset.jxgInit === '1') return;
+        if (boardContainer.dataset) boardContainer.dataset.jxgInit = '1';
+
+        // Charger JSXGraph si pas déjà chargé
+        if (typeof JXG === 'undefined') {{
+          const link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = 'https://jsxgraph.org/distrib/jsxgraph.css';
+          document.head.appendChild(link);
+          
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jsxgraph/1.4.0/jsxgraphcore.js';
+          script.onload = function() {{
+            initJSXGraph();
+          }};
+          document.head.appendChild(script);
+        }} else {{
+          initJSXGraph();
+        }}
+      }}
+
+      if (window.mathadata && typeof window.mathadata.add_observer === 'function') {{
+        window.mathadata.add_observer(boardId, boot);
+      }} else {{
+        // Fallback si `mathadata.add_observer` indisponible: retry court
+        (function retry(n) {{
+          if (document.getElementById(boardId)) return boot();
+          if (n <= 0) return console.error('Container JSXGraph introuvable (retry épuisé):', boardId);
+          requestAnimationFrame(() => retry(n - 1));
+        }})(120);
+      }}
+      
+      function initJSXGraph() {{
+        const statusId = {json.dumps(status_id)};
+        const instanceId = {json.dumps(layout_id)};
+        const overlayId = {json.dumps(overlay_id)};
+        const animateKnownPoints = {json.dumps(bool(animate_known_points))};
+        const transitionMs = {json.dumps(int(float(transition_seconds) * 1000))};
+        const transitionText = {json.dumps(str(transition_text))};
+        
+        const statusEl = document.getElementById(statusId);
+        const boardContainer = document.getElementById(boardId);
+        const overlayEl = document.getElementById(overlayId);
+        function showOverlay(text) {{
+          if (!overlayEl) return;
+          const textEl = overlayEl.querySelector('.overlay-text');
+          const barFill = overlayEl.querySelector('.overlay-progress-fill');
+          if (textEl) textEl.textContent = text || '';
+          if (barFill) barFill.style.width = '0%';
+          overlayEl.style.display = 'flex';
+        }}
+        function hideOverlay() {{
+          if (!overlayEl) return;
+          overlayEl.style.display = 'none';
+        }}
+
+        
+        if (!boardContainer) {{
+          console.error('Container JSXGraph introuvable:', boardId);
+          return;
+        }}
+        
+        function setStatus(text, color, italic) {{
+          if (!statusEl) return;
+          statusEl.textContent = text || '';
+          statusEl.style.color = color || '';
+          statusEl.style.fontStyle = italic ? 'italic' : 'normal';
+        }}
+        
+        function tryRunPython(code) {{
+          try {{
+            if (window.mathadata && typeof window.mathadata.run_python === 'function') {{
+              window.mathadata.run_python(code);
+              return;
+            }}
+            if (window.Jupyter && Jupyter.notebook && Jupyter.notebook.kernel) {{
+              Jupyter.notebook.kernel.execute(code);
+            }}
+          }} catch (e) {{
+            console.error('tryRunPython error', e);
+          }}
+        }}
+        
+        function tryPassBreakpoint() {{
+          try {{
+            if (window.mathadata && typeof window.mathadata.pass_breakpoint === 'function') {{
+              window.mathadata.pass_breakpoint();
+            }}
+          }} catch (e) {{
+            console.error('tryPassBreakpoint error', e);
+          }}
+        }}
+        
+        const checkpointPayload = {checkpoint_payload_json};
+        const checkpointId = (window.mathadata && window.mathadata.checkpoints)
+          ? ('placer_points_' + window.mathadata.checkpoints.hash(checkpointPayload))
+          : null;
+        
+        let alreadyPassed = false;
+        
+        if (checkpointId && window.mathadata && window.mathadata.checkpoints && window.mathadata.checkpoints.check(checkpointId)) {{
+          setStatus('✓ Tu as déjà réussi cet exercice précédemment. Tu peux continuer.', 'green', true);
+          alreadyPassed = true;
+          tryRunPython("set_exercice_droite_carac_ok()");
+          tryPassBreakpoint();
+        }}
+        
+        // Variables JSXGraph
+        var expectedPointsA = {expected_json_a};
+        var expectedPointsB = {expected_json_b};
+        var knownPointsA = {known_json_a};
+        var knownPointsB = {known_json_b};
+        var knownQueue = {known_queue_json};
+        var knownPlaced = false;
+        var transitionTriggered = false;
+        var interactiveEnabled = true;
+        var preplaceGroupA = false;
+        var matchTol = 3.0;
+        var clickDeleteTol = 0.45;
+        var defaultColor = "#8c1fb4";
+        var matchedColorA = "#4C6EF5";
+        var matchedColorB = "#F6C85F";
+        var keepAspectRatio = false;
+        
+        // Calculer les bornes du graphique à partir des points attendus
+        var xmin = 0, xmax = 165, ymin = 0, ymax = 160;
+        try {{
+          var allPts = [];
+          Object.values(expectedPointsA).forEach(function(p){{ allPts.push(p); }});
+          Object.values(expectedPointsB).forEach(function(p){{ allPts.push(p); }});
+          if (allPts.length > 0) {{
+            var xs = allPts.map(function(p){{ return p[0]; }});
+            var ys = allPts.map(function(p){{ return p[1]; }});
+            var minX = Math.min.apply(null, xs);
+            var maxX = Math.max.apply(null, xs);
+            var minY = Math.min.apply(null, ys);
+            var maxY = Math.max.apply(null, ys);
+            var margin = 20;
+            xmin = Math.max(0, Math.floor(minX - margin));
+            ymin = Math.max(0, Math.floor(minY - margin));
+            xmax = Math.ceil(maxX + margin);
+            ymax = Math.ceil(maxY + margin);
+          }}
+        }} catch (e) {{ console.error('Error calculating bounds:', e); }}
+        
+        var xaxisdisplacement = 10;
+        var yaxisdisplacement = 5;
+        var MAJOR = 10;
+        var MINOR_COUNT = 1;
+        var GRID_STEP = MAJOR / (MINOR_COUNT + 1);
+        
+        // Initialiser le board JSXGraph
+        var board = JXG.JSXGraph.initBoard(boardId, {{
+          boundingbox: [xmin - xaxisdisplacement, ymax, xmax, ymin- yaxisdisplacement],
+          axis: false,
+          showNavigation: false,
+          keepaspectratio: keepAspectRatio,
+          showCopyright: false,
+        }});
+        
+        var xAxis = board.create('axis',
+          [[0, 0], [1, 0]],
+        {{
+          withLabel: false,
+          ticks: {{
+            insertTicks: false,
+            ticksDistance: MAJOR,
+            minorTicks: MINOR_COUNT,
+            minorHeight: -1,
+            majorHeight: -1,
+            drawZero: true,
+            drawLabels: true,
+            label: {{ offset: [-9, -8], anchorX: 'top' }}
+          }}
+        }});
+        
+        var yAxis = board.create('axis',
+          [[0, 0], [0, 1]],
+        {{
+          withLabel: false,
+          ticks: {{
+            insertTicks: false,
+            ticksDistance: MAJOR,
+            minorTicks: MINOR_COUNT,
+            drawZero: false,
+            minorHeight: -1,
+            majorHeight: -1,
+            drawLabels: true,
+            label: {{ offset: [-2, 0], anchorX: 'right' }}
+          }}
+        }});
+        
+        var userPoints = [];
+
+        function placeKnownPoints() {{
+          if (!animateKnownPoints || knownPlaced) return;
+          knownPlaced = true;
+          try {{
+            var delay = 300;
+            function addPoint(coords, color, label) {{
+              var p = board.create('point', coords, {{
+                withLabel: true,
+                size: 4,
+                name: label || '',
+                color: color,
+                fillColor: color,
+                strokeColor: '#000',
+                fixed: true,
+                frozen: true,
+                highlight: true,
+                showInfobox: false
+              }});
+              if (p && p.label) {{
+                p.label.setAttribute({{visible: false}});
+                p.on('over', function () {{ p.label.setAttribute({{visible: true}}); }});
+                p.on('out', function () {{ p.label.setAttribute({{visible: false}}); }});
+              }}
+            }}
+
+            var queue = [];
+            if (knownQueue && Array.isArray(knownQueue) && knownQueue.length > 0) {{
+              knownQueue.forEach(function(item) {{
+                if (!item || !item.group || !item.key) return;
+                var src = (item.group === 'A') ? knownPointsA : knownPointsB;
+                if (!src || !Object.prototype.hasOwnProperty.call(src, item.key)) return;
+                var coords = src[item.key];
+                if (!coords) return;
+                var color = (item.group === 'A') ? matchedColorA : matchedColorB;
+                var labelText = (item.group === 'A') ? '2' : '7';
+                queue.push({{coords: coords, color: color, label: labelText}});
+              }});
+            }} else {{
+              for (var k in knownPointsA) {{
+                if (!Object.prototype.hasOwnProperty.call(knownPointsA, k)) continue;
+                queue.push({{coords: knownPointsA[k], color: matchedColorA, label: '2'}});
+              }}
+              for (var k2 in knownPointsB) {{
+                if (!Object.prototype.hasOwnProperty.call(knownPointsB, k2)) continue;
+                queue.push({{coords: knownPointsB[k2], color: matchedColorB, label: '7'}});
+              }}
+            }}
+
+            queue.forEach(function(item, idx) {{
+              setTimeout(function() {{
+                addPoint(item.coords, item.color, item.label);
+              }}, idx * delay);
+            }});
+          }} catch (e) {{
+            console.error('placeKnownPoints error', e);
+          }}
+        }}
+        
+        // Fonction pour vérifier si les coordonnées correspondent à un point attendu
+        function whichMatchCoords(x, y) {{
+          try {{
+            for (var label in expectedPointsA) {{
+              if (!Object.prototype.hasOwnProperty.call(expectedPointsA, label)) continue;
+              var ex = expectedPointsA[label][0], ey = expectedPointsA[label][1];
+              if (Math.abs(x - ex) <= matchTol && Math.abs(y - ey) <= matchTol) {{
+                return {{group: 'A', label: label}};
+              }}
+            }}
+            for (var label2 in expectedPointsB) {{
+              if (!Object.prototype.hasOwnProperty.call(expectedPointsB, label2)) continue;
+              var bx = expectedPointsB[label2][0], by = expectedPointsB[label2][1];
+              if (Math.abs(x - bx) <= matchTol && Math.abs(y - by) <= matchTol) {{
+                return {{group: 'B', label: label2}};
+              }}
+            }}
+          }} catch (e) {{
+            console.error('whichMatchCoords error', e);
+          }}
+          return null;
+        }}
+        
+        // Fonction pour envoyer les points à Python
+        function sendPointsToPython() {{
+          try {{
+            var pts = [];
+            userPoints.forEach(function(pt) {{
+              if (board.objectsList.indexOf(pt) !== -1) {{
+                pts.push([ +pt.X().toFixed(6), +pt.Y().toFixed(6) ]);
+              }}
+            }});
+            var code = "jsx_points = " + JSON.stringify(pts) + "\\n";
+            // même logique que le reste: privilégier `mathadata.run_python` (Capytale/JupyterLite)
+            tryRunPython(code);
+          }} catch (err) {{
+            console.error('sendPointsToPython error', err);
+          }}
+        }}
+
+        function startKnownPointsTransition() {{
+          try {{
+            if (!animateKnownPoints || transitionTriggered) return;
+            transitionTriggered = true;
+            interactiveEnabled = false;
+            showOverlay(transitionText);
+            var barFill = overlayEl ? overlayEl.querySelector('.overlay-progress-fill') : null;
+            var start = Date.now();
+            var timer = null;
+            if (barFill) {{
+              timer = setInterval(function() {{
+                var elapsed = Date.now() - start;
+                var ratio = Math.min(1, elapsed / transitionMs);
+                barFill.style.width = (ratio * 100) + '%';
+                if (ratio >= 1) {{
+                  clearInterval(timer);
+                }}
+              }}, 50);
+            }}
+            setTimeout(function() {{
+              if (timer) clearInterval(timer);
+              hideOverlay();
+              placeKnownPoints();
+            }}, Math.max(0, transitionMs));
+          }} catch (e) {{
+            console.error('startKnownPointsTransition error', e);
+          }}
+        }}
+
+        // Fonction pour vérifier si tous les points attendus sont placés
+        function checkAllExpectedPointsVisible() {{
+          try {{
+            var expectedLabelsA = Object.keys(expectedPointsA);
+            var expectedLabelsB = Object.keys(expectedPointsB);
+            var allExpectedLabels = expectedLabelsA.concat(expectedLabelsB);
+            
+            var matchedLabels = {{}};
+            userPoints.forEach(function(pt) {{
+              if (board.objectsList.indexOf(pt) === -1) return;
+              var x = pt.X(), y = pt.Y();
+              var res = whichMatchCoords(x, y);
+              if (res) {{
+                matchedLabels[res.label] = true;
+              }}
+            }});
+            
+            var allVisible = allExpectedLabels.every(function(label) {{
+              return matchedLabels[label] === true;
+            }});
+            
+            console.log('Expected labels:', allExpectedLabels);
+            console.log('Matched labels:', Object.keys(matchedLabels));
+            console.log('All visible:', allVisible);
+            
+            if (allVisible) {{
+              console.log('All expected points are correctly placed!');
+              if (!alreadyPassed) {{
+                setStatus('Bravo ! Tu as bien placé les points. Tu peux continuer.', 'green', false);
+                if (checkpointId && window.mathadata && window.mathadata.checkpoints) {{
+                  window.mathadata.checkpoints.save(checkpointId);
+                }}
+                alreadyPassed = true;
+                tryPassBreakpoint();
+              }}
+              tryRunPython("set_exercice_droite_carac_ok()");
+              startKnownPointsTransition();
+            }} else {{
+              tryRunPython("reset_exercice_droite_carac()");
+            }}
+          }} catch (e) {{
+            console.error('checkAllExpectedPointsVisible error', e);
+          }}
+        }}
+        
+        // Fonction pour mettre à jour la couleur et le label d'un point
+        function updatePointColorAndLabel(pt) {{
+          var x = pt.X(), y = pt.Y();
+          var res = whichMatchCoords(x, y);
+          if (res && res.group === 'A') {{
+            pt.setAttribute({{
+              fillColor: matchedColorA,
+              strokeColor: matchedColorA,
+              name: res.label,
+              withLabel: true,
+              fixed: true,
+              frozen: true,
+              highlight: false,
+              showInfobox: false
+            }});
+            pt.isMatched = true;
+          }} else if (res && res.group === 'B') {{
+            pt.setAttribute({{
+              fillColor: matchedColorB,
+              strokeColor: matchedColorB,
+              name: res.label,
+              withLabel: true,
+              fixed: true,
+              frozen: true,
+              highlight: false,
+              showInfobox: false
+            }});
+            pt.isMatched = true;
+          }} else {{
+            pt.setAttribute({{
+              fillColor: defaultColor,
+              strokeColor: defaultColor,
+              name: 'Mauvais point',
+              withLabel: true,
+              fixed: false,
+              frozen: false
+            }});
+            pt.isMatched = false;
+            setTimeout(function() {{
+              try {{
+                var idx = userPoints.indexOf(pt);
+                if (idx !== -1) {{
+                  if (board.objectsList.indexOf(pt) !== -1) {{
+                    board.removeObject(pt);
+                  }}
+                  userPoints.splice(idx, 1);
+                  sendPointsToPython();
+                  checkAllExpectedPointsVisible();
+                }}
+              }} catch (e) {{ console.error('auto-delete error', e); }}
+            }}, 2000);
+          }}
+          checkAllExpectedPointsVisible();
+        }}
+        
+        // Fonction pour trouver un point proche
+        function dist(a, b) {{
+          var dx = a[0] - b[0];
+          var dy = a[1] - b[1];
+          return Math.sqrt(dx*dx + dy*dy);
+        }}
+        
+        function findNearbyUserPointIndex(coords) {{
+          for (var i = 0; i < userPoints.length; i++) {{
+            var pt = userPoints[i];
+            if (board.objectsList.indexOf(pt) === -1) continue;
+            var pcoords = [pt.X(), pt.Y()];
+            if (dist(coords, pcoords) <= clickDeleteTol) return i;
+          }}
+          return -1;
+        }}
+        
+        // Gestion des clics sur le board
+        board.on('down', function(evt) {{
+          try {{
+            if (!interactiveEnabled) return;
+            var raw = board.getUsrCoordsOfMouse(evt);
+            var nearbyIdx = findNearbyUserPointIndex(raw);
+            if (nearbyIdx !== -1) {{
+              var p = userPoints[nearbyIdx];
+              if (p && p.isMatched) {{
+                return;
+              }}
+              if (board.objectsList.indexOf(p) !== -1) board.removeObject(p);
+              userPoints.splice(nearbyIdx, 1);
+              sendPointsToPython();
+              return;
+            }}
+            
+            var snapped = (function(coords) {{
+              var x = Math.round(coords[0]);
+              var y = Math.round(coords[1]);
+              var bb = board.getBoundingBox();
+              var xmin = bb[0], ymax = bb[1], xmax = bb[2], ymin = bb[3];
+              if (x < xmin) x = xmin;
+              if (x > xmax) x = xmax;
+              if (y < ymin) y = ymin;
+              if (y > ymax) y = ymax;
+              return [x, y];
+            }})(raw);
+            
+            var p = board.create('point', snapped, {{
+              withLabel: false, size: 6, name: '',
+              snapToGrid: true, snapSizeX: GRID_STEP, snapSizeY: GRID_STEP
+            }});
+            if (typeof p.snapToGrid === 'function') p.snapToGrid(true);
+            
+            userPoints.push(p);
+            updatePointColorAndLabel(p);
+            
+            p.on('drag', function() {{
+              try {{
+                if (this.isMatched) {{ return; }}
+                var s = (function(coords) {{
+                  var x = Math.round(coords[0]);
+                  var y = Math.round(coords[1]);
+                  var bb = board.getBoundingBox();
+                  var xmin = bb[0], ymax = bb[1], xmax = bb[2], ymin = bb[3];
+                  if (x < xmin) x = xmin;
+                  if (x > xmax) x = xmax;
+                  if (y < ymin) y = ymin;
+                  if (y > ymax) y = ymax;
+                  return [x, y];
+                }})([this.X(), this.Y()]);
+                this.moveTo(JXG.COORDS_BY_USER, s);
+                updatePointColorAndLabel(this);
+                sendPointsToPython();
+              }} catch (e) {{ console.error('drag error', e); }}
+            }});
+            
+            p.on('up', function() {{
+              try {{
+                if (this.isMatched) {{ return; }}
+                var s = (function(coords) {{
+                  var x = Math.round(coords[0]);
+                  var y = Math.round(coords[1]);
+                  var bb = board.getBoundingBox();
+                  var xmin = bb[0], ymax = bb[1], xmax = bb[2], ymin = bb[3];
+                  if (x < xmin) x = xmin;
+                  if (x > xmax) x = xmax;
+                  if (y < ymin) y = ymin;
+                  if (y > ymax) y = ymax;
+                  return [x, y];
+                }})([this.X(), this.Y()]);
+                this.moveTo(JXG.COORDS_BY_USER, s);
+                updatePointColorAndLabel(this);
+                sendPointsToPython();
+              }} catch (e) {{ console.error('up error', e); }}
+            }});
+            
+            sendPointsToPython();
+          }} catch (err) {{ console.error('Error handling down event', err); }}
+        }});
+        
+        board.on('move', function(evt) {{
+          if (!interactiveEnabled) return;
+          if (board.hasMouseDown) sendPointsToPython();
+        }});
+        
+        boardContainer.tabIndex = 0;
+        console.log('JSXGraph initialisé avec succès dans le conteneur direct');
+      }}
+    }})();
+    """)
+
+
+def placer_2_points_animation(
+    known_points_per_class=20,
+    transition_seconds=5,
+    transition_text="Bravo vous avez placé les 2 points. Maintenant on passe à la suite qui est donc voir le reste des points connus",
+):
+    placer_2_points(
+        animate_known_points=True,
+        known_points_per_class=known_points_per_class,
+        transition_seconds=transition_seconds,
+        transition_text=transition_text,
+    )
+
+
+### --------------------------------- ###
+
+
 def tracer_200_points(nb=200):
     id = uuid.uuid4().hex
-    display(HTML(f'''
-        <canvas id="{id}-chart"></canvas>
-    '''))
 
     c_train_par_population = compute_c_train_by_class(fonction_caracteristique=common.challenge.deux_caracteristiques,
                                                       d_train=common.challenge.d_train[0:nb],
@@ -76,8 +2063,358 @@ def tracer_200_points(nb=200):
         'hideClasses': True,
     }
 
-    run_js(f"setTimeout(() => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'), 500)")
+    run_js(
+        f"mathadata.add_observer('{id}-chart', () => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
 
+    display(HTML(f'''
+        <canvas id="{id}-chart"></canvas>
+    '''))
+
+
+def tracer_points_droite_vecteur(id_content=None, carac=None, initial_hidden=False, save=True, normal=None,
+                                 directeur=False, directeur_a=False, reglage_normal=False, initial_values=None,
+                                 sliders=False, interception_point=True, equation_hide=True, orthonormal=False,
+                                 center_canvas=False, hide_inputs=False, vector_inset=False):
+    if id_content is None:
+        id_content = uuid.uuid4().hex
+
+    if normal is None:
+        normal = False
+
+    if carac is None:
+        carac = common.challenge.deux_caracteristiques
+
+    c_train_par_population = compute_c_train_by_class(fonction_caracteristique=carac)
+
+    params = {
+        'points': c_train_par_population,
+        'custom': carac == common.challenge.deux_caracteristiques_custom,
+        'hover': True,
+        'displayValue': False,
+        'save': save,
+        'equation_hide': equation_hide,
+        'equation_fixed_position': True,
+        'vector_inset': vector_inset,
+        'vecteurs': {
+            'directeur': directeur,
+            'directeur_a': directeur_a,
+            'normal': normal,
+        },
+        'center_canvas': center_canvas,
+        'orthonormal': orthonormal,
+        'droite': {
+            'mode': 'cartesienne'
+        },
+        'inputs': {
+            'xa': True,
+            'ya': True,
+        },
+        'compute_score': True,
+        'force_origin': True,
+        'interception_point': interception_point,
+    }
+    
+    if reglage_normal:
+        params['inputs']['nx'] = True
+        params['inputs']['ny'] = True
+    else:
+        params['inputs']['ux'] = True
+        params['inputs']['uy'] = True
+
+    # default values
+    ux = 5
+    uy = 10
+    xa = 30
+    ya = 70
+    nx = 10
+    ny = -5
+
+    # Si initial_values est fourni, l'utiliser pour override les defaults
+    # et le passer au JS pour forcer ces valeurs
+    if initial_values:
+        ux = initial_values.get('ux', ux)
+        uy = initial_values.get('uy', uy)
+        xa = initial_values.get('xa', xa)
+        ya = initial_values.get('ya', ya)
+        nx = initial_values.get('nx', nx)
+        ny = initial_values.get('ny', ny)
+
+        # [2026-03-04] FIX: pré-calcul des valeurs initiales a, b, c cohérentes avec le JS corrigé
+        # Equation: nx*x + ny*y - (nx*xa + ny*ya) = 0 => a=nx, b=ny, c=-(nx*xa + ny*ya)
+        if reglage_normal:
+            init_nx, init_ny = nx, ny
+        else:
+            # Mode vecteur directeur: nx = -uy, ny = ux
+            init_nx, init_ny = uy, -ux
+        init_a = init_nx
+        init_b = init_ny
+        init_c = -(init_nx * xa + init_ny * ya)
+        
+        # Créer un dictionnaire complet pour forcer ces valeurs en JS
+        params['initial_values'] = {
+            'ux': ux, 'uy': uy, 'xa': xa, 'ya': ya, 'nx': nx, 'ny': ny,
+            'a': init_a, 'b': init_b, 'c': init_c
+        }
+    
+    # Toujours passer les valeurs par défaut pour initialiser les sliders HTML
+    # Ces valeurs sont utilisées comme fallback si localStorage est vide
+    if reglage_normal:
+        default_nx, default_ny = nx, ny
+    else:
+        default_nx, default_ny = uy, -ux
+    default_a = default_nx
+    default_b = default_ny
+    default_c = -(default_nx * xa + default_ny * ya)
+    
+    params['default_values'] = {
+        'ux': ux, 'uy': uy, 'xa': xa, 'ya': ya, 'nx': nx, 'ny': ny,
+        'a': default_a, 'b': default_b, 'c': default_c
+    }
+
+    run_js(
+        f"mathadata.add_observer('{id_content}-container', () => window.mathadata.tracer_points('{id_content}', '{json.dumps(params, cls=NpEncoder)}'))")
+
+    # Mise en place du conteneur pour le graphique
+    if sliders:
+        display(HTML(f'''
+            <div id="{id_content}-container" style="{'visibility:hidden;' if initial_hidden else ''}">
+                <div id="{id_content}-score-container"
+                    style="text-align:center; font-weight:bold; font-size:2rem;">
+                    Pourcentage d'erreur : <span id="{id_content}-score">...</span>
+                </div>
+
+                <!-- Conteneur flex horizontal pour canvas + sliders -->
+                <div style="display:flex; flex-direction:row; gap:2rem; align-items:flex-start;">
+                    
+                    <!-- Canvas à gauche -->
+                    <div style="flex: 1;">
+                        <canvas id="{id_content}-chart"></canvas>
+                    </div>
+
+                    <!-- Sliders à droite -->
+                    <div id="{id_content}-inputs"
+                         style="display:{'none' if hide_inputs else 'flex'}; flex-direction:column; gap:2rem; min-width:250px;">
+                    
+                        <!-- Sliders pour vecteur directeur -->
+                        <div style="
+                            display:{'flex' if (directeur and not reglage_normal) else 'none'};
+                            flex-direction:column; gap:1.5rem;">
+                            <div>
+                                <label style="color: green;">x<sub>u</sub> =
+                                    <span id="{id_content}-ux-val">{ux}</span>
+                                </label>
+                                <input type="range"
+                                       id="{id_content}-input-ux"
+                                       value="{ux}" min="-20" max="20" step="0.1"
+                                       oninput="document.getElementById('{id_content}-ux-val').textContent=this.value;"
+                                       style="width:100%;">
+                            </div>
+                            <div>
+                                <label style="color: firebrick;">y<sub>u</sub> =
+                                    <span id="{id_content}-uy-val">{uy}</span>
+                                </label>
+                                <input type="range"
+                                       id="{id_content}-input-uy"
+                                       value="{uy}" min="-20" max="20" step="0.1"
+                                       oninput="document.getElementById('{id_content}-uy-val').textContent=this.value;"
+                                       style="width:100%;">
+                            </div>
+                        </div>
+                    
+                        <!-- Sliders pour vecteur normal -->
+                        <div style="
+                            display:{'flex' if reglage_normal else 'none'};
+                            flex-direction:column; gap:1.5rem;">
+                            <div>
+                                <label>⃗n<sub>x</sub> =
+                                    <span id="{id_content}-nx-val">{nx}</span>
+                                </label>
+                                <input type="range"
+                                       id="{id_content}-input-nx"
+                                       value="{nx}" min="-10" max="10" step="1"
+                                       oninput="document.getElementById('{id_content}-nx-val').textContent=this.value;"
+                                       style="width:100%;">
+                            </div>
+                            <div>
+                                <label>⃗n<sub>y</sub> =
+                                    <span id="{id_content}-ny-val">{ny}</span>
+                                </label>
+                                <input type="range"
+                                       id="{id_content}-input-ny"
+                                       value="{ny}" min="-10" max="10" step="1"
+                                       oninput="document.getElementById('{id_content}-ny-val').textContent=this.value;"
+                                       style="width:100%;">
+                            </div>
+                        </div>
+                    
+                        <!-- Sliders pour point A -->
+                        <div style="display:flex; flex-direction:column; gap:1.5rem;">
+                            <div>
+                                <label>x<sub>A</sub> =
+                                    <span id="{id_content}-xa-val">{xa}</span>
+                                </label>
+                                <input type="range"
+                                       id="{id_content}-input-xa"
+                                       value="{xa}" min="0" max="88" step="1"
+                                       oninput="document.getElementById('{id_content}-xa-val').textContent=this.value;"
+                                       style="width:100%;">
+                            </div>
+                            <div>
+                                <label>y<sub>A</sub> =
+                                    <span id="{id_content}-ya-val">{ya}</span>
+                                </label>
+                                <input type="range"
+                                       id="{id_content}-input-ya"
+                                       value="{ya}" min="0" max="88" step="1"
+                                       oninput="document.getElementById('{id_content}-ya-val').textContent=this.value;"
+                                       style="width:100%;">
+                            </div>
+                        </div>
+                    
+                    </div>
+
+                </div>
+            </div>
+            '''))
+    else:
+        display(HTML(f'''
+        <!-- Conteneur pour afficher le pourcentage d'erreur -->
+        <div id="{id_content}-container" style="{'visibility:hidden;' if initial_hidden else ''}">
+            <div id="{id_content}-score-container"
+                style="
+                text-align: center;
+                font-weight: bold;
+                font-size: 2rem;
+                ">
+                Pourcentage d'erreur : <span id="{id_content}-score">...</span>
+            </div>
+
+            <!-- Zone canvas pour tracer le graphique -->
+            <canvas id="{id_content}-chart"></canvas>
+
+            <!-- Conteneur pour les champs d'entrée -->
+            <div id="{id_content}-inputs"
+                style="
+                display: {'none' if hide_inputs else 'flex'};
+                gap: 2rem;
+                justify-content: center;
+                flex-direction: row;
+                ">
+                <!-- Cas « directeur » et pas en mode « reglage_normal » -->
+                <div style="
+                    display: {'flex' if (directeur and not reglage_normal) else 'none'};
+                    flex-direction: row;
+                    gap: 1.5rem;
+                    ">
+                    <!-- Paramètre ux -->
+                    <div>
+                        <label for="{id_content}-input-ux" id="{id_content}-label-ux">x<sub>u</sub> = </label>
+                        <input type="number"
+                            id="{id_content}-input-ux"
+                            value="{ux}"
+                            step="1"
+                            style="width: 50px; height: 25px; font-size: 12px;">
+                    </div>
+                    <!-- Paramètre uy -->
+                    <div>
+                        <label for="{id_content}-input-uy" id="{id_content}-label-uy">y<sub>u</sub> = </label>
+                        <input type="number"
+                            id="{id_content}-input-uy"
+                            value="{uy}"
+                            step="1"
+                            style="width: 50px; height: 25px; font-size: 12px;">
+                    </div>
+                </div>
+
+                <!-- Cas du mode « reglage_normal » -->
+                <div style="
+                    display: {'flex' if reglage_normal else 'none'};
+                    flex-direction: row;
+                    gap: 1.5rem;
+                    ">
+                    <!-- Paramètre a -->
+                    <div>
+                        <label for="{id_content}-input-nx" id="{id_content}-label-nx">\u20D7n<sub>x</sub> = </label>
+                        <input type="number"
+                            id="{id_content}-input-nx"
+                            value="{nx}"
+                            step="1"
+                            style="width: 50px; height: 25px; font-size: 12px;">
+                    </div>
+                    <!-- Paramètre b -->
+                    <div>
+                        <label for="{id_content}-input-ny" id="{id_content}-label-ny">\u20D7n<sub>y</sub> = </label>
+                        <input type="number"
+                            id="{id_content}-input-ny"
+                            value="{ny}"
+                            step="1"
+                            style="width: 50px; height: 25px; font-size: 12px;">
+                    </div>
+                </div>
+
+                <!-- Paramètre x_A -->
+                <div style="display: flex; flex-direction: row; gap: 1.5rem;">
+                    <div>
+                        <label for="{id_content}-input-xa" id="{id_content}-label-xa">x<sub>A</sub> = </label>
+                        <input type="number"
+                            id="{id_content}-input-xa"
+                            value="{xa}"
+                            step="1"
+                            style="width: 50px; height: 25px; font-size: 12px;">
+                    </div>
+                    <!-- Paramètre y_A -->
+                    <div>
+                        <label for="{id_content}-input-ya" id="{id_content}-label-ya">y<sub>A</sub> = </label>
+                        <input type="number"
+                            id="{id_content}-input-ya"
+                            value="{ya}"
+                            step="1"
+                            style="width: 50px; height: 25px; font-size: 12px;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    '''))
+
+
+def tracer_points_droite_vecteur_directeur():
+    # Valeurs par défaut spécifiques pour cet exercice
+    defaults = {'ux': 5, 'uy': 10, 'xa': 20, 'ya': 10}
+
+    tracer_points_droite_vecteur(directeur=True, directeur_a=True, initial_values=defaults, sliders=True,
+                                 interception_point=False)
+
+
+# fonction particulière pour nb prod scal mnist
+def tracer_points_droite_vecteur_directeur_nb_ps():
+    # Valeurs par défaut spécifiques pour cet exercice
+    defaults = {'ux': 5, 'uy': 10, 'xa': 10, 'ya': 40}
+
+    tracer_points_droite_vecteur(directeur=True, directeur_a=True, initial_values=defaults, sliders=True,
+                                 interception_point=False, equation_hide=False, orthonormal=True, center_canvas=True)
+    # fonction particulière pour nb prod scal mnist
+
+
+def tracer_points_droite_vecteur_directeur_nb_ps_rappel():
+    tracer_points_droite_vecteur(directeur=True, directeur_a=True, sliders=True,
+                                 interception_point=False, equation_hide=False, orthonormal=True, center_canvas=True,
+                                 hide_inputs=True)
+
+
+
+# fonction particulière pour nb prod scal mnist
+def tracer_points_droite_vecteur_normal_nb_ps():
+    # Valeurs par défaut spécifiques pour cet exercice
+    defaults = {'nx': 5, 'ny': 10, 'xa': 20, 'ya': 10}
+    tracer_points_droite_vecteur(directeur_a=True, normal=True, initial_values=defaults, sliders=True,reglage_normal=True,
+                 interception_point=False, equation_hide=False, orthonormal=True, vector_inset=True)
+   
+def tracer_points_droite_vecteur_normal_nb_ps_rappel():
+
+   tracer_points_droite_vecteur(directeur_a=True, normal=True, sliders=True,reglage_normal=True,
+                 interception_point=False, equation_hide=False, orthonormal=True, vector_inset=True) 
+   
+   
 
 def update_custom():
     c_train_par_population = compute_c_train_by_class(
@@ -101,9 +2438,9 @@ def _classification(a, b, c, c_train, above=None, below=None):
     return r_est_train
 
 
-def erreur_lineaire(a, b, c, c_train, above=None, below=None):
+def erreur_lineaire(a, b, c, c_train, above=None, below=None, r_train=None):
     r_est_train = _classification(a, b, c, c_train, above, below)
-    erreurs = (r_est_train != common.challenge.r_train).astype(int)
+    erreurs = (r_est_train != r_train).astype(int)
     return 100 * np.mean(erreurs)
 
 
@@ -308,8 +2645,10 @@ def get_best_score(method='utra-fast'):
     return erreur, params
 
 
-# JS
+pointA = (20, 40)
+pointB = (30, 10)
 
+# JS
 run_js('''
     if (localStorage.getItem('input-values')) {
         mathadata.run_python(`set_input_values('${localStorage.getItem("input-values")}')`)
@@ -354,55 +2693,80 @@ run_js('''
         return {a, b, c}
     }
       
-    window.mathadata.findIntersectionPoints = function(a, b, c, x_min, x_max, force_vertical) {
-        const y_min = x_min;
-        const y_max = x_max;
-        const points = [];
+    // [2026-03-04] Trouve deux points sur la droite ax + by + c = 0
+    // par intersection avec les bords d'un rectangle englobant la zone visible.
+    // Remplace l'ancien hack INF qui produisait des coordonnées astronomiques
+    // et causait des problèmes de rendu quand b (= -ux) est petit.
+    window.mathadata.findIntersectionPoints = function (
+      a,
+      b,
+      c,
+      x_min,
+      x_max
+    ) {
+      if (a === 0 && b === 0) return [];
 
-        // Handle vertical line (b === 0): x = -c/a
-        if (b === 0) {
-            const x = -c / a;
-            if (x >= x_min && x <= x_max) {
-                points.push({ x, y: y_min }, { x, y: y_max });
-            }
+      const range = Math.max(1, x_max - x_min);
+      const margin = range * 2; // marge pour que la droite dépasse du cadre
+      const lo = x_min - margin;
+      const hi = x_max + margin;
+
+      // Droite verticale (b = 0): x = -c/a
+      if (b === 0) {
+        const x = -c / a;
+        return [{ x, y: lo }, { x, y: hi }];
+      }
+
+      // Droite horizontale (a = 0): y = -c/b
+      if (a === 0) {
+        const y = -c / b;
+        return [{ x: lo, y }, { x: hi, y }];
+      }
+
+      // Cas général: intersections avec les 4 bords du rectangle [lo, hi] x [lo, hi]
+      const candidates = [];
+
+      // Bords verticaux (x = lo et x = hi)
+      const y_at_lo = (-a * lo - c) / b;
+      if (y_at_lo >= lo && y_at_lo <= hi) candidates.push({ x: lo, y: y_at_lo });
+
+      const y_at_hi = (-a * hi - c) / b;
+      if (y_at_hi >= lo && y_at_hi <= hi) candidates.push({ x: hi, y: y_at_hi });
+
+      // Bords horizontaux (y = lo et y = hi)
+      const x_at_ylo = (-b * lo - c) / a;
+      if (x_at_ylo > lo && x_at_ylo < hi) candidates.push({ x: x_at_ylo, y: lo });
+
+      const x_at_yhi = (-b * hi - c) / a;
+      if (x_at_yhi > lo && x_at_yhi < hi) candidates.push({ x: x_at_yhi, y: hi });
+
+      // Dédupliquer (coins)
+      const unique = [];
+      for (const p of candidates) {
+        if (!unique.some(u => Math.abs(u.x - p.x) < 0.01 && Math.abs(u.y - p.y) < 0.01)) {
+          unique.push(p);
         }
-        // Handle horizontal line (a === 0): y = -c/b
-        else if (a === 0) {
-            const y = -c / b;
-            if (y >= y_min && y <= y_max) {
-                points.push({ x: x_min, y }, { x: x_max, y });
-            }
-        }
-        // General case
-        else {
-            // Intersect with vertical boundaries: x = x_min and x = x_max
-            let y = (-a * x_min - c) / b;
-            if (force_vertical || (y >= y_min && y <= y_max)) {
-                points.push({ x: x_min, y });
-            }
-            y = (-a * x_max - c) / b;
-            if (force_vertical || (y >= y_min && y <= y_max)) {
-                points.push({ x: x_max, y });
-            }
+      }
 
-            // Intersect with horizontal boundaries: y = y_min and y = y_max
-            let x = (-b * y_min - c) / a;
-            if (x >= x_min && x <= x_max) points.push({ x, y: y_min });
-            x = (-b * y_max - c) / a;
-            if (x >= x_min && x <= x_max) points.push({ x, y: y_max });
-        }
+      if (unique.length >= 2) return [unique[0], unique[unique.length - 1]];
 
-        // Remove duplicates
-        const uniquePoints = points.filter((pt, i, arr) =>
-            arr.findIndex(p => p.x === pt.x && p.y === pt.y) === i
-        );
-
-        return uniquePoints.slice(0, 2).sort((p1, p2) => p1.x - p2.x); // Return at most two intersection points
-    }
+      // Fallback: deux points sur les bords verticaux (sans clipping y)
+      return [
+        { x: lo, y: (-a * lo - c) / b },
+        { x: hi, y: (-a * hi - c) / b }
+      ];
+    };
 
     window.mathadata.getLineEquationStr = function(a, b, c) {
-        return `${a}x ${b < 0 ? '-' : '+'} ${Math.abs(b)}y ${c < 0 ? '-' : '+'} ${Math.abs(c)} = 0`
+        const round2 = v => Math.round((v + Number.EPSILON) * 100) / 100;
+    
+        a = round2(a);
+        b = round2(b);
+        c = round2(c);
+    
+        return `${a}x ${b < 0 ? '-' : '+'} ${Math.abs(b)}y ${c < 0 ? '-' : '+'} ${Math.abs(c)} = 0`;
     }
+
 
     window.mathadata.tracer_2_points = function(id, params) {
         params = JSON.parse(params);
@@ -534,13 +2898,16 @@ run_js('''
           params = JSON.parse(params);
       }
 
-      const {points, droite, vecteurs, centroides, additionalPoints, hideClasses, hover, inputs, labels, displayValue, save, custom, compute_score, drag, force_origin, equation_hide } = params;
+      const {points, droite, vecteurs, vector_inset = false, centroides, additionalPoints, hideClasses, hover, inputs, initial_values, default_values, displayValue, save, custom, compute_score, drag, force_origin, equation_hide, param_colors, equation_fixed_position, orthonormal, center_canvas, side_box = true , interception_point = true, disable_python_updates = false} = params;
         // points: tableau des données en entrée sous forme de coordonnées (deux éléments, les points des 2 et les points des 7) [[[x,y],[x,y],...] , [[x,y],[x,y],...]]
         // droite: la droite à afficher (objet)
-        // vecteurs: vecteurs à afficher pour le bouger (normal ou directeur)
+        // vecteurs: vecteurs à afficher pour le bouger
+        //   - normal: bool: affiche le vecteur normal
+        //   - directeur: bool: affiche le vecteur directeur (origin)
+        //   - directeur_a: bool: affiche le vecteur directeur (attaché au point A)
         // centroides: bool: afficher les centroides
         // additionalPoints: tableau de points additionnels
-        // hideClasses: bool: (défault: false) pour afficher la légende au dessus du graphe
+        // hideClasses: bool: (default: false) pour afficher la légende au dessus du graphe
         // hover: objet par défault, peux être appelé comme booleen pour un affichage hover selon son type
         // drag: bool: autorise à bouger les points
         // force_origin: bool: force le cadre à l'origine
@@ -548,6 +2915,42 @@ run_js('''
         // compute_score: bool: affichage du score
         // displayValue: bool: relatif à l'affichage des valeurs des inputs externes
         // equation_hide: bool: masque l'equation de la droite
+        // param_colors: affiche les couleurs de m et p
+        // equation_fixed_position: bool: fixe l'équation dans le coin inférieur droit au lieu de la dessiner le long de la droite
+        // inputs: objet avec les inputs à afficher et gérer (ux, uy, xa, ya, nx, ny, a, b, c)
+        // initial_values: valeurs initiales des inputs (certaines valeurs peuvent etre fixées auquel cas il y a une valeur initiale mais pas d'input)
+        // interception_point: affiche le point d'interception avec l'axe des ordonnées
+        
+      const getColoredEquation = (m, p, colors) => {
+        if (!colors || (!colors.m && !colors.p)) {
+            return `y = ${m}x ${p < 0 ? '-' : '+'} ${Math.abs(p)}`;
+        }
+
+        const mColor = colors.m || 'black';
+        const pColor = colors.p || 'black';
+        const sign = p < 0 ? '-' : '+';
+        const absP = Math.abs(p);
+
+        return {
+            html: `y = <span style="color: ${mColor}">${m}</span>x ${sign} <span style="color: ${pColor}">${absP}</span>`,
+            text: `y = ${m}x ${sign} ${absP}`
+        };
+      };
+
+      const getYInterceptPoint = (vals) => {
+        if (!vals || vals.b === undefined || vals.c === undefined) {
+            return null;
+        }
+        if (vals.b === 0) {
+            return null;
+        }
+        const y0 = -vals.c / vals.b;
+        if (!isFinite(y0)) {
+            return null;
+        }
+        return { x: 0, y: y0 };
+      };
+      
       const computeScore = () => {
         const {a, b, c} = values;
         if (a === undefined || b === undefined || c === undefined) {
@@ -571,7 +2974,168 @@ run_js('''
     
       // Values for all datasets, updated with inputs
       const values = {}
+      
+      // D'abord, utiliser les valeurs par défaut comme base
+      if (default_values) {
+          Object.assign(values, default_values)
+      }
+      
+      // Ensuite, initial_values si fourni (pour la compatibilité avec le code existant)
+      if (initial_values) {
+          Object.assign(values, initial_values)
+      }
+
+      // Slope box (optionnel)
+      const slopeBox = side_box ? document.getElementById(`${id}-slope-box`) : null;
+      if (slopeBox && !slopeBox.dataset.init) {
+        slopeBox.style.border = 'none'; // Remove border if any
+        slopeBox.innerHTML = `
+          <svg id="${id}-slope-svg" width="100%" height="100%" viewBox="0 0 250 180" style="overflow: visible;">
+              <line id="${id}-slope-base" stroke="purple" stroke-width="4" stroke-linecap="round" />
+              <line id="${id}-slope-height" stroke="orange" stroke-width="4" stroke-linecap="round" />
+              <line id="${id}-slope-hypo" stroke="black" stroke-width="5" stroke-linecap="round" />
+              <text id="${id}-text-base" text-anchor="middle" font-weight="bold" font-size="16" fill="purple">10</text>
+              <text id="${id}-text-calc" text-anchor="start" font-weight="bold" font-size="16" fill="orange"></text>
+              <foreignObject id="${id}-text-formula" x="0" y="125" width="250" height="55"></foreignObject>
+          </svg>
+        `;
+        slopeBox.dataset.init = '1';
+      }
+
+      const getSlope = () => {
+        if (values.m !== undefined) return values.m;
+        if (values.a !== undefined && values.b !== undefined && values.b !== 0) {
+          return -(values.a / values.b);
+        }
+        return null;
+      };
+
+      const updateSlopeBox = () => {
+        if (!slopeBox) return;
+        const svg = document.getElementById(`${id}-slope-svg`);
+        if (!svg) return;
+        const baseLine = document.getElementById(`${id}-slope-base`);
+        const heightLine = document.getElementById(`${id}-slope-height`);
+        const hypoLine = document.getElementById(`${id}-slope-hypo`);
+        const textBase = document.getElementById(`${id}-text-base`);
+        const textCalc = document.getElementById(`${id}-text-calc`);
+        const textFormula = document.getElementById(`${id}-text-formula`);
+        if (!baseLine || !heightLine || !hypoLine || !textBase || !textCalc) return;
+
+        const mVal = getSlope() ?? 0;
+        
+        // Dynamic width calculation
+        let vizBase = 80; 
+        const chart = mathadata.charts[`${id}-chart`];
+        let boxHeight = 180;
+
+        if (chart) {
+            const chartArea = chart.chartArea;
+            const scales = chart.scales;
+            if (chartArea && scales && scales.x) {
+                const graphWidthPixels = chartArea.width;
+                const xRange = scales.x.max - scales.x.min;
+                if (xRange > 0) {
+                    vizBase = (10 / xRange) * graphWidthPixels;
+                }
+            }
+        }
+
+        const centerY = boxHeight / 2;
+        const hViz = vizBase * mVal;
+        
+        const Ax = 125 - vizBase / 2;
+        const Ay = centerY + hViz / 2;
+        const Bx = 125 + vizBase / 2;
+        const By = Ay;
+        const Cx = Bx;
+        const Cy = Ay - hViz;
+
+        baseLine.setAttribute('x1', Ax);
+        baseLine.setAttribute('y1', Ay);
+        baseLine.setAttribute('x2', Bx);
+        baseLine.setAttribute('y2', By);
+
+        heightLine.setAttribute('x1', Bx);
+        heightLine.setAttribute('y1', By);
+        heightLine.setAttribute('x2', Cx);
+        heightLine.setAttribute('y2', Cy);
+
+        hypoLine.setAttribute('x1', Ax);
+        hypoLine.setAttribute('y1', Ay);
+        hypoLine.setAttribute('x2', Cx);
+        hypoLine.setAttribute('y2', Cy);
+
+        textBase.setAttribute('x', (Ax + Bx) / 2);
+        textBase.setAttribute('y', Ay + 20);
+
+        textCalc.setAttribute('x', Bx + 10);
+        textCalc.setAttribute('y', (By + Cy) / 2 + 5);
+
+        const mDisp = parseFloat(mVal.toFixed(2));
+        const resDisp = parseFloat((10 * mVal).toFixed(2));
+        textCalc.textContent = resDisp;
+
+        if (textFormula) {
+            // Position dynamique de la formule pour éviter le chevauchement
+            // Ay est la coordonnée Y de la base du triangle (le bas du triangle si m > 0)
+            // On place le texte un peu en dessous de Ay
+            // Si m < 0, Ay est le haut du triangle, mais le triangle descend vers Cy.
+            // Dans ce cas, le bas du triangle est Cy.
+            // Donc on prend le max(Ay, Cy) pour trouver le point le plus bas du triangle.
+            
+            const triangleBottomY = Math.max(Ay, Cy);
+            const formulaY = Math.max(125, triangleBottomY + 60); // Au moins 125, ou plus bas si nécessaire
+            textFormula.setAttribute('y', formulaY);
+
+            const mColor = param_colors?.m || '#239E28';
+            // Render the formula as a fraction (keep colors).
+            textFormula.innerHTML = `
+              <div xmlns="http://www.w3.org/1999/xhtml"
+                   style="width:250px; height:55px; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:16px; line-height:1;">
+                <span style="color:${mColor};">m</span>
+                <span style="color:black;">&nbsp;=&nbsp;</span>
+                <span style="display:inline-flex; flex-direction:column; align-items:center; margin:0 4px;">
+                  <span style="color:orange; padding:0 2px;">${resDisp}</span>
+                  <span style="height:2px; width:100%; background:black; margin:2px 0;"></span>
+                  <span style="color:purple; padding:0 2px;">10</span>
+                </span>
+                <span style="color:black;">&nbsp;=&nbsp;</span>
+                <span style="color:${mColor};">${mDisp}</span>
+              </div>
+            `;
+        }
+      };
+      
       const plugins = [];
+      // Axes lines (x=0, y=0) drawn before points
+      plugins.push({
+        beforeDatasetsDraw(chart) {
+          const scales = chart.scales;
+          if (!scales || !scales.x || !scales.y) return;
+          const x0 = scales.x.getPixelForValue(0);
+          const y0 = scales.y.getPixelForValue(0);
+          const area = chart.chartArea;
+          if (!area) return;
+          const ctx = chart.ctx;
+          ctx.save();
+          ctx.strokeStyle = '#555';
+          ctx.lineWidth = 2;
+          if (y0 >= area.top && y0 <= area.bottom) {
+            ctx.beginPath();
+            ctx.moveTo(area.left, y0);
+            ctx.lineTo(area.right, y0);
+            ctx.stroke();
+          }
+          if (x0 >= area.left && x0 <= area.right) {
+            ctx.beginPath();
+            ctx.moveTo(x0, area.top);
+            ctx.lineTo(x0, area.bottom);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+      });
 
       // Colors for the populations
       const colors = droite ? mathadata.classColorCodes.map(c => `rgb(${c})`) : mathadata.classColors;
@@ -581,7 +3145,7 @@ run_js('''
       // Points (dataset 0 and 1)
       const datasets = points.map((set, index) => {
           return {
-              label: `${mathadata.data('', {plural: true, uppercase: true})} de ${hideClasses ? '?' : (index === 0 ? mathadata.challenge.strings.classes[0] : mathadata.challenge.strings.classes[1])}`,
+              label: hideClasses ? '?' : mathadata.classe(index, {alt: true, plural: true, uppercase: true}),
               data: [],
               backgroundColor: colors[index],
               borderColor: colors[index],
@@ -592,21 +3156,37 @@ run_js('''
       });
       
       let max, min;
+      let minX, maxX, minY, maxY;
+      let start_ux, start_uy;
       let droiteDatasetIndex;
+      let yInterceptDatasetIndex;
       let centroid1DatasetIndex, centroid2DatasetIndex;
 
         // when caracteristique changes
       const updatePoints = (points, params) => {
         if (points) {
             const allData = points.flat(2);
-            max = Math.ceil(Math.max(...allData) + 1);
-            min = Math.floor(Math.min(...allData) - 1);
+            const xs = points.flat(1).map(p => p[0]);
+            const ys = points.flat(1).map(p => p[1]);
+            maxX = Math.ceil(Math.max(...xs) + 1);
+            minX = Math.floor(Math.min(...xs) - 1);
+            maxY = Math.ceil(Math.max(...ys) + 1);
+            minY = Math.floor(Math.min(...ys) - 1);
             if (force_origin) {
-            min = Math.min(min, 0);
+              minX = Math.min(minX, 0);
+              minY = Math.min(minY, 0);
+              maxX = Math.max(maxX, 0);
+              maxY = Math.max(maxY, 0);
             }
+            max = Math.max(maxX, maxY);
+            min = Math.min(minX, minY);
             points.forEach((set, index) => {
             datasets[index].data = set.map(([x, y]) => ({ x, y }))
             })
+            
+            // Update start_ux and start_uy based on new min/max
+            start_ux = Math.round((max + min) / 2 / 10) * 10
+            start_uy = Math.round((min + 10) / 10) * 10
         } else { // pour appeler depuis le callback dragData sans changer les coordonnées des points
             points = datasets.slice(0, 2).map(d => d.data).map(d => d.map(({x, y}) => [x, y]))
         }
@@ -627,31 +3207,60 @@ run_js('''
         }
 
         if (droiteDatasetIndex) {
-            const lineData = mathadata.findIntersectionPoints(values.a, values.b, values.c, min, max);  
+            const lineMin = minX ?? min;
+            const lineMax = maxX ?? max;
+            const lineData = mathadata.findIntersectionPoints(values.a, values.b, values.c, lineMin, lineMax);
             datasets[droiteDatasetIndex].data = lineData; 
             if (droite?.avec_zones) {
-                const lineDataVertical = mathadata.findIntersectionPoints(values.a, values.b, values.c, min, max, true);  
+                const lineDataVertical = mathadata.findIntersectionPoints(values.a, values.b, values.c, lineMin, lineMax, true);  
                 datasets[droiteDatasetIndex + 1].data = lineDataVertical; 
                 datasets[droiteDatasetIndex + 2].data = lineDataVertical; 
             }
         }
 
+        if (yInterceptDatasetIndex !== undefined) {
+            const interceptData = getYInterceptPoint(values);
+            datasets[yInterceptDatasetIndex].data = interceptData ? [interceptData] : [];
+        }
+
+        if (uDatasetIndex) {
+            datasets[uDatasetIndex].data = [{ x: start_ux, y: start_uy }, { x: start_ux + values.ux, y: start_uy + values.uy }]
+        }
+        if (nDatasetIndex) {
+            datasets[nDatasetIndex].data = [{ x: values.xa, y: values.ya }, { x: values.xa + values.nx, y: values.ya + values.ny }]
+        }
+        if (uaDatasetIndex) {
+            datasets[uaDatasetIndex].data = [{ x: values.xa, y: values.ya }, { x: values.xa + values.ux, y: values.ya + values.uy }]
+        }
+        if (aDatasetIndex) {
+            datasets[aDatasetIndex].data = [{ x: values.xa, y: values.ya }]
+        }
+
         const chart = mathadata.charts[`${id}-chart`]
         if (chart) {
-          chart.options.scales.x.min = min
-          chart.options.scales.x.max = max
-          chart.options.scales.y.min = min
-          chart.options.scales.y.max = max
+          // include y-intercept in y range only
+          let yMin = minY ?? min
+          let yMax = maxY ?? max
+          if (yInterceptDatasetIndex !== undefined) {
+            const interceptData = getYInterceptPoint(values);
+            if (interceptData) {
+              yMin = Math.min(yMin, interceptData.y);
+              yMax = Math.max(yMax, interceptData.y);
+            }
+          }
+          chart.options.scales.x.min = minX ?? min
+          chart.options.scales.x.max = maxX ?? max
+          chart.options.scales.y.min = yMin
+          chart.options.scales.y.max = yMax
           chart.update(params?.animate === false ? 'none' : undefined)
         }
 
         if (compute_score) {
             computeScore()
         }
-      }
 
-      // initialisation
-      updatePoints(points)
+        updateSlopeBox();
+      }
 
         // rend la fonction updatePoints accessible via l'objet chart
       plugins.push({
@@ -660,11 +3269,9 @@ run_js('''
         }
       })
 
-      const start_ux = Math.round((max + min) / 2 / 10) * 10
-      const start_uy = Math.round((min + 10) / 10) * 10
-      let uDatasetIndex, nDatasetIndex, aDatasetIndex;
+      let uDatasetIndex, nDatasetIndex, uaDatasetIndex, aDatasetIndex;
       if (vecteurs) {
-        const {normal, directeur} = vecteurs;
+        const {normal, directeur, directeur_a} = vecteurs;
         const vectorParams = []
 
         if (directeur) {
@@ -672,7 +3279,7 @@ run_js('''
           datasets.push({
               type: 'line',
               data: [],
-              borderColor: 'red',
+              borderColor: 'purple',
               borderWidth: 2,
               pointRadius: 0,
               pointHitRadius: 0,
@@ -680,11 +3287,31 @@ run_js('''
           }); 
           vectorParams.push({
             datasetIndex: datasets.length - 1,
-            color: 'red',
+            color: 'purple',
             label: '\u20D7u',
             id: 'directeur',
           })
           uDatasetIndex = datasets.length - 1;
+        }
+
+        if (directeur_a) {
+          // add vector u attached to A
+          datasets.push({
+              type: 'line',
+              data: [],
+              borderColor: 'purple',
+              borderWidth: 2,
+              pointRadius: 0,
+              pointHitRadius: 0,
+              label: '',
+          }); 
+          vectorParams.push({
+            datasetIndex: datasets.length - 1,
+            color: 'purple',
+            label: '',
+            id: 'directeur_a',
+          })
+          uaDatasetIndex = datasets.length - 1;
         }
 
         if (normal) {
@@ -692,7 +3319,7 @@ run_js('''
           datasets.push({
               type: 'line',
               data: [],
-              borderColor: 'blue',
+              borderColor: 'brown',
               borderWidth: 2,
               pointRadius: 0,
               pointHitRadius: 0,
@@ -700,7 +3327,7 @@ run_js('''
           });
           vectorParams.push({
             datasetIndex: datasets.length - 1,
-            color: 'blue',
+            color: 'brown',
             label: '\u20D7n',
             id: 'normal',
           })
@@ -758,8 +3385,38 @@ run_js('''
                 ctx.font = '18px Arial';
                 ctx.fillStyle = color;
                 ctx.textAlign = 'left';
-                // TODO
-                ctx.fillText(`${label}(${values[id === 'directeur' ? 'ux' : 'nx']}, ${values[id === 'directeur' ? 'uy' : 'ny']})`, x2 + 10, y2);
+                if (label) {
+                    let label_x, label_y;
+                    if (id === 'directeur' || id === 'directeur_a') {
+                        label_x = values.ux;
+                        label_y = values.uy;
+                    } else {
+                        label_x = values.nx;
+                        label_y = values.ny;
+                    }
+                    if (directeur_a) {
+                        ctx.fillText(`${label}(`, x2 + 10, y2);
+                        let currentX = x2 + 10 + ctx.measureText(`${label}(`).width;
+                        
+                        ctx.fillStyle = 'lightgreen';
+                        ctx.fillText(`${label_x}`, currentX, y2);
+                        currentX += ctx.measureText(`${label_x}`).width;
+                        
+                        ctx.fillStyle = color;
+                        ctx.fillText(`, `, currentX, y2);
+                        currentX += ctx.measureText(`, `).width;
+                        
+                        ctx.fillStyle = 'firebrick';
+                        ctx.fillText(`${label_y}`, currentX, y2);
+                        currentX += ctx.measureText(`${label_y}`).width;
+                        
+                        ctx.fillStyle = color;
+                        ctx.fillText(`)`, currentX, y2);
+                    }
+                    else {
+                        ctx.fillText(`${label}(${label_x}, ${label_y})`, x2 + 10, y2);
+                    }
+                }
                 ctx.restore(); 
               }
             });
@@ -791,7 +3448,7 @@ run_js('''
 
         centroidCoords.forEach(({x, y}, index) => {
           datasets.push({
-              label: `Point moyen de la classe ${mathadata.challenge.strings.classes[index]}`,
+              label: `Point moyen de la classe ${mathadata.challenge.classes[index]}`,
               data: [{ x, y }],
               backgroundColor: colors[index],
               borderColor: 'black',
@@ -819,7 +3476,7 @@ run_js('''
                         ctx.fillStyle = 'black';
                         ctx.textAlign = 'left';
                         ctx.textBaseline = 'middle';
-                        ctx.fillText(`point moyen de ${index === 0 ? mathadata.challenge.strings.classes[0] : mathadata.challenge.strings.classes[1]}`, element.x + 18, element.y - 3); // Adjusted X and Y offset
+                        ctx.fillText(`point moyen ${index === 0 ? mathadata.challenge.classes[0] : mathadata.challenge.classes[1]}`, element.x + 18, element.y - 3); // Adjusted X and Y offset
                         ctx.restore();
                     }
                 });
@@ -888,6 +3545,12 @@ run_js('''
       if (droite) {
           let {mode, m, p, a, b, c, avec_zones} = droite;
 
+          // [2026-03-04] FIX: si droite ne fournit pas a,b,c directement,
+          // récupérer depuis initial_values (pré-calculés côté Python)
+          if (a === undefined && values.a !== undefined) a = values.a;
+          if (b === undefined && values.b !== undefined) b = values.b;
+          if (c === undefined && values.c !== undefined) c = values.c;
+
           let label;
           let showLegend = true;
           if (equation_hide) {
@@ -895,11 +3558,16 @@ run_js('''
           }
             
           if (m !== undefined && p !== undefined) {
-              label = `y = ${m}x ${p < 0 ? '-' : '+'} ${Math.abs(p)}`;
-              a = m;
-              b = -1;
-              c = p;
-          } else if (a !== undefined && b !== undefined && c !== undefined) {
+            if (param_colors) {
+                const coloredEq = getColoredEquation(m, p, param_colors);
+                label = coloredEq.text; // Pour le label du dataset, on utilise le texte simple
+            } else {
+                label = `y = ${m}x ${p < 0 ? '-' : '+'} ${Math.abs(p)}`;
+            }
+            a = m;
+            b = -1;
+            c = p;
+        } else if (a !== undefined && b !== undefined && c !== undefined) {
               label = mathadata.getLineEquationStr(a, b, c);
           } else if (centroidCoords) {
             const params = calculateMedianLine(centroidCoords)
@@ -910,11 +3578,16 @@ run_js('''
             showLegend = false;
           }
 
-          values.m = m
-          values.p = p
-          values.a = a
-          values.b = b
-          values.c = c
+          if (m !== undefined && p !== undefined) {
+            values.m = m
+            values.p = p
+          }
+
+          if (a !== undefined && b !== undefined && c !== undefined) {
+            values.a = a
+            values.b = b
+            values.c = c
+          }
 
           mathadata.run_python(`set_input_values('${JSON.stringify(values)}')`)
 
@@ -937,6 +3610,9 @@ run_js('''
               afterDatasetsDraw: function(chart) {
                 const ctx = chart.ctx;
                 const datasets = chart.data.datasets;
+                if (vector_inset) {
+                    chart.$equationBBox = null;
+                }
                 if (chart.isDatasetVisible(lineDatasetIndex)) {
                     const meta = chart.getDatasetMeta(lineDatasetIndex);
                     const data = meta.data;
@@ -951,25 +3627,127 @@ run_js('''
                     const dy = y2 - y1;
 
                     const angle = Math.atan2(dy, dx);
-  
-                    const textX = Math.min(x2 + 20, chart.chartArea.right - 5);
-                    const textY = Math.min(y2 + 20, chart.chartArea.bottom - 5);
-  
+
+                    let textX, textY, rotationAngle;
+
+                    if (equation_fixed_position) {
+                        // Position fixe dans le coin supérieur droit
+                        textX = chart.chartArea.right - 10;
+                        textY = chart.chartArea.top + 20;
+                        rotationAngle = 0; // Pas de rotation pour la position fixe
+                    } else {
+                        // Position le long de la droite (comportement par défaut) -- Sauf que ici, on reste dans le chartarea en dur avec ce nouvel update.
+                        textX = Math.min(
+                            chart.chartArea.right - 5,
+                            Math.max(chart.chartArea.left + 5, x2 + 20)
+                        );
+                        textY = Math.min(
+                            chart.chartArea.bottom - 5,
+                            Math.max(chart.chartArea.top + 5, y2 + 20)
+                        );
+                        rotationAngle = angle;
+                    }
+
+                    let equationText;
+                    if ((values.m !== undefined && values.p !== undefined) && mode !== 'cartesienne') {
+                        const signEq = values.p < 0 ? '-' : '+';
+                        equationText = `y = ${values.m}x ${signEq} ${Math.abs(values.p)}`;
+                    } else {
+                        equationText = mathadata.getLineEquationStr(values.a, values.b, values.c);
+                    }
+
+                    // Texte effectivement affiché (permet de préfixer l'équation sans casser le calcul de la bounding box)
+                    let displayText = equationText;
+                    if (equation_fixed_position && equationText) {
+                        displayText = `Equation de la droite : ${equationText}`;
+                    }
+
                     ctx.save();
                     ctx.translate(textX, textY);
-                    ctx.rotate(angle);
-                    ctx.font = '16px Arial';
-                    ctx.fillStyle = 'black';
+                    ctx.rotate(rotationAngle);
+                    ctx.font = '18px Arial';
+                    // En position fixe, on met l'équation en noir pour attirer l'attention
+                    ctx.fillStyle = equation_fixed_position ? 'black' : 'orange';
                     ctx.textAlign = 'right';
                     
-                    let equation
-                    if ((values.m !== undefined && values.p !== undefined) && mode !== 'cartesienne') {
-                        equation = `y = ${values.m}x ${values.p < 0 ? '-' : '+'} ${Math.abs(values.p)}`
-                    } else {
-                        equation = mathadata.getLineEquationStr(values.a, values.b, values.c)
-                    }
-                    ctx.fillText(equation, 0, 0);
-                    ctx.restore();
+                    if ((values.m !== undefined && values.p !== undefined) && mode !== 'cartesienne' && param_colors) {
+                            // Affichage avec couleurs pour m et p
+                            const mColor = param_colors.m || 'black';
+                            const pColor = param_colors.p || 'black';
+                            const sign = values.p < 0 ? '-' : '+';
+                            const absP = Math.abs(values.p);
+
+                            // Comme le texte est aligné à droite, on dessine de droite à gauche
+                            let currentX = 0;
+
+                            // Dessiner la valeur de p avec sa couleur (le plus à droite)
+                            ctx.fillStyle = pColor;
+                            const pText = `${absP}`;
+                            ctx.fillText(pText, currentX, 0);
+                            currentX -= ctx.measureText(pText).width;
+
+                            // Dessiner " " + signe + " "
+                            ctx.fillStyle = 'black';
+                            const signText = ` ${sign} `;
+                            ctx.fillText(signText, currentX, 0);
+                            currentX -= ctx.measureText(signText).width;
+
+                            // Dessiner "x"
+                            const xText = 'x';
+                            ctx.fillText(xText, currentX, 0);
+                            currentX -= ctx.measureText(xText).width;
+
+                            // Dessiner la valeur de m avec sa couleur
+                            ctx.fillStyle = mColor;
+                            const mText = `${values.m}`;
+                            ctx.fillText(mText, currentX, 0);
+                            currentX -= ctx.measureText(mText).width;
+
+                            // Dessiner "y = " (le plus à gauche)
+                            ctx.fillStyle = 'black';
+                            const yEqualText = 'y = ';
+                            ctx.fillText(yEqualText, currentX, 0);
+                        } else {
+                            ctx.fillStyle = equation_fixed_position ? 'blue' : 'black';
+                            ctx.fillText(displayText, 0, 0);
+                        }
+
+                        // Stocker une bounding box de l'équation (en pixels canvas) pour permettre d'éviter les chevauchements avec d'autres éléments (ex: encart de vecteurs en bas à droite).
+                        if (vector_inset) {
+                            const metrics = ctx.measureText(displayText || '');
+                            const width = metrics?.width ?? 0;
+                            const ascent = metrics?.actualBoundingBoxAscent ?? 14;
+                            const descent = metrics?.actualBoundingBoxDescent ?? 4;
+
+                            // textAlign = 'right' et fillText(..., 0, 0) => le texte s'étend sur [-width, 0]
+                            const xMin = -width;
+                            const xMax = 0;
+                            const yMin = -ascent;
+                            const yMax = descent;
+
+                            const cos = Math.cos(rotationAngle);
+                            const sin = Math.sin(rotationAngle);
+                            const pts = [
+                                {x: xMin, y: yMin},
+                                {x: xMax, y: yMin},
+                                {x: xMax, y: yMax},
+                                {x: xMin, y: yMax},
+                            ].map(({x, y}) => ({
+                                x: textX + x * cos - y * sin,
+                                y: textY + x * sin + y * cos,
+                            }));
+
+                            const xs = pts.map(p => p.x);
+                            const ys = pts.map(p => p.y);
+                            const pad = 6;
+                            chart.$equationBBox = {
+                                left: Math.min(...xs) - pad,
+                                top: Math.min(...ys) - pad,
+                                right: Math.max(...xs) + pad,
+                                bottom: Math.max(...ys) + pad,
+                            };
+                        }
+                        ctx.restore();
                 }
               }
             })
@@ -986,7 +3764,7 @@ run_js('''
                 pointHitRadius: 0,
                 borderColor: 'transparent',
                 fill: 'end',
-                backgroundColor: `rgba(${mathadata.classColorCodes[mathadata.challenge.strings.classes.indexOf(mathadata.challenge.strings.r_grande_caracteristique)]}, 0.1)`,
+                backgroundColor: `rgba(${mathadata.classColorCodes[mathadata.challenge.classes.indexOf(mathadata.challenge.strings.r_grande_caracteristique)]}, 0.1)`,
             });
 
             datasets.push({
@@ -997,12 +3775,28 @@ run_js('''
                 pointHitRadius: 0,
                 borderColor: 'transparent',
                 fill: 'origin',
-                backgroundColor: `rgba(${mathadata.classColorCodes[mathadata.challenge.strings.classes.indexOf(mathadata.challenge.strings.r_petite_caracteristique)]}, 0.1)`,
+                backgroundColor: `rgba(${mathadata.classColorCodes[mathadata.challenge.classes.indexOf(mathadata.challenge.strings.r_petite_caracteristique)]}, 0.1)`,
             });
           }
 
           if (compute_score) {
             computeScore()
+          }
+
+          // Ordonnée à l'origine (point rouge sur l'axe des ordonnées)
+          if (interception_point) {
+              const initialIntercept = getYInterceptPoint(values);
+              datasets.push({
+                  label: "Ordonnée à l'origine",
+                  data: initialIntercept ? [initialIntercept] : [],
+                  backgroundColor: 'red',
+                  borderColor: 'red',
+                  pointStyle: 'circle',
+                  pointRadius: 6,
+                  pointHoverRadius: 6,
+                  order: 2,
+              });
+              yInterceptDatasetIndex = datasets.length - 1;
           }
         }
 
@@ -1049,6 +3843,199 @@ run_js('''
             }
         })
       }
+
+      // Encart (inset) optionnel : répliques des vecteurs u et n en bas à droite,
+      // en évitant de chevaucher l'équation de la droite.
+      if (vector_inset) {
+        plugins.push({
+          afterDatasetsDraw: function(chart) {
+            const ctx = chart.ctx;
+            const area = chart.chartArea;
+            if (!area) return;
+
+            const showU = !!(vecteurs && (vecteurs.directeur || vecteurs.directeur_a));
+            const showN = !!(vecteurs && vecteurs.normal);
+            if (!showU && !showN) return;
+
+            const ux = (values.ux ?? 0);
+            const uy = (values.uy ?? 0);
+            const nx = (values.nx ?? 0);
+            const ny = (values.ny ?? 0);
+
+            const insetW = 140;
+            const insetH = 140;
+            const margin = 10;
+
+            const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+            const makeRect = (x, y) => ({left: x, top: y, right: x + insetW, bottom: y + insetH});
+            const overlaps = (a, b) => !(
+              a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom
+            );
+
+            const eqBBox = (!equation_hide && chart.$equationBBox) ? chart.$equationBBox : null;
+
+            const bounds = {
+              left: area.left + margin,
+              top: area.top + margin,
+              right: area.right - margin,
+              bottom: area.bottom - margin,
+            };
+
+            const candidates = [
+              // bottom-right
+              {x: area.right - margin - insetW, y: area.bottom - margin - insetH},
+            ];
+
+            if (eqBBox) {
+              // juste au-dessus de l'équation (aligné à droite)
+              candidates.push({x: area.right - margin - insetW, y: eqBBox.top - margin - insetH});
+              // juste à gauche de l'équation (aligné en bas)
+              candidates.push({x: eqBBox.left - margin - insetW, y: area.bottom - margin - insetH});
+            }
+
+            // fallbacks
+            candidates.push(
+              {x: area.right - margin - insetW, y: area.top + margin}, // top-right
+              {x: area.left + margin, y: area.bottom - margin - insetH}, // bottom-left
+            );
+
+            let rect = null;
+            for (const c of candidates) {
+              const x = clamp(c.x, bounds.left, bounds.right - insetW);
+              const y = clamp(c.y, bounds.top, bounds.bottom - insetH);
+              const r = makeRect(x, y);
+              if (!eqBBox || !overlaps(r, eqBBox)) {
+                rect = r;
+                break;
+              }
+            }
+            if (!rect) {
+              const x = clamp(area.right - margin - insetW, bounds.left, bounds.right - insetW);
+              const y = clamp(area.bottom - margin - insetH, bounds.top, bounds.bottom - insetH);
+              rect = makeRect(x, y);
+            }
+
+            const roundedRect = (x, y, w, h, r) => {
+              const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+              ctx.beginPath();
+              ctx.moveTo(x + radius, y);
+              ctx.lineTo(x + w - radius, y);
+              ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+              ctx.lineTo(x + w, y + h - radius);
+              ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+              ctx.lineTo(x + radius, y + h);
+              ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+              ctx.lineTo(x, y + radius);
+              ctx.quadraticCurveTo(x, y, x + radius, y);
+              ctx.closePath();
+            };
+
+            const drawArrow = (x1, y1, x2, y2, color) => {
+              const dx = x2 - x1;
+              const dy = y2 - y1;
+              const len = Math.hypot(dx, dy);
+              if (!isFinite(len) || len < 1e-6) {
+                // vecteur nul
+                ctx.save();
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(x1, y1, 3, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.restore();
+                return;
+              }
+
+              ctx.save();
+              ctx.strokeStyle = color;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(x1, y1);
+              ctx.lineTo(x2, y2);
+              ctx.stroke();
+
+              const headlen = 10;
+              const angle = Math.atan2(dy, dx);
+              ctx.beginPath();
+              ctx.moveTo(x2, y2);
+              ctx.lineTo(x2 - headlen * Math.cos(angle - Math.PI / 6), y2 - headlen * Math.sin(angle - Math.PI / 6));
+              ctx.lineTo(x2 - headlen * Math.cos(angle + Math.PI / 6), y2 - headlen * Math.sin(angle + Math.PI / 6));
+              ctx.closePath();
+              ctx.fillStyle = color;
+              ctx.fill();
+              ctx.restore();
+            };
+
+            const vectors = [];
+            if (showU) vectors.push({x: ux, y: uy, color: 'purple', label: '\u20D7u'});
+            if (showN) vectors.push({x: nx, y: ny, color: 'brown', label: '\u20D7n'});
+
+            let maxLen = 0;
+            vectors.forEach(v => {
+              const l = Math.hypot(v.x, v.y);
+              if (isFinite(l)) maxLen = Math.max(maxLen, l);
+            });
+            const radiusMax = Math.min(insetW, insetH) / 2 - 22;
+            const scale = maxLen > 0 ? (radiusMax / maxLen) : 0;
+
+            const originX = rect.left + insetW / 2;
+            const originY = rect.top + insetH / 2;
+
+            ctx.save();
+            // fond + bordure
+            roundedRect(rect.left, rect.top, insetW, insetH, 10);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.22)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // axes (repère léger)
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(rect.left + 12, originY);
+            ctx.lineTo(rect.right - 12, originY);
+            ctx.moveTo(originX, rect.top + 12);
+            ctx.lineTo(originX, rect.bottom - 12);
+            ctx.stroke();
+
+            // vecteurs
+            vectors.forEach(v => {
+              const endX = originX + v.x * scale;
+              const endY = originY - v.y * scale; // y vers le haut (repère math)
+              drawArrow(originX, originY, endX, endY, v.color);
+
+              // label proche de la pointe (décalage perpendiculaire)
+              const dx = endX - originX;
+              const dy = endY - originY;
+              const len = Math.hypot(dx, dy) || 1;
+              const nxp = -dy / len;
+              const nyp = dx / len;
+              const labelX = endX + nxp * 10 + (dx / len) * 4;
+              const labelY = endY + nyp * 10 + (dy / len) * 4;
+
+              ctx.save();
+              ctx.font = 'bold 14px Arial';
+              ctx.fillStyle = v.color;
+              ctx.textAlign = 'left';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(v.label, labelX, labelY);
+              ctx.restore();
+            });
+
+            // origine
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+            ctx.beginPath();
+            ctx.arc(originX, originY, 2, 0, 2 * Math.PI);
+            ctx.fill();
+
+            ctx.restore();
+          }
+        })
+      }
+      
+      // initialisation (après création des datasets, incluant l'ordonnée à l'origine)
+      updatePoints(points, {animate: false})
       
         // Create the Chart.js configuration
         const chartConfig = {
@@ -1065,6 +4052,13 @@ run_js('''
                         },
                         min,
                         max,
+                        ticks: {
+                            stepSize: 10
+                        },
+                        grid: {
+                            drawBorder: false,
+                            color: 'rgba(0,0,0,0.12)'
+                        }
                     },
                     y: {
                         title: {
@@ -1073,9 +4067,19 @@ run_js('''
                         },
                         min,
                         max,
+                        ticks: {
+                            stepSize: 10
+                        },
+                        grid: {
+                            drawBorder: false,
+                            color: 'rgba(0,0,0,0.12)'
+                        }
                     }
                 },
                 aspectRatio: 1,
+                maintainAspectRatio: true,
+                orthonormal: orthonormal === true,
+                centerCanvas: center_canvas === true,
                 plugins: {
                     legend: {
                         display: true,
@@ -1173,12 +4177,18 @@ run_js('''
         }
         
         window.mathadata.create_chart(`${id}-chart`, chartConfig);
+        if (side_box) {
+          updateSlopeBox();
+        }
 
         if (inputs) {
           // On suppose que les inputs ont un élément html correspondant avec l'id {id}-input-{key}
           const inputElements = {}
+          let isFirstLoad = true  // Flag pour détecter le premier chargement
           
           const update = () => {
+            const chart = mathadata.charts[`${id}-chart`];
+
             // Recupération des valeurs des inputs
             const newValues = {}
             Object.keys(inputElements).forEach((key) => {
@@ -1204,33 +4214,58 @@ run_js('''
               newValues.c = newValues.p
             }
             
+            // [2026-03-04] FIX: séparation des branches ux/uy et nx/ny avec else-if
+            // pour éviter que le bloc nx/ny ne réécrase ux/uy quand on est en mode vecteur directeur.
+            // Avant, les deux blocs s'exécutaient séquentiellement, causant un "saut" de la droite
+            // pour certaines valeurs (ex: ux=-1.5, uy=11).
             if (newValues.ux !== undefined && newValues.uy !== undefined) {
-            console.log('pass', newValues)
-              newValues.nx = -newValues.uy
-              newValues.ny = newValues.ux
-            }
+              // Mode vecteur directeur: calcul du vecteur normal à partir du directeur
+              // [2026-03-04] Convention: nx = uy, ny = -ux
+              newValues.nx = newValues.uy
+              newValues.ny = -newValues.ux
 
-            if (newValues.nx !== undefined && newValues.ny !== undefined) {
-              newValues.ux = newValues.ny
-              newValues.uy = -newValues.nx
-
+              // [2026-03-04] FIX: calcul de a, b, c directement ici
+              // Equation cartésienne: nx*(x - xa) + ny*(y - ya) = 0
+              //   => a = nx, b = ny, c = -(nx*xa + ny*ya)
               if (newValues.xa !== undefined && newValues.ya !== undefined) {
                 newValues.a = newValues.nx
                 newValues.b = newValues.ny
-                newValues.c = -newValues.nx * newValues.xa - newValues.ny * newValues.ya
+                newValues.c = -(newValues.nx * newValues.xa + newValues.ny * newValues.ya)
+              }
+            } else if (newValues.nx !== undefined && newValues.ny !== undefined) {
+              // [2026-03-04] FIX: ce bloc ne s'exécute QUE en mode réglage normal
+              // Mode vecteur normal: calcul du vecteur directeur à partir du normal
+              // [2026-03-04] Convention inverse: ux = -ny, uy = nx
+              newValues.ux = -newValues.ny
+              newValues.uy = newValues.nx
+
+              // [2026-03-04] FIX: signes corrigés pour a, b, c
+              if (newValues.xa !== undefined && newValues.ya !== undefined) {
+                newValues.a = newValues.nx
+                newValues.b = newValues.ny
+                newValues.c = -(newValues.nx * newValues.xa + newValues.ny * newValues.ya)
               }
             }
             
             Object.assign(values, newValues)
             const values_json = JSON.stringify(values)
-            mathadata.run_python(`set_input_values('${values_json}')`)
-            if (save) {
+            if (!disable_python_updates) {
+                mathadata.run_python(`set_input_values('${values_json}')`)
+            }
+            // Ne sauvegarder que si :
+            // - Ce n'est PAS le premier chargement (l'utilisateur a modifié)
+            // - OU c'est le premier chargement AVEC initial_values fourni (on force les valeurs)
+            if (save && (!isFirstLoad || initial_values)) {
                 localStorage.setItem(`input-values`, values_json)
             }
+            isFirstLoad = false  // Après le premier update, on marque comme chargé
 
             // Update des datasets
             if (uDatasetIndex) {
               datasets[uDatasetIndex].data = [{ x: start_ux, y: start_uy }, { x: start_ux + values.ux, y: start_uy + values.uy }]
+            }
+            if (uaDatasetIndex) {
+              datasets[uaDatasetIndex].data = [{ x: values.xa, y: values.ya }, { x: values.xa + values.ux, y: values.ya + values.uy }]
             }
             if (nDatasetIndex) {
               datasets[nDatasetIndex].data = [{ x: values.xa, y: values.ya }, { x: values.xa + values.nx, y: values.ya + values.ny }]
@@ -1238,25 +4273,51 @@ run_js('''
             if (aDatasetIndex) {
               datasets[aDatasetIndex].data = [{ x: values.xa, y: values.ya }]
             }
-            if (droiteDatasetIndex) {
-              datasets[droiteDatasetIndex].data = mathadata.findIntersectionPoints(values.a, values.b, values.c, min, max); 
+
+            // [2026-03-04] FIX: protection contre min/max undefined lors du premier appel
+            const safeMin = min ?? -100;
+            const safeMax = max ?? 100;
+            if (yInterceptDatasetIndex !== undefined) {
+              const interceptData = getYInterceptPoint(values);
+              datasets[yInterceptDatasetIndex].data = interceptData ? [interceptData] : [];
+              if (interceptData) {
+                // [2026-03-04] FIX: l'ordonnée à l'origine n'affecte que l'échelle Y, pas X.
+                // Avant, minWithIntercept/maxWithIntercept étaient appliqués aux deux axes,
+                // ce qui faisait zoomer massivement le graphe quand b (=ux) est petit
+                // (ex: ux=0.1, uy=11 => ordonnée à l'origine ≈ -3230).
+                const yMin = Math.min(safeMin, interceptData.y);
+                const yMax = Math.max(safeMax, interceptData.y);
+                chart.options.scales.x.min = safeMin
+                chart.options.scales.x.max = safeMax
+                chart.options.scales.y.min = yMin
+                chart.options.scales.y.max = yMax
+              }
             }
+            if (droiteDatasetIndex) {
+              // [2026-03-04] FIX: utiliser la plage des données (safeMin/safeMax) au lieu de
+              // la plage étendue par l'ordonnée à l'origine pour findIntersectionPoints
+              datasets[droiteDatasetIndex].data = mathadata.findIntersectionPoints(values.a, values.b, values.c, safeMin, safeMax);
+            }
+
 
             mathadata.charts[`${id}-chart`].update()
 
             // Update du score
-            if (compute_score) {
+            if (compute_score && !disable_python_updates) {
               computeScore()
             }
+
+            updateSlopeBox();
           }
 
           // Initialisation point A
-          if (inputs.xa !== undefined && inputs.ya !== undefined) {
+          if (inputs.xa !== undefined && inputs.ya !== undefined && values.xa === undefined && values.ya === undefined) {
               const init_a = Math.round((min + 10) / 10) * 10
               values.xa = init_a
               values.ya = init_a
           }
           
+          // Charger le localStorage (si save=true) pour écraser les default_values
           if (save) {
             const savedValues = localStorage.getItem(`input-values`)
             if (savedValues) {
@@ -1264,12 +4325,23 @@ run_js('''
             }
           }
 
+          // Puis écraser avec initial_values si fourni (priorité absolue pour forcer des valeurs)
+          if (initial_values) {
+              Object.assign(values, initial_values)
+          }
+
               
 
+          console.log('initial values', values)
           Object.keys(inputs).forEach((key) => {
               inputElements[key] = document.getElementById(`${id}-input-${key}`)
               if (values[key] !== undefined) {
                 inputElements[key].value = values[key]
+                // Mettre à jour aussi l'affichage du span à côté du slider
+                const valSpan = document.getElementById(`${id}-${key}-val`)
+                if (valSpan) {
+                  valSpan.textContent = values[key]
+                }
               }
               inputElements[key].addEventListener('input', update)
           })
@@ -1286,31 +4358,6 @@ run_js('''
     }
 ''')
 
-# TODO
-# run_js("""
-#     // Create a MutationObserver instance
-#     const observer = new MutationObserver(function(mutations) {
-#         console.log("working")
-#         mutations.forEach(function(mutation) {
-#             mutation.addedNodes.forEach(function(node) {
-#                 console.log("node added")
-#                 console.log(node)
-#                 // Check if the added node is an element with the specified ID
-#                 if (node.id === "container_chart") {
-#                     console.log("setup charts")
-#                     Jupyter.notebook.kernel.execute("setup_charts()")
-#                 } else if (node.id === "container_chart_custom") {
-#                     console.log("setup charts 2")
-#                     Jupyter.notebook.kernel.execute("setup_charts_2()")
-#                 }
-#             });
-#         });
-#     });
-
-#     // Start observing the document for mutations
-#     observer.observe(document, { childList: true, subtree: true });
-# """)
-
 input_values = {}
 
 
@@ -1319,14 +4366,16 @@ def set_input_values(values):
     input_values = json.loads(values)
 
 
-def compute_score(a, b, c, custom=False, above=None, below=None):
+def compute_score(a, b, c, custom=False, above=None, below=None, test_dataset=False):
     if custom:
         carac = common.challenge.deux_caracteristiques_custom
     else:
         carac = common.challenge.deux_caracteristiques
 
-    c_train = compute_c_train(carac, common.challenge.d_train)
-    error = erreur_lineaire(a, b, c, c_train, above, below)
+    d_train = common.challenge.d_train_test if test_dataset else common.challenge.d_train
+    r_train = common.challenge.r_train_test if test_dataset else common.challenge.r_train
+    c_train = compute_c_train(carac, d_train)
+    error = erreur_lineaire(a, b, c, c_train, above, below, r_train)
     return error
 
 
@@ -1335,7 +4384,8 @@ def compute_score_json(a, b, c, custom=False):
     return json.dumps({'error': error})
 
 
-def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banque=True, success_msg=None):
+def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banque=True, success_msg=None,
+                              animation=True, ensure_draw=False, test_r=None, test_d=None, ensure_test=True):
     global input_values
 
     if custom:
@@ -1343,7 +4393,10 @@ def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banqu
     else:
         deux_caracteristiques = common.challenge.deux_caracteristiques
 
-    base_score = compute_score(input_values['a'], input_values['b'], input_values['c'], custom)
+    test_dataset = True if test_r is not None and test_d is not None else False
+
+    base_score = compute_score(input_values['a'], input_values['b'], input_values['c'], custom,
+                               test_dataset=test_dataset)
 
     if base_score <= 50:
         above = common.challenge.r_grande_caracteristique
@@ -1352,10 +4405,10 @@ def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banqu
         above = common.challenge.r_petite_caracteristique
         below = common.challenge.r_grande_caracteristique
 
-    if validate is not None and base_score >= validate and base_score <= 100 - validate:
+    if ensure_test and validate is not None and validate <= base_score <= 100 - validate:
         if error_msg is None:
             print_error(
-                f"Vous pourrez passer à la suite quand vous aurez un pourcentage d'erreur de moins de {validate}%.")
+                f"Tu pourras passer à la suite quand tu auras un pourcentage d'erreur de moins de {validate}%.")
         else:
             print_error(error_msg)
 
@@ -1363,20 +4416,34 @@ def calculer_score_droite_geo(custom=False, validate=None, error_msg=None, banqu
         k = deux_caracteristiques(d)
         return estim_2d(input_values['a'], input_values['b'], input_values['c'], k, above, below)
 
-    def cb(score):
-        if validate is not None and score * 100 <= validate:
-            if success_msg is None:
-                pretty_print_success("Bravo, vous pouvez passer à la suite.")
-            else:
-                print(success_msg)
-            pass_breakpoint()
+    if ensure_test:
+        def cb(score):
+            if (validate is not None and score * 100 <= validate) or (
+                    has_variable('superuser') and get_variable('superuser') == True):
+                if success_msg is None:
+                    pretty_print_success("Bravo, tu peux passer à la suite.")
+                else:
+                    pretty_print_success(success_msg)
+                pass_breakpoint()
+    else:
+        def cb(score):
+            return
 
-    calculer_score(algorithme, method="2 moyennes",
-                   parameters=f"a={input_values['a']}, b={input_values['b']}, c={input_values['c']}", cb=cb,
-                   banque=banque)
+        pass_breakpoint()
+
+    calculer_score(algorithme, cb=cb,
+                   banque=banque, animation=animation, ensure_draw=ensure_draw, test_d=test_d, test_r=test_r)
 
 
-### Validation
+def qcm_choix_caracteristiques():
+    create_qcm({
+        'question': 'Quelles zones choisir pour mieux distinguer les 2 de 7 ?',
+        'choices': ['1er choix', '2ème choix'],
+        'answer': '2ème choix',
+    })
+
+
+# Validation
 
 def check_coordinates(coords, errors):
     if not (isinstance(coords, tuple)):
@@ -1385,14 +4452,16 @@ def check_coordinates(coords, errors):
         return False
     if len(coords) != 2:
         errors.append(
-            "Les coordonnées doivent être composées de deux valeurs séparés par une virgule. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
+            "Les coordonnées doivent être composées de deux valeurs séparés par une virgule. "
+            "Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
     if coords[0] is Ellipsis or coords[1] is Ellipsis:
         errors.append("Tu n'as pas remplacé les ...")
         return False
     if not (isinstance(coords[0], (int, float)) and isinstance(coords[1], (int, float))):
         errors.append(
-            "Les coordonnées doivent être des nombres. Pour les nombres à virgule, utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
+            "Les coordonnées doivent être des nombres. Pour les nombres à virgule, "
+            "utilisez un point '.' et non une virgule ','. Exemple : 3.14 et non 3,14")
         return False
     return True
 
@@ -1415,10 +4484,12 @@ def function_validation_2_points(errors, answers):
         distAB = np.sqrt((A[0] - B_true[0]) ** 2 + (A[1] - B_true[1]) ** 2)
         if distAB < 3:
             errors.append(
-                "Les coordonnées de A ne sont pas correctes. Tu as peut être donné les coordonnées du point B à la place ?")
+                "Les coordonnées de A ne sont pas correctes."
+                " Tu as peut être donné les coordonnées du point B à la place ?")
         elif distARev < 3:
             errors.append(
-                "Les coordonnées de A ne sont pas correctes. Attention, la première coordonnée est l'abscisse x et la deuxième l'ordonnée y.")
+                "Les coordonnées de A ne sont pas correctes."
+                " Attention, la première coordonnée est l'abscisse x et la deuxième l'ordonnée y.")
         else:
             errors.append("Les coordonnées de A ne sont pas correctes.")
     if distB > 3:
@@ -1426,12 +4497,15 @@ def function_validation_2_points(errors, answers):
         distAB = np.sqrt((B[0] - A_true[0]) ** 2 + (B[1] - A_true[1]) ** 2)
         if distAB < 3:
             errors.append(
-                "Les coordonnées de B ne sont pas correctes. Tu as peut être donné les coordonnées du point A à la place ?")
+                "Les coordonnées de B ne sont pas correctes. "
+                "Tu as peut être donné les coordonnées du point A à la place ?")
         elif distBRev < 3:
             errors.append(
-                "Les coordonnées de B ne sont pas correctes. Attention, la première coordonnée est l'abscisse x et la deuxième l'ordonnée y.")
+                "Les coordonnées de B ne sont pas correctes. "
+                "Attention, la première coordonnée est l'abscisse x et la deuxième l'ordonnée y.")
         else:
             errors.append("Les coordonnées de B ne sont pas correctes.")
+    return None
 
 
 def function_validation_score_droite(errors, answers):
@@ -1489,7 +4563,8 @@ def function_validation_score_droite(errors, answers):
     # Vérification si l'utilisateur a donné le nombre d'erreurs au lieu du pourcentage
     if user_answer == nb_erreurs:
         errors.append(
-            f"Ce n'est pas la bonne valeur. Vous avez donné le nombre d'erreurs ({nb_erreurs}) et non le pourcentage d'erreur.")
+            f"Ce n'est pas la bonne valeur. "
+            f"Tu as donné le nombre d'erreurs ({nb_erreurs}) et non le pourcentage d'erreur.")
         return False
 
     # Vérification de la réponse correcte
@@ -1500,85 +4575,13 @@ def function_validation_score_droite(errors, answers):
         else:
             # Détails sur les erreurs pour le message
             pretty_print_success(
-                f"Bravo, c'est la bonne réponse. Il y a {nb_erreurs_par_classe[0] == 1 and 'un' or nb_erreurs_par_classe[0]} {common.challenge.classes[0]} {'au dessus' if common.challenge.classes[0] == common.challenge.r_petite_caracteristique else 'en dessous'} de la droite et {nb_erreurs_par_classe[1] == 1 and 'un' or nb_erreurs_par_classe[1]} {common.challenge.classes[1]} {'au dessus' if common.challenge.classes[1] == common.challenge.r_petite_caracteristique else 'en dessous'}, donc {nb_erreurs} erreurs soit {pourcentage_erreur}%.")
+                f"Bravo, c'est la bonne réponse. Il y a {nb_erreurs_par_classe[0]} {classe(0, alt=True, plural=(nb_erreurs_par_classe[0] > 1))} {'au dessus' if common.challenge.classes[0] == common.challenge.r_petite_caracteristique else 'en dessous'} de la droite et {nb_erreurs_par_classe[1]} {classe(1, alt=True, plural=(nb_erreurs_par_classe[1] > 1))} {'au dessus' if common.challenge.classes[1] == common.challenge.r_petite_caracteristique else 'en dessous'}, donc {nb_erreurs} erreurs soit {pourcentage_erreur}%.")
         return True
     else:
         errors.append(
-            f"Ce n'est pas la bonne réponse. Comptez le nombre d'erreurs c'est à dire le nombre de points du mauvais côté de la droite puis calculez le pourcentage d'erreur.")
-        return False
-
-
-def function_validation_score_droite_20(errors, answers):
-    user_answer = answers['erreur_20']
-
-    # Vérifications de base
-    if not isinstance(user_answer, (int, float)):
-        errors.append("Le pourcentage d'erreur doit être un nombre.")
-        return False
-
-    if user_answer < 0 or user_answer > 100:
-        errors.append("Le pourcentage d'erreur doit être compris entre 0 et 100.")
-        return False
-
-    """Calcule dynamiquement le score attendu pour la droite à partir des données du défi"""
-    # Récupération des données du défi
-    dataset_20_points = common.challenge.dataset_20_points
-    labels_20_points = common.challenge.labels_20_points
-    droite_20_points = common.challenge.droite_20_points
-
-    c_train = [common.challenge.deux_caracteristiques(d) for d in dataset_20_points]
-
-    # Récupération des paramètres de la droite
-    if 'm' in droite_20_points and 'p' in droite_20_points:
-        m = droite_20_points['m']
-        p = droite_20_points['p']
-        # Conversion en forme ax + by + c = 0
-        a = m
-        b = -1
-        c = p
-    elif 'a' in droite_20_points and 'b' in droite_20_points and 'c' in droite_20_points:
-        a = droite_20_points['a']
-        b = droite_20_points['b']
-        c = droite_20_points['c']
-    else:
-        raise ValueError("Paramètres de droite non supportés")
-
-    # Calcul des prédictions
-    nb_erreurs = 0
-    nb_erreurs_par_classe = [0, 0]
-
-    for i, (k, r_true) in enumerate(zip(c_train, labels_20_points)):
-        # Classification 2D
-        r_pred = estim_2d(a, b, c, k)
-
-        if r_pred != r_true:
-            nb_erreurs += 1
-            if r_true == common.challenge.classes[0]:
-                nb_erreurs_par_classe[0] += 1
-            else:
-                nb_erreurs_par_classe[1] += 1
-
-    pourcentage_erreur = (nb_erreurs / len(dataset_20_points)) * 100
-
-    # Vérification si l'utilisateur a donné le nombre d'erreurs au lieu du pourcentage
-    if user_answer == nb_erreurs:
-        errors.append(
-            f"Ce n'est pas la bonne valeur. Vous avez donné le nombre d'erreurs ({nb_erreurs}) et non le pourcentage d'erreur.")
-        return False
-
-    # Vérification de la réponse correcte
-    if user_answer == pourcentage_erreur:
-        if nb_erreurs == 0:
-            pretty_print_success(
-                "Bravo, c'est la bonne réponse. Il n'y a aucune erreur de classification sur ce schéma.")
-        else:
-            # Détails sur les erreurs pour le message
-            pretty_print_success(
-                f"Bravo, c'est la bonne réponse. Il y a {nb_erreurs_par_classe[0] == 1 and 'un' or nb_erreurs_par_classe[0]} {common.challenge.classes[0]} {'au dessus' if common.challenge.classes[0] == common.challenge.r_petite_caracteristique else 'en dessous'} de la droite et {nb_erreurs_par_classe[1] == 1 and 'un' or nb_erreurs_par_classe[1]} {common.challenge.classes[1]} {'au dessus' if common.challenge.classes[1] == common.challenge.r_petite_caracteristique else 'en dessous'}, donc {nb_erreurs} erreurs soit {pourcentage_erreur}%.")
-        return True
-    else:
-        errors.append(
-            f"Ce n'est pas la bonne réponse. Comptez le nombre d'erreurs c'est à dire le nombre de points du mauvais côté de la droite puis calculez le pourcentage d'erreur.")
+            f"Ce n'est pas la bonne réponse. "
+            f"Comptez le nombre d'erreurs c'est à dire le nombre de points du "
+            f"mauvais côté de la droite puis calculez le pourcentage d'erreur.")
         return False
 
 
@@ -1596,7 +4599,8 @@ validation_question_couleur = MathadataValidateVariables({
                 'value': {
                     'in': common.challenge.classes,
                 },
-                'else': f"classe_points_bleus n'a pas la bonne valeur. Vous devez répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}."
+                'else': f"classe_points_bleus n'a pas la bonne valeur. "
+                        f"Tu dois répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}."
             }
         ]
     },
@@ -1607,12 +4611,21 @@ validation_question_couleur = MathadataValidateVariables({
                 'value': {
                     'in': common.challenge.classes,
                 },
-                'else': f"classe_points_oranges n'a pas la bonne valeur. Vous devez répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}."
+                'else': f"classe_points_oranges n'a pas la bonne valeur. "
+                        f"Tu dois répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}."
             }
         ]
     }
-})
+}, tips=[
+    {
+        'seconds': 15,
+        'trials': 1,
+        'operator': 'OR',
+        'tip': f"Il faut répondre par {common.challenge.classes[0]} ou {common.challenge.classes[1]}"
+    }
+])
 
+validation_execution_placer_2_points = MathadataValidate(success="")
 validation_execution_10_points = MathadataValidate(success="")
 validation_execution_20_points = MathadataValidate(success="")
 validation_question_score_droite = MathadataValidateVariables({
@@ -1620,15 +4633,357 @@ validation_question_score_droite = MathadataValidateVariables({
 },
     function_validation=function_validation_score_droite,
     success="")
-validation_question_score_droite_20 = MathadataValidateVariables({
-    'erreur_20': None
-},
-    function_validation=function_validation_score_droite_20,
-    success="")
 validation_execution_tracer_points_droite = MathadataValidate(success="")
-validation_score_droite = MathadataValidate(success="Bien joué, vous pouvez passer à la partie suivante.")
-validation_execution_point_droite = MathadataValidate(success="")
+validation_execution_tracer_points_droite_c = MathadataValidate(success="")
+validation_execution_tracer_points_droite_a_b = MathadataValidate(success="")
+validation_score_droite = MathadataValidate(success="Bien joué, tu peux passer à la partie suivante.")
+validation_execution_mauvaises_caracteristiques = MathadataValidate(success="")
+validation_execution_meilleures_caracteristiques = MathadataValidate(success="")
 validation_score_droite_custom = MathadataValidate(
-    success="Bravo, vous pouvez continuer à essayer d'améliorer votre score. Il est possible de faire seulement 3% d'erreur.")
+    success="Bravo, tu peux continuer à essayer d'améliorer ton score. Il est possible de faire seulement 3% d'erreur.")
 validation_execution_scatter_caracteristiques_ripou = MathadataValidate(success="")
 validation_execution_afficher_customisation = MathadataValidate(success="")
+
+
+def function_validation_carac(errors, answers):
+    moyenne_haut_2 = answers['x_2']
+    moyenne_bas_2 = answers['y_2']
+
+    error_str = "Réessaie, il y a des erreurs dans les coordonnées des caractéristiques :\n"
+    len_start = len(error_str)
+    if moyenne_haut_2 != 140:
+        error_str += "L'abscisse de 2 est incorrecte.\n"
+    if moyenne_bas_2 != 140:
+        error_str += "L'ordonnée de 2 est incorrecte."
+    if len(error_str) > len_start:
+        errors.append(error_str)
+        return False
+    return True
+
+
+validation_carac = MathadataValidateVariables({
+    'x_2': None,
+    'y_2': None
+}, function_validation=function_validation_carac)
+
+def _mnist_seuillage_0_200_250_np(img):
+    a = np.asarray(img)
+    a = np.clip(a, 0, 255)
+    out = np.empty_like(a, dtype=np.uint8)
+    out[a < 180] = 0
+    out[(a >= 180) & (a < 220)] = 200
+    # Exception (dev) : conserver 240 tel quel (ne pas le ramener à 250)
+    out[(a >= 220) & (a <= 239)] = 250
+    out[a == 240] = 240
+    out[a > 240] = 250
+    return out
+
+
+def _mnist_mean_zone_inclusive(arr, zone):
+    (r0, c0), (r1, c1) = zone
+    rmin, rmax = min(int(r0), int(r1)), max(int(r0), int(r1))
+    cmin, cmax = min(int(c0), int(c1)), max(int(c0), int(c1))
+    return float(np.mean(arr[rmin:rmax + 1, cmin:cmax + 1]))
+
+def _mnist_zone_dims(zone):
+    (r0, c0), (r1, c1) = zone
+    rmin, rmax = min(int(r0), int(r1)), max(int(r0), int(r1))
+    cmin, cmax = min(int(c0), int(c1)), max(int(c0), int(c1))
+    n_rows = (rmax - rmin + 1)
+    n_cols = (cmax - cmin + 1)
+    return n_rows, n_cols, n_rows * n_cols
+
+
+def _mnist_ref_id_for_class(target):
+    ids_images_ref = getattr(common.challenge, "ids_images_ref", None)
+    if ids_images_ref is not None:
+        try:
+            ids_images_ref = tuple(ids_images_ref)
+        except Exception:
+            ids_images_ref = None
+
+    r = getattr(common.challenge, "r_train", None)
+    if ids_images_ref and r is not None:
+        for idx in ids_images_ref:
+            try:
+                i = int(idx)
+                if int(r[i]) == int(target):
+                    return i
+            except Exception:
+                continue
+
+    if r is None:
+        return None
+    try:
+        return int(np.where(np.asarray(r) == int(target))[0][0])
+    except Exception:
+        return None
+
+
+def _mnist_expected_carac_exo_for_ref_image():
+    zone_x = getattr(common.challenge, "zone_1_exo", None)
+    zone_y = getattr(common.challenge, "zone_2_exo", None)
+    if zone_x is None or zone_y is None:
+        # Fallback (anciens notebooks) : zones de référence génériques
+        zone_x = getattr(common.challenge, "zone_1_ref", None)
+        zone_y = getattr(common.challenge, "zone_2_ref", None)
+    if zone_x is None or zone_y is None:
+        return None
+
+    classes = getattr(common.challenge, "classes", (2, 7))
+    target = int(classes[1]) if classes and len(classes) >= 2 else 7
+    ref_id = _mnist_ref_id_for_class(target)
+    if ref_id is None:
+        return None
+
+    d = getattr(common.challenge, "d_train", None)
+    if d is None:
+        return None
+
+    img = d[ref_id]
+    img_t = _mnist_seuillage_0_200_250_np(img)
+    expected_x = _mnist_mean_zone_inclusive(img_t, zone_x)
+    expected_y = _mnist_mean_zone_inclusive(img_t, zone_y)
+    return expected_x, expected_y, ref_id
+
+
+def function_validation_carac_x(errors, answers):
+    x_7 = answers["x_7"]
+
+    # Sécurité (normalement déjà géré par MathadataValidateVariables)
+    if x_7 is Ellipsis:
+        errors.append("Remplace les ... par ta réponse pour x_7.")
+        return False
+
+    # Type attendu : un nombre
+    if isinstance(x_7, str):
+        errors.append('x_7 doit être un nombre, pas un texte (enlève les guillemets).')
+        return False
+    if isinstance(x_7, tuple) and len(x_7) == 2:
+        errors.append("Pour écrire un nombre décimal, utilise un point : par exemple `183.3` (pas `183,3`).")
+        return False
+    if isinstance(x_7, (list, dict, np.ndarray, tuple)):
+        errors.append("x_7 doit être un nombre (pas une liste/tuple).")
+        return False
+    # bool est un sous-type de int -> on l'exclut explicitement
+    if isinstance(x_7, (bool, np.bool_)):
+        errors.append("x_7 doit être un nombre, pas True/False.")
+        return False
+    if not isinstance(x_7, (int, float, np.integer, np.floating)):
+        errors.append("x_7 doit être un nombre.")
+        return False
+
+    # Valeur attendue
+    try:
+        x = float(x_7)
+    except Exception:
+        errors.append("x_7 doit être un nombre.")
+        return False
+
+    expected = _mnist_expected_carac_exo_for_ref_image()
+    if expected is None:
+        errors.append("Erreur interne : impossible de calculer la valeur attendue (images/zones de référence manquantes).")
+        return False
+    expected_x, _, _ref_id = expected
+
+    # Tolérance : si la moyenne attendue est décimale, on accepte un arrondi au dixième / à l'unité.
+    expected_is_integerish = abs(expected_x - round(expected_x)) <= 0.05
+    tol = 0.05 if expected_is_integerish else 0.55
+    if abs(x - expected_x) <= tol:
+        return True
+
+    if x < 0 or x > 255:
+        # Si l'élève donne une valeur >255, c'est presque toujours la somme des pixels (oubli de la division).
+        try:
+            zone_x = getattr(common.challenge, "zone_1_exo", None) or getattr(common.challenge, "zone_1_ref", None)
+            if zone_x is not None:
+                n_rows, n_cols, n = _mnist_zone_dims(zone_x)
+                errors.append(
+                    f"Pour une image, la moyenne de pixels doit être comprise entre 0 et 255. "
+                    f"As-tu oublié de diviser par le nombre total de pixels du rectangle ({n_rows}×{n_cols}={n}) ?"
+                )
+            else:
+                errors.append("Pour une image, la moyenne de pixels doit être comprise entre 0 et 255.")
+        except Exception:
+            errors.append("x_7 doit être compris entre 0 et 255 (moyenne de pixels).")
+        return False
+
+    try:
+        zone_x = getattr(common.challenge, "zone_1_exo", None) or getattr(common.challenge, "zone_1_ref", None)
+        if zone_x is not None:
+            n_rows, n_cols, n = _mnist_zone_dims(zone_x)
+            errors.append(
+                "Ce n'est pas la bonne valeur. Calcule la moyenne des pixels du rectangle rouge, pour l'image de 7."
+            )
+        else:
+            errors.append("Ce n'est pas la bonne valeur. Recompte bien les pixels du rectangle et calcule la moyenne.")
+    except Exception:
+        errors.append("Ce n'est pas la bonne valeur. Réessaie encore.")
+    return False
+
+
+validation_carac_x = MathadataValidateVariables(
+    {"x_7": None},
+    function_validation=function_validation_carac_x,
+    success="Bravo, tu peux passer à la suite.",
+    get_tips=lambda: (lambda _z: [
+        {
+            'seconds': 15,
+            'trials': 1,
+            'operator': 'OR',
+            'tip': (
+                f"Commence par compter le nombre total de pixels du rectangle : {_z[0]} lignes × {_z[1]} colonnes = ? "
+            )
+        },
+        {
+            'seconds': 30,
+            'trials': 2,
+            'operator': 'OR',
+            'tip': (
+                "Tu peux compter combien de pixels valent 200 et combien valent 250, puis faire la somme et diviser par le total."
+            )
+        },
+    ])(_mnist_zone_dims(getattr(common.challenge, "zone_1_exo", None) or getattr(common.challenge, "zone_1_ref", None) or [(0, 0), (0, 0)])),
+)
+
+
+def function_validation_carac_y(errors, answers):
+    y_7 = answers["y_7"]
+
+    # Sécurité (normalement déjà géré par MathadataValidateVariables)
+    if y_7 is Ellipsis:
+        errors.append("Remplace les ... par ta réponse pour y_7.")
+        return False
+
+    # Type attendu : un nombre
+    if isinstance(y_7, str):
+        errors.append('y_7 doit être un nombre, pas un texte (enlève les guillemets).')
+        return False
+    if isinstance(y_7, tuple) and len(y_7) == 2:
+        errors.append("Pour écrire un nombre décimal, utilise un point : par exemple `12.5` (pas `12,5`).")
+        return False
+    if isinstance(y_7, (list, dict, np.ndarray, tuple)):
+        errors.append("y_7 doit être un nombre (pas une liste/tuple).")
+        return False
+    # bool est un sous-type de int -> on l'exclut explicitement
+    if isinstance(y_7, (bool, np.bool_)):
+        errors.append("y_7 doit être un nombre, pas True/False.")
+        return False
+    if not isinstance(y_7, (int, float, np.integer, np.floating)):
+        errors.append("y_7 doit être un nombre.")
+        return False
+
+    # Valeur attendue
+    try:
+        y = float(y_7)
+    except Exception:
+        errors.append("y_7 doit être un nombre.")
+        return False
+
+    expected = _mnist_expected_carac_exo_for_ref_image()
+    if expected is None:
+        errors.append("Erreur interne : impossible de calculer la valeur attendue (images/zones de référence manquantes).")
+        return False
+    _, expected_y, _ref_id = expected
+
+    expected_is_integerish = abs(expected_y - round(expected_y)) <= 0.05
+    tol = 0.05 if expected_is_integerish else 0.55
+    if abs(y - expected_y) <= tol:
+        return True
+
+    if y < 0 or y > 255:
+        try:
+            zone_y = getattr(common.challenge, "zone_2_exo", None) or getattr(common.challenge, "zone_2_ref", None)
+            if zone_y is not None:
+                n_rows, n_cols, n = _mnist_zone_dims(zone_y)
+                errors.append(
+                    f"Ta réponse est trop grande pour une moyenne de pixels (elle doit être entre 0 et 255). "
+                    f"As-tu oublié de diviser par le nombre total de pixels du rectangle ({n_rows}×{n_cols}={n}) ?"
+                )
+            else:
+                errors.append("Ta réponse est trop grande pour une moyenne de pixels : elle doit être comprise entre 0 et 255.")
+        except Exception:
+            errors.append("y_7 doit être compris entre 0 et 255 (moyenne de pixels).")
+        return False
+
+    try:
+        zone_y = getattr(common.challenge, "zone_2_exo", None) or getattr(common.challenge, "zone_2_ref", None)
+        if zone_y is not None:
+            n_rows, n_cols, n = _mnist_zone_dims(zone_y)
+            errors.append(
+                "Ce n'est pas la bonne valeur. Calcule la moyenne des pixels du rectangle bleu, pour l'image de 7."
+            )
+        else:
+            errors.append("Ce n'est pas la bonne valeur. Recompte bien les pixels du rectangle et calcule la moyenne.")
+    except Exception:
+        errors.append("Ce n'est pas la bonne valeur. Réessaie encore.")
+    return False
+
+
+validation_carac_y = MathadataValidateVariables(
+    {"y_7": None},
+    function_validation=function_validation_carac_y,
+    success="Bravo, tu peux passer à la suite.",
+    get_tips=lambda: (lambda _z: [
+        {
+            'seconds': 15,
+            'trials': 1,
+            'operator': 'OR',
+            'tip': (
+                f"Commence par compter le nombre total de pixels du rectangle : {_z[0]} lignes × {_z[1]} colonnes = ? "
+            )
+        },
+        {
+            'seconds': 30,
+            'trials': 2,
+            'operator': 'OR',
+            'tip': (
+                "Vérifie bien que tu prends les pixels du rectangle bleu (caractéristique y). "
+            )
+        },
+    ])(_mnist_zone_dims(getattr(common.challenge, "zone_2_exo", None) or getattr(common.challenge, "zone_2_ref", None) or [(0, 0), (0, 0)])),
+)
+
+
+def set_exercice_droite_carac_ok():
+    global moyenne_carac
+    moyenne_carac = True
+
+
+def validate_moyenne_carac(errors, answers):
+    if moyenne_carac:
+        return True
+    else:
+        errors.append("Réponds d'abord à la question ci-dessus en plaçant les points sur le graphe.")
+        return False
+
+
+chat = 'chat'
+Chat = 'Chat'
+
+
+def function_validation_cartesienne_determinante(errors, answers):
+    a = answers['a']
+    if not isinstance(a, (int, float, str)):
+        errors.append("La valeur de a doit être un nombre. Si tu veux passer à la suite, répond 'chat'")
+        return False
+    if a == chat or a == 'chat' or a == 'Chat':
+        pretty_print_success("Pas de galère, on continue")
+        return True
+    if a != 5:
+        errors.append("La valeur de a est incorrecte. Réessaie. Si tu veux passer à la suite, répond 'chat'")
+        return False
+    pretty_print_success("Bravo, tu peux passer à la suite.")
+    return True
+
+
+validation_placer_2_points = MathadataValidate(function_validation=validate_moyenne_carac,
+                                               success="Bravo tu as bien placé les points !")
+
+validation_moyenne_carac_mauvaise = MathadataValidate(function_validation=validate_moyenne_carac)
+validation_moyenne_carac_meilleure = MathadataValidate(function_validation=validate_moyenne_carac)
+
+validation_question_cartesienne_determinant = MathadataValidateVariables({
+    'a': None,
+}, function_validation=function_validation_cartesienne_determinante
+    , success="")
