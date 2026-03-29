@@ -231,34 +231,48 @@ def display_custom_selection(*args, **kwargs):
 
 def import_js_scripts():
     run_js("""
-        define('chartjs/helpers', ['chartjs'], function(Chart) {
-            return Chart.helpers;
-        });
-        require.config({
-            paths: {
-                'ag-grid-community': 'https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min',
-                'chartjs': 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min',
-                'drag-data-plugin': 'https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@latest/dist/chartjs-plugin-dragdata.min',
-                'confetti': 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min',
-                'jsxgraph': 'https://cdn.jsdelivr.net/npm/jsxgraph@1.12.0/distrib/jsxgraphcore.min',
-            },
-           map: {
-                    'drag-data-plugin': {
-                        'chart.js': 'chartjs',
-                        'chartjs/helpers': 'chartjs' // Map 'chartjs/helpers' to 'chartjs'
-                    }
-                },
-                shim: {
-                    'drag-data-plugin': {
-                        deps: ['chartjs'] // Specify dependencies
-                    }
+        (function() {
+            function ensureRequireJs(cb) {
+                if (typeof require === 'function' && typeof define === 'function') {
+                    cb();
+                    return;
                 }
-        });
+                var s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/requirejs@2.3.7/require.min.js';
+                s.onload = function() { cb(); };
+                document.head.appendChild(s);
+            }
+            ensureRequireJs(function() {
+                define('chartjs/helpers', ['chartjs'], function(Chart) {
+                    return Chart.helpers;
+                });
+                require.config({
+                    paths: {
+                        'ag-grid-community': 'https://cdn.jsdelivr.net/npm/ag-grid-community@32.3.3/dist/ag-grid-community.min',
+                        'chartjs': 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min',
+                        'drag-data-plugin': 'https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@2.2.0/dist/chartjs-plugin-dragdata.min',
+                        'confetti': 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min',
+                        'jsxgraph': 'https://cdn.jsdelivr.net/npm/jsxgraph@1.12.0/distrib/jsxgraphcore.min',
+                    },
+                    map: {
+                        'drag-data-plugin': {
+                            'chart.js': 'chartjs',
+                            'chartjs/helpers': 'chartjs' // Map 'chartjs/helpers' to 'chartjs'
+                        }
+                    },
+                    shim: {
+                        'drag-data-plugin': {
+                            deps: ['chartjs'] // Specify dependencies
+                        }
+                    }
+                });
 
-        require(['ag-grid-community', 'chartjs','drag-data-plugin', 'confetti', 'jsxgraph'], function(agGrid, Chart, DragData, Confetti, JXG) {
-            window.agGrid = agGrid;
-            //window.JXG = JXG;
-        });
+                require(['ag-grid-community', 'chartjs','drag-data-plugin', 'confetti', 'jsxgraph'], function(agGrid, Chart, DragData, Confetti, JXG) {
+                    window.agGrid = agGrid;
+                    //window.JXG = JXG;
+                });
+            });
+        })();
     """)
     challenge.import_js_scripts()
 
@@ -4149,13 +4163,13 @@ validation_question_score_fixe = MathadataValidateVariables({
 }, function_validation=validation_func_score_fixed,
     tips=[
         {
-            'seconds': 20,
+            'seconds': 50,
             'tip': 'Compte dans le tableau le nombre d\'erreurs commmises. Il restera une opération mathématique à faire pour obtenir le pourcentage d\'erreur.'
         }, {
-            'seconds': 60,
+            'seconds': 100,
             'tip': 'Il faut diviser par 10 pour obtenir la proportion d\'erreur parmi les 10 premières valeurs.'
         }, {
-            'seconds': 80,
+            'seconds': 130,
             'tip': 'Pour obtenir le pourcentage d\'erreur, il faut multiplier la proportion par 100.'
         }], success="")
 validation_score_fixe = MathadataValidate(success="")
