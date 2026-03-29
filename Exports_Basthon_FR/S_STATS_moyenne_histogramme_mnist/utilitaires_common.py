@@ -231,14 +231,26 @@ def display_custom_selection(*args, **kwargs):
 
 def import_js_scripts():
     run_js("""
+        (function() {
+            function ensureRequireJs(cb) {
+                if (typeof require === 'function' && typeof define === 'function') {
+                    cb();
+                    return;
+                }
+                var s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/requirejs@2.3.7/require.min.js';
+                s.onload = function() { cb(); };
+                document.head.appendChild(s);
+            }
+            ensureRequireJs(function() {
         define('chartjs/helpers', ['chartjs'], function(Chart) {
             return Chart.helpers;
         });
         require.config({
             paths: {
-                'ag-grid-community': 'https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min',
+                'ag-grid-community': 'https://cdn.jsdelivr.net/npm/ag-grid-community@32.3.3/dist/ag-grid-community.min',
                 'chartjs': 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min',
-                'drag-data-plugin': 'https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@latest/dist/chartjs-plugin-dragdata.min',
+                'drag-data-plugin': 'https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@2.2.0/dist/chartjs-plugin-dragdata.min',
                 'confetti': 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min',
                 'jsxgraph': 'https://cdn.jsdelivr.net/npm/jsxgraph@1.12.0/distrib/jsxgraphcore.min',
             },
@@ -256,9 +268,20 @@ def import_js_scripts():
         });
 
         require(['ag-grid-community', 'chartjs','drag-data-plugin', 'confetti', 'jsxgraph'], function(agGrid, Chart, DragData, Confetti, JXG) {
-            window.agGrid = agGrid;
+            var g = agGrid;
+            if (!g || typeof g.createGrid !== 'function') {
+                g = (typeof window !== 'undefined') ? (window.agGrid || window.agGridCommunity) : null;
+            }
+            if (g && g.default && typeof g.default.createGrid === 'function') {
+                g = g.default;
+            }
+            if (g && typeof g.createGrid === 'function') {
+                window.agGrid = g;
+            }
             //window.JXG = JXG;
         });
+            });
+        })();
     """)
     challenge.import_js_scripts()
 
