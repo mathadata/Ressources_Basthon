@@ -4483,7 +4483,8 @@ run_js("""
 
     // window.mathadata = mathadata; // Déjà assigné via référence ou Object.assign
 
-    if (localStorage.getItem('exercice_droite_carac_ok') === 'true') {
+// TODO
+    if (window.localStorage && window.localStorage.getItem('exercice_droite_carac_ok') === 'true') {
         window.mathadata.run_python(`set_exercice_droite_carac_ok()`)
         i_exercice_droite_carac = 10
     }
