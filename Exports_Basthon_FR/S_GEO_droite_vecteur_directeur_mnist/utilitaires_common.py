@@ -53,8 +53,10 @@ challenge = None
 class Challenge:
     def __init__(self):
         self.d_train = []
+        self.d_train_test = []
         self.d_test = []
         self.r_train = []
+        self.r_train_test = []
         self.d = None
         self.classes = [0, 1]
         self.r_petite_caracteristique = 0
@@ -89,22 +91,27 @@ class Challenge:
             'train_size': "1000"
         }
 
+    ## TODO : factoriser les deux affichages
+    ## TODO : harmoniser les paramètres carac et show_carac pour qu'elles aient le même comportement dans les deux fonctions
+    ## TODO : harmoniser carac == 2 qui n'a pas le même comportement dans les deux fonctions (caracteristique2 vs deux_caracteristiques)
+
     def affichage_banque(self, carac=None, mode=1, showPredictions=False, estimations=None):
         id = uuid.uuid4().hex
 
         if carac is not None:
-            if carac == 1:
-                carac = self.caracteristique
-            elif carac == 2:
-                carac = self.caracteristique2
-            c_train = compute_c_train(carac, self.d_train)
+            caracFunc = self.caracteristique
+            if carac == 2:
+                caracFunc = self.caracteristique2
+            elif carac == "custom":
+                caracFunc = self.caracteristique_custom
+            c_train = compute_c_train(caracFunc, self.d_train)
 
         if showPredictions and estimations is None:
             estimations = get_estimations(self.d_train)
 
         params = {
             'labels': self.r_train,
-            'c_train': c_train if carac else None,
+            'c_train': c_train if carac and caracFunc else None,
             'estimations': estimations if showPredictions else None,
             'mode': mode
         }
@@ -119,30 +126,163 @@ class Challenge:
             </div>
         '''))
 
-    def get_data_internal(self, index=None, dataClass=None, random=False):
+    def affichage_banque_horizontale(
+            self,
+            show_carac=False,
+            carac=None,
+            show_rep=False,
+            rep='eleve',
+            estimations=None,
+            window=9,
+            mode=1,
+            show_zones=False,
+    ):
+        id = uuid.uuid4().hex
+
+        # --- Résolution de la caractéristique ---
+        c_train = None
+        if show_carac:
+            func_carac = None
+
+            if carac is None or carac == 1:
+                func_carac = getattr(self, 'caracteristique', None)
+            elif carac == 2:
+                func_carac = getattr(self, 'deux_caracteristiques', None)
+            elif carac == 'custom':
+                for name in ['caracteristique_custom', 'deux_caracteristiques_custom']:
+                    f = getattr(self, name, None)
+                    if callable(f):
+                        func_carac = f
+                        break
+            elif callable(carac):
+                func_carac = carac
+            elif isinstance(carac, str) and has_variable(carac):
+                f = get_variable(carac)
+                if callable(f):
+                    func_carac = f
+
+            if not callable(func_carac):
+                print_error("Impossible de déterminer la fonction de caractéristique (carac).")
+            else:
+                try:
+                    c_train = compute_c_train(func_carac, self.d_train)
+                except Exception as e:
+                    print_error("Erreur lors du calcul des caractéristiques pour l'affichage de la banque.")
+                    if debug:
+                        raise e
+
+        # --- Résolution de la réponse/estimation ---
+        if show_rep:
+            if estimations is None:
+                algo = None
+
+                if callable(rep):
+                    algo = rep
+                elif rep is None:
+                    algo = get_algorithme_func(error="La fonction `algorithme` n'a pas été définie.")
+                elif isinstance(rep, str):
+                    rep_lower = rep.lower()
+                    if rep_lower in ['eleve', 'élève', 'student', 'default']:
+                        algo = get_algorithme_func(error="La fonction `algorithme` n'a pas été définie.")
+                    elif rep_lower in ['reference', 'référence', 'ref']:
+                        candidates = ['algorithme_reference', 'algorithme_ref', 'algo_reference', 'algo_ref']
+                        for name in candidates:
+                            if has_variable(name):
+                                f = get_variable(name)
+                                if callable(f):
+                                    algo = f
+                                    break
+                            f = getattr(self, name, None)
+                            if callable(f):
+                                algo = f
+                                break
+                        if algo is None:
+                            print_error("Aucun algorithme de référence trouvé (algorithme_reference / algo_reference).")
+                    elif rep_lower in ['custom']:
+                        candidates = ['algorithme_custom', 'algo_custom']
+                        for name in candidates:
+                            if has_variable(name):
+                                f = get_variable(name)
+                                if callable(f):
+                                    algo = f
+                                    break
+                            f = getattr(self, name, None)
+                            if callable(f):
+                                algo = f
+                                break
+                        if algo is None:
+                            print_error("Aucun algorithme custom trouvé (algorithme_custom / algo_custom).")
+                    else:
+                        # Nom d'une variable du notebook ou d'un attribut du challenge
+                        if has_variable(rep):
+                            f = get_variable(rep)
+                            if callable(f):
+                                algo = f
+                        if algo is None:
+                            f = getattr(self, rep, None)
+                            if callable(f):
+                                algo = f
+
+                if algo:
+                    try:
+                        estimations = get_estimations(self.d_train, algorithme=algo)
+                    except Exception as e:
+                        print_error("Erreur lors du calcul des estimations.")
+                        if debug:
+                            raise e
+
+        # Normaliser window
+        try:
+            window = int(window)
+        except Exception:
+            window = 9
+        if window <= 0:
+            window = 1
+
+        params = {
+            'labels': self.r_train,
+            'c_train': c_train,
+            'estimations': estimations,
+            'show_carac': bool(show_carac),
+            'show_rep': bool(show_rep),
+            'window': window,
+            'mode': mode,
+            'show_zones': bool(show_zones),
+        }
+
+        run_js(
+            f"mathadata.add_observer('{id}', () => window.mathadata.setup_test_bank_horizontal('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
+
+        display(HTML(f'''
+            <div id="{id}" class="mathadata-bank-horizontal"></div>
+        '''))
+
+    def get_data_internal(self, index=None, dataClass=None, random=False, is_test=False):
         d = None
+        d_train = self.d_train_test if is_test else self.d_train
+        r_train = self.r_train_test if is_test else self.r_train
+        d_train_by_class = self.d_train_by_class_test if is_test else self.d_train_by_class
         if index is not None:
             if dataClass == None:
-                d = self.d_train[index]
-                label = self.r_train[index]
+                d = d_train[index]
+                label = r_train[index]
             else:
                 class_index = self.classes.index(dataClass)
-                d = self.d_train_by_class[class_index][index]
+                d = d_train_by_class[class_index][index]
                 label = dataClass
         if d is None:
             if random:
-                index = np.random.randint(0, len(self.d_train))
-                d = self.d_train[index]
-                label = self.r_train[index]
+                index = np.random.randint(0, len(d_train))
+                d = d_train[index]
+                label = r_train[index]
             else:
                 d = self.d
                 # On suppose que d est de la première classe
                 label = self.classes[0]
-
         return (d, label)
 
     def get_data(self, *args, **kwargs):
-        (d, label) = self.get_data_internal(*args, **kwargs)
+        (d, _) = self.get_data_internal(*args, **kwargs)
         return json.dumps(d, cls=NpEncoder)
 
     def get_data_and_label(self, *args, **kwargs):
@@ -180,6 +320,9 @@ def init_challenge(challenge_instance):
     challenge = challenge_instance
 
     challenge.d_train_by_class = [challenge.d_train[challenge.r_train == k] for k in challenge.classes]
+    ## TODO : normaliser foetus pour avoir le même comportement
+    if challenge.id == "mnist":
+        challenge.d_train_by_class_test = [challenge.d_train_test[challenge.r_train_test == k] for k in challenge.classes]
 
     run_js(f"""
         window.mathadata.classes = {challenge.classes};
@@ -197,6 +340,8 @@ def init_challenge(challenge_instance):
         """)
     else:
         import_js_scripts()
+    
+    init_stepbar()
 
 
 ## Alias pour simplifier la syntaxe
@@ -210,7 +355,13 @@ def affichage_dix(*args, **kwargs):
 
 
 def affichage_banque(*args, **kwargs):
+    """Alias pour appeler la méthode affichage_banque du challenge."""
     challenge.affichage_banque(*args, **kwargs)
+
+
+def affichage_banque_horizontale(*args, **kwargs):
+    """Alias pour appeler la méthode affichage_banque_horizontale du challenge."""
+    challenge.affichage_banque_horizontale(*args, **kwargs)
 
 
 def caracteristique(d):
@@ -544,16 +695,25 @@ def compute_erreur(func_carac=None):
     return (t_values, scores_array)
 
 
-def calculer_score(algorithme, cb=None, caracteristique=None, banque=True, animation=True):
+def calculer_score(algorithme, cb=None, caracteristique=None, banque=True, animation=True, ensure_draw=False, test_d=None, test_r=None):
+    global current_algo
     try:
-        r_prediction_train = get_estimations(challenge.d_train, algorithme=algorithme)
-        score = np.mean(r_prediction_train != challenge.r_train)
+        if test_d is not None and test_r is not None:
+            d_train = test_d
+            r_train = test_r
+        else:
+            d_train = challenge.d_train
+            r_train = challenge.r_train
+        r_prediction_train = get_estimations(d_train, algorithme=algorithme)
+        score = np.mean(r_prediction_train != r_train)
 
         # Lancer l'animation de classification si demandée
         if animation:
             # global registered_calculer_score_cb
             # registered_calculer_score_cb = cb
-            animation_classification_score(r_prediction_train)
+            if ensure_draw:
+                current_algo = algorithme
+            animation_classification_score(r_prediction_train, ensure_draw)
         else:
             print("Calcul du pourcentage d'erreur en cours...")
             if banque:
@@ -571,18 +731,61 @@ def calculer_score(algorithme, cb=None, caracteristique=None, banque=True, anima
 
 
 current_algo = None
+autofill_enabled = False
 
 
 def run_algorithme(d_json):
+    global autofill_enabled
+
+    missing_points_message = (
+        "Veille a passer sur chaque point sur ton enregistrement, refais le bien. Il y a des valeurs manquantes."
+        "ASTUCE: commence par appuyer sur ton clic droit avant meme de cliquer sur le premier point du graphique et ne "
+        "lève pas la souris trop tot."
+    )
+
     if current_algo is None:
-        return None
-    d = json.loads(d_json)
-    if type(d) == list:
-        d = np.array(d)
-    res = current_algo(d)
-    return json.dumps({
-        'result': res
-    }, cls=NpEncoder)
+        return json.dumps({
+            "error": True,
+            "message": "L'algorithme n'est pas encore prêt à être utilisé. Vérifie la cellule précédente."
+        })
+
+    try:
+        d = json.loads(d_json)
+        if isinstance(d, list):
+            has_missing_values = any(x is None for x in d)
+
+            if has_missing_values:
+                if autofill_enabled:
+                    d = [120 if x is None else x for x in d]
+                    d = np.array(d, dtype=float)
+                else:
+                    return json.dumps({
+                        "error": True,
+                        "message": missing_points_message
+                    })
+            else:
+                d = np.array(d)
+
+        res = current_algo(d)
+        return json.dumps({
+            "error": False,
+            "result": res
+        }, cls=NpEncoder)
+    except ValueError as e:
+        message = missing_points_message if "Veille à passer sur chaque point" in str(e) else str(e)
+        return json.dumps({
+            "error": True,
+            "message": message
+        })
+    except Exception as e:
+        if "ufunc 'isnan' not supported" in str(e) or "could not be safely coerced" in str(e):
+            message = missing_points_message
+        else:
+            message = "Une erreur est survenue lors du calcul. Réessaie ou contacte l'enseignant."
+        return json.dumps({
+            "error": True,
+            "message": message
+        })
 
 
 def test_algorithme(algorithme=None):
@@ -645,29 +848,77 @@ def test_algorithme_faineant():
     test_algorithme(algorithme=algo_faineant)
 
 
-def test_algorithme_ref():
+def test_algorithme_ref(autofill=False):
+    """Test l'algorithme de référence avec l'interface animation calcul score
+    
+    Args:
+        autofill (bool): Si True, remplit automatiquement les points manquants avec la valeur 70.
+                        Si False (par défaut), affiche un message d'erreur si des points sont manquants.
+    """
+    global autofill_enabled
+    autofill_enabled = autofill
     test_algorithme(algorithme=algo_carac)
 
 
-def animation_classification_score(estimations):
+def animation_classification_score(estimations, ensure_draw):
     """Lance l'animation de classification pour le calcul de score"""
     id = uuid.uuid4().hex
 
+    r_train = challenge.r_train
+    if ensure_draw:
+        r_train = challenge.r_train_test
+
     params = {
-        'labels': challenge.r_train,
+        'labels': r_train,
         'estimations': estimations,
+        'ensure_draw': ensure_draw
     }
+
+    btns = ''
+    modal_html = ''
+    if ensure_draw:
+        button_text = "Dessiner une image et tester" if challenge.strings['dataname'][
+                                                        'nom'] == 'image' else f"Tester avec {data('ton', alt=True)}"
+        
+        btns = f''' 
+        <div style="display: flex; justify-content: center; align-items: center; gap: 1rem; margin: 2rem 0;">
+            <button id="{id}-button-generated" class="mathadata-button mathadata-button--secondary" style="flex: 1; max-width: 300px;">
+                {button_text}
+            </button>
+            <button id="{id}-button-full" class="mathadata-button mathadata-button--primary" style="flex: 1; max-width: 300px;" disabled>
+                Lancer sur toute la base de test
+            </button>
+        </div>'''
+
+        modal_html = f'''
+        <div id="{id}-modal" class="mathadata-modal-overlay" style="display: none;">
+            <div class="mathadata-modal">
+                <div class="mathadata-modal-header">
+                    <h3 class="mathadata-modal-title">Générer {data('ton', alt=True)}</h3>
+                    <button id="{id}-modal-close" class="mathadata-modal-close">×</button>
+                </div>
+                <div class="mathadata-modal-body">
+                    <div id="{id}-data-gen"></div>
+                </div>
+                <div class="mathadata-modal-footer">
+                    <button id="{id}-button-validate" class="mathadata-button mathadata-button--success">
+                        ✓ Valider et tester
+                    </button>
+                </div>
+            </div>
+        </div>
+        '''
 
     display(HTML(f'''
         <div id="{id}" style="margin: 20px 0;">
-            <h3 style="text-align: center; margin-bottom: 15px;">
-                Calcul du Pourcentage d'Erreur...
-            </h3>
+            {btns}
             <div id="{id}-animation-container" class="animation-container"></div>
+            {modal_html}
         </div>
 
         <script>
             window.mathadata.animateClassification(
+                '{id}',
                 '{id}-animation-container',
                 '{json.dumps(params, cls=NpEncoder)}',
             );
@@ -1337,6 +1588,161 @@ styles = """
     background-color: #ffcccc !important;
 }
 
+/* Banque horizontale (vignettes) */
+.mathadata-bank-horizontal {
+    width: 100%;
+}
+
+.mathadata-bank-horiz-wrapper {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.mathadata-bank-horiz-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.mathadata-bank-horiz-table th,
+.mathadata-bank-horiz-table td {
+    border: 2px solid #000;
+    padding: 10px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.mathadata-bank-horiz-row-header {
+    width: 150px;
+    min-width: 150px;
+    font-weight: 600;
+    background: #fff;
+}
+
+.mathadata-bank-horiz-cell {
+    width: 120px;
+    min-width: 120px;
+}
+
+.mathadata-bank-horiz-img {
+    width: 100%;
+    height: 100%;
+    max-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mathadata-bank-horiz-img--clickable {
+    cursor: pointer;
+}
+
+.mathadata-bank-horiz-img--clickable:hover,
+.mathadata-bank-horiz-img--clickable:focus {
+    outline: 3px solid rgba(102, 126, 234, 0.65);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+.mathadata-bank-horiz-img.mathadata-bank-horiz-loading {
+    color: rgba(0, 0, 0, 0.45);
+    font-size: 1.8rem;
+    font-weight: 600;
+    user-select: none;
+}
+
+.mathadata-bank-horiz-modal-loading {
+    font-family: sans-serif;
+    text-align: center;
+    opacity: 0.8;
+    padding: 1rem 0;
+}
+
+.mathadata-bank-horiz-modal-infos {
+    font-family: sans-serif;
+    font-size: 0.95rem;
+    color: #444;
+    margin-bottom: 0.75rem;
+    text-align: center;
+}
+
+.mathadata-pixel-grid {
+    --cols: 28;
+    --cell-size: 16px;
+    --font-size: 7px;
+    display: grid;
+    grid-template-columns: repeat(var(--cols), var(--cell-size));
+    grid-auto-rows: var(--cell-size);
+    gap: 1px;
+    background: #cfcfcf;
+    padding: 1px;
+    border-radius: 8px;
+    justify-content: center;
+    margin: 0 auto;
+}
+
+.mathadata-pixel-cell {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: var(--font-size);
+    line-height: 1;
+    user-select: none;
+}
+
+.mathadata-bank-horiz-text {
+    font-family: sans-serif;
+    font-size: 1.1rem;
+}
+
+.mathadata-carac-x {
+    color: #d00000;
+    font-weight: 700;
+}
+
+.mathadata-carac-y {
+    color: #0055cc;
+    font-weight: 700;
+}
+
+.mathadata-bank-horiz-misclassed {
+    background-color: #ffcccc !important;
+}
+
+.mathadata-bank-horiz-controls {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.mathadata-bank-horiz-slider {
+    width: min(700px, 80%);
+}
+
+.mathadata-bank-horiz-arrow {
+    font-size: 22px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.mathadata-bank-horiz-arrow:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.mathadata-bank-horiz-counter {
+    font-family: sans-serif;
+    font-size: 0.95rem;
+    white-space: nowrap;
+}
+
 #step-card {
     position: fixed;
     z-index: 1000;
@@ -1650,6 +2056,10 @@ styles = """
     animation: slideIn 0.3s ease;
 }
 
+.mathadata-modal.mathadata-modal--narrow {
+    max-width: min(560px, 90vw);
+}
+
 .mathadata-modal-header {
     display: flex;
     justify-content: space-between;
@@ -1768,7 +2178,14 @@ run_js("""
     }
 
     let i_exercice_droite_carac = 0
-    const mathadata = {
+    if (!window.mathadata) {
+        window.mathadata = {};
+    }
+    const mathadata = window.mathadata;
+
+    Object.assign(mathadata, {
+        charts: mathadata.charts || {},
+        exercises: mathadata.exercises || {},
 
         nom(name_dict, params) {
             const { article, plural, alt, court, uppercase } = params || {};
@@ -1917,6 +2334,83 @@ run_js("""
                     resolve(result)
                 })
             })
+        },
+
+        showErrorModal(message) {
+            let overlay = document.getElementById('mathadata-error-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'mathadata-error-overlay';
+                overlay.style.position = 'fixed';
+                overlay.style.top = '0';
+                overlay.style.left = '0';
+                overlay.style.width = '100vw';
+                overlay.style.height = '100vh';
+                overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.3)';
+                overlay.style.display = 'flex';
+                overlay.style.alignItems = 'center';
+                overlay.style.justifyContent = 'center';
+                overlay.style.zIndex = '9999';
+
+                const modal = document.createElement('div');
+                modal.id = 'mathadata-error-modal';
+                modal.style.background = '#ffffff';
+                modal.style.borderRadius = '8px';
+                modal.style.padding = '20px 24px';
+                modal.style.maxWidth = '500px';
+                modal.style.width = '90%';
+                modal.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.15)';
+                modal.style.fontFamily = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+                const title = document.createElement('div');
+                title.textContent = 'Oups, quelque chose ne va pas';
+                title.style.fontWeight = '600';
+                title.style.marginBottom = '8px';
+                title.style.fontSize = '18px';
+
+                const body = document.createElement('div');
+                body.id = 'mathadata-error-message';
+                body.style.whiteSpace = 'pre-wrap';
+                body.style.fontSize = '14px';
+                body.style.marginBottom = '16px';
+
+                const footer = document.createElement('div');
+                footer.style.display = 'flex';
+                footer.style.justifyContent = 'flex-end';
+
+                const btn = document.createElement('button');
+                btn.textContent = 'OK';
+                btn.style.padding = '6px 14px';
+                btn.style.borderRadius = '999px';
+                btn.style.border = 'none';
+                btn.style.background = '#2563eb';
+                btn.style.color = '#ffffff';
+                btn.style.fontSize = '14px';
+                btn.style.cursor = 'pointer';
+                btn.onclick = () => {
+                    overlay.style.display = 'none';
+                };
+
+                footer.appendChild(btn);
+                modal.appendChild(title);
+                modal.appendChild(body);
+                modal.appendChild(footer);
+                overlay.appendChild(modal);
+
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) {
+                        overlay.style.display = 'none';
+                    }
+                });
+
+                document.body.appendChild(overlay);
+            }
+
+            const msgDiv = document.getElementById('mathadata-error-message');
+            if (msgDiv) {
+                msgDiv.textContent = message || "Une erreur est survenue.";
+            }
+            overlay.style.display = 'flex';
         },  
 
         pass_breakpoint() {
@@ -1965,7 +2459,7 @@ run_js("""
                 console.log('create chart')
                 const wrapper = document.createElement('div');
                 wrapper.style.width = '100%';
-                wrapper.style.maxHeight = 'min(60vh, 600px)';
+                wrapper.style.maxHeight = 'min(65vh, 650px)';
                 wrapper.style.maxWidth = '100%';
                 wrapper.style.aspectRatio = config.options.aspectRatio;
                 wrapper.style.display = 'flex';
@@ -1974,6 +2468,9 @@ run_js("""
                 wrapper.style.backgroundColor = 'white';
                 //wrapper.style.position = 'relative';
                 wrapper.style.overflow = 'visible'; // Permet au tooltip de déborder
+                if (config.options.centerCanvas === true) {
+                    wrapper.style.margin = '0 auto';
+                }
 
                 // move inside wrapper
                 const canvas = document.getElementById(div_id)
@@ -1981,6 +2478,19 @@ run_js("""
                 canvas.style.maxHeight = '100%'
                 canvas.parentNode.insertBefore(wrapper, canvas)
                 wrapper.appendChild(canvas)
+
+                if (config.options.orthonormal === true) {
+                    const parent = wrapper.parentNode;
+                    const parentWidth = parent?.clientWidth || parent?.getBoundingClientRect?.().width || 0;
+                    const maxHeightPx = Math.min(window.innerHeight * 0.65, 650);
+                    const size = Math.max(0, Math.min(parentWidth, maxHeightPx));
+                    if (size > 0) {
+                        wrapper.style.width = `${size}px`;
+                        wrapper.style.height = `${size}px`;
+                        canvas.style.width = '100%';
+                        canvas.style.height = '100%';
+                    }
+                }
 
                 const ctx = canvas.getContext('2d');
 
@@ -2217,37 +2727,42 @@ run_js("""
             }
         },
             
-        setup_test_bank(id, params) {
-            params = JSON.parse(params)
-            const {labels, c_train, estimations, mode} = params
+	        setup_test_bank(id, params) {
+	            params = JSON.parse(params)
+	            const {labels, c_train, estimations, mode} = params
             
             const bank = document.getElementById(`${id}-bank`)
 
-            const display_carac = c_train ? true : false
-            const multiple_caracs = display_carac && Array.isArray(c_train[0])
-            const caracNames = ['x', 'y', 'z']
+	            const display_carac = c_train ? true : false
+	            const multiple_caracs = display_carac && Array.isArray(c_train[0])
+	            const caracNames = ['x', 'y', 'z']
+	            const round1 = (v) => {
+	                if (typeof v !== 'number' || !Number.isFinite(v)) return null
+	                return Math.round((v + Number.EPSILON) * 10) / 10
+	            }
 
             let caracColumnDefs
             let getCaracData
-            if (multiple_caracs) {
-                caracColumnDefs = caracNames.map((name, i) => ({headerName: `Caractéristique ${name}`, field: name, hide: c_train[0].length <= i}))
-                getCaracData = (index) => {
-                    const res = {}
-                    for (let i = 0; i < c_train[index].length; i++) {
-                        res[caracNames[i]] = Math.round(c_train[index][i] * 100) / 100
-                    }
-                    return res
-                }
-            } else {
-                caracColumnDefs = [{headerName: 'Caractéristique x', field: 'x', hide: !display_carac}]
-                if (display_carac) {
-                    getCaracData = (index) => ({x: Math.round(c_train[index] * 100) / 100})
-                } else {
-                    getCaracData = () => ({})
-                }
-            }
+	            if (multiple_caracs) {
+	                caracColumnDefs = caracNames.map((name, i) => ({headerName: `Caractéristique ${name}`, field: name, hide: c_train[0].length <= i}))
+	                getCaracData = (index) => {
+	                    const res = {}
+	                    for (let i = 0; i < c_train[index].length; i++) {
+	                        res[caracNames[i]] = round1(c_train[index][i])
+	                    }
+	                    return res
+	                }
+	            } else {
+	                caracColumnDefs = [{headerName: 'Caractéristique x', field: 'x', hide: !display_carac}]
+	                if (display_carac) {
+	                    getCaracData = (index) => ({x: round1(c_train[index])})
+	                } else {
+	                    getCaracData = () => ({})
+	                }
+	            }
 
             const display_estims = estimations ? true : false
+            const truthLabel = window.mathadata?.challenge?.strings?.labelname || 'Vraie Réponse'
 
             const select = (index) => {
                 window.mathadata.run_python(`get_data(index=${index})`, (data) => {
@@ -2258,7 +2773,7 @@ run_js("""
             const config = {
                 columnDefs: [
                     {headerName: 'N°', field: 'index'},
-                    {headerName: 'Vraie Réponse', field: 'r'},
+                    {headerName: truthLabel, field: 'r'},
                     ...caracColumnDefs,
                     {headerName: 'Estimation', field: 'r^', hide: !display_estims},
                     {headerName: 'Statut', field: 'status', hide: !display_estims},
@@ -2334,6 +2849,599 @@ run_js("""
                 }
             }
             displayGrid()
+        },
+
+	        setup_test_bank_horizontal(id, params) {
+            params = JSON.parse(params)
+            const {labels, c_train, estimations, mode, window: windowSizeParam, show_carac, show_rep, show_zones} = params
+
+            const root = document.getElementById(`${id}`)
+            if (!root) {
+                return
+            }
+
+            const N = (labels || []).length
+            const requestedWindow = parseInt(windowSizeParam || 9)
+            const windowSize = Math.max(
+                1,
+                Math.min(Number.isFinite(requestedWindow) ? requestedWindow : 9, Math.max(N, 1))
+            )
+            const maxOffset = Math.max(0, N - windowSize)
+
+            const dataLabel = (window.mathadata?.data)
+                ? window.mathadata.data({uppercase: true, alt: true, court: true})
+                : 'Donnée'
+            const truthLabel = window.mathadata?.challenge?.strings?.labelname || 'Vraie réponse'
+            const multipleCaracs = Array.isArray(c_train?.[0])
+            const caracLabel = 'Caractéristiques'
+            const repLabel = window.mathadata?.challenge?.strings?.predictionname || 'Réponse algo'
+            const zonesEnabled = !!show_zones
+            const zoneA = [[4, 4], [11, 11]]
+            const zoneB = [[16, 18], [22, 25]]
+
+            const clearTableBorders = (table) => {
+                if (!table) return
+                for (let r = 0; r < table.rows.length; r++) {
+                    for (let c = 0; c < table.rows[r].cells.length; c++) {
+                        const cell = table.rows[r].cells[c]
+                        cell.style.boxShadow = ''
+                        cell.style.borderTop = ''
+                        cell.style.borderBottom = ''
+                        cell.style.borderLeft = ''
+                        cell.style.borderRight = ''
+                    }
+                }
+            }
+
+            const applyZoneToTable = (table, zone, color) => {
+                if (!table || !zone) return
+                for (let r = 0; r < table.rows.length; r++) {
+                    for (let c = 0; c < table.rows[r].cells.length; c++) {
+                        const cell = table.rows[r].cells[c]
+                        if (r >= zone[0][0] && r <= zone[1][0] && c >= zone[0][1] && c <= zone[1][1]) {
+                            const bt = (r === zone[0][0]) ? `2px solid ${color}` : '0'
+                            const bb = (r === zone[1][0]) ? `2px solid ${color}` : '0'
+                            const bl = (c === zone[0][1]) ? `2px solid ${color}` : '0'
+                            const br = (c === zone[1][1]) ? `2px solid ${color}` : '0'
+                            cell.style.borderTop = bt
+                            cell.style.borderBottom = bb
+                            cell.style.borderLeft = bl
+                            cell.style.borderRight = br
+                        }
+                    }
+                }
+            }
+
+            const applyZonesIfNeeded = (container) => {
+                if (!zonesEnabled || !container) return
+                const table = container.querySelector('table')
+                if (!table) return
+                clearTableBorders(table)
+                applyZoneToTable(table, zoneA, 'red')
+                applyZoneToTable(table, zoneB, 'blue')
+            }
+
+            root.innerHTML = `
+                <div class="mathadata-bank-horiz-wrapper">
+                    <table class="mathadata-bank-horiz-table">
+                        <tbody id="${id}-tbody"></tbody>
+                    </table>
+                </div>
+                <div class="mathadata-bank-horiz-controls">
+                    <button id="${id}-left" class="mathadata-bank-horiz-arrow" aria-label="Précédent">◀</button>
+                    <input id="${id}-slider" class="mathadata-bank-horiz-slider" type="range" min="0" max="${maxOffset}" value="0" step="1" ${maxOffset === 0 ? 'disabled' : ''}>
+                    <button id="${id}-right" class="mathadata-bank-horiz-arrow" aria-label="Suivant">▶</button>
+                    <div id="${id}-counter" class="mathadata-bank-horiz-counter"></div>
+                </div>
+                <div id="${id}-bank-modal" class="mathadata-modal-overlay" style="display: none;">
+                    <div class="mathadata-modal mathadata-modal--narrow">
+                        <div class="mathadata-modal-header">
+                            <h3 id="${id}-bank-modal-title" class="mathadata-modal-title">${dataLabel}</h3>
+                            <button id="${id}-bank-modal-close" class="mathadata-modal-close">×</button>
+                        </div>
+                        <div class="mathadata-modal-body">
+                            <div id="${id}-bank-modal-body"></div>
+                        </div>
+                    </div>
+                </div>
+            `
+
+            const tbody = document.getElementById(`${id}-tbody`)
+            const leftBtn = document.getElementById(`${id}-left`)
+            const rightBtn = document.getElementById(`${id}-right`)
+            const slider = document.getElementById(`${id}-slider`)
+            const counter = document.getElementById(`${id}-counter`)
+
+            if (!tbody || !leftBtn || !rightBtn || !slider || !counter) {
+                return
+            }
+
+            const makeRow = (headerText, cellBuilder) => {
+                const tr = document.createElement('tr')
+
+                const th = document.createElement('th')
+                th.className = 'mathadata-bank-horiz-row-header'
+                th.textContent = headerText
+                tr.appendChild(th)
+
+                for (let pos = 0; pos < windowSize; pos++) {
+                    const td = document.createElement('td')
+                    td.className = 'mathadata-bank-horiz-cell'
+                    td.appendChild(cellBuilder(pos))
+                    tr.appendChild(td)
+                }
+
+                tbody.appendChild(tr)
+            }
+
+            makeRow(dataLabel, (pos) => {
+                const div = document.createElement('div')
+                div.id = `${id}-img-${pos}`
+                div.className = 'mathadata-bank-horiz-img mathadata-bank-horiz-img--clickable'
+                div.setAttribute('role', 'button')
+                div.setAttribute('tabindex', '0')
+                div.setAttribute('aria-label', 'Afficher la donnée')
+                return div
+            })
+
+            makeRow(truthLabel, (pos) => {
+                const div = document.createElement('div')
+                div.id = `${id}-label-${pos}`
+                div.className = 'mathadata-bank-horiz-text'
+                return div
+            })
+
+            if (show_carac) {
+                const tr = document.createElement('tr')
+
+                const th = document.createElement('th')
+                th.className = 'mathadata-bank-horiz-row-header'
+                th.innerHTML = multipleCaracs
+                    ? `${caracLabel} (<span class="mathadata-carac-x">x</span> ; <span class="mathadata-carac-y">y</span>)`
+                    : caracLabel
+                tr.appendChild(th)
+
+                for (let pos = 0; pos < windowSize; pos++) {
+                    const td = document.createElement('td')
+                    td.className = 'mathadata-bank-horiz-cell'
+
+                    const div = document.createElement('div')
+                    div.id = `${id}-carac-${pos}`
+                    div.className = 'mathadata-bank-horiz-text'
+
+                    td.appendChild(div)
+                    tr.appendChild(td)
+                }
+
+                tbody.appendChild(tr)
+            }
+
+            if (show_rep) {
+                makeRow(repLabel, (pos) => {
+                    const div = document.createElement('div')
+                    div.id = `${id}-pred-${pos}`
+                    div.className = 'mathadata-bank-horiz-text'
+                    return div
+                })
+            }
+
+	            const round1 = (v) => Math.round((v + Number.EPSILON) * 10) / 10
+	            const formatValue = (v) => {
+	                if (v === null || v === undefined) return '—'
+	                if (typeof v === 'number') {
+	                    if (!Number.isFinite(v)) return '—'
+	                    return String(round1(v))
+	                }
+	                return String(v)
+	            }
+            const formatCarac = (val) => {
+                if (Array.isArray(val)) {
+                    return `(${val.map(formatValue).join(' ; ')})`
+                }
+                return formatValue(val)
+            }
+            const setCaracContent = (node, val) => {
+                if (!node) return
+                if (val === null || val === undefined) {
+                    node.textContent = '—'
+                    return
+                }
+
+                // Si 2 caractéristiques : x en rouge, y en bleu
+                if (Array.isArray(val) && val.length >= 2) {
+                    while (node.firstChild) node.removeChild(node.firstChild)
+
+                    node.appendChild(document.createTextNode('('))
+
+                    const spanX = document.createElement('span')
+                    spanX.className = 'mathadata-carac-x'
+                    spanX.textContent = formatValue(val[0])
+                    node.appendChild(spanX)
+
+                    node.appendChild(document.createTextNode(' ; '))
+
+                    const spanY = document.createElement('span')
+                    spanY.className = 'mathadata-carac-y'
+                    spanY.textContent = formatValue(val[1])
+                    node.appendChild(spanY)
+
+                    // Si plus de 2 valeurs, on ajoute le reste sans couleur particulière
+                    for (let i = 2; i < val.length; i++) {
+                        node.appendChild(document.createTextNode(' ; '))
+                        const span = document.createElement('span')
+                        span.textContent = formatValue(val[i])
+                        node.appendChild(span)
+                    }
+
+                    node.appendChild(document.createTextNode(')'))
+                    return
+                }
+
+                node.textContent = formatCarac(val)
+            }
+
+            // Cache LRU des données (évite de recharger en arrière, sans exploser la mémoire)
+            const dataCache = new Map()
+            const MAX_CACHE = 200
+            const cacheSet = (k, v) => {
+                if (dataCache.has(k)) dataCache.delete(k)
+                dataCache.set(k, v)
+                if (dataCache.size > MAX_CACHE) {
+                    const firstKey = dataCache.keys().next().value
+                    dataCache.delete(firstKey)
+                }
+            }
+
+            const currentIndexByPos = Array(windowSize).fill(null)
+
+            // --- Modal (donnée complète au clic) ---
+            const modal = document.getElementById(`${id}-bank-modal`)
+            const modalClose = document.getElementById(`${id}-bank-modal-close`)
+            const modalTitle = document.getElementById(`${id}-bank-modal-title`)
+            const modalBody = document.getElementById(`${id}-bank-modal-body`)
+
+            const openModal = () => {
+                if (!modal) return
+                modal.style.display = 'flex'
+                document.body.style.overflow = 'hidden'
+            }
+
+            const closeModal = () => {
+                if (!modal) return
+                modal.style.display = 'none'
+                document.body.style.overflow = ''
+                if (modalBody) modalBody.innerHTML = ''
+            }
+
+            if (modal) {
+                // Fermer au clic sur l'overlay
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) closeModal()
+                })
+
+                // Fermer au clic sur le bouton X
+                if (modalClose) {
+                    modalClose.addEventListener('click', closeModal)
+                }
+
+                // Fermer avec Escape
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && modal.style.display === 'flex') {
+                        closeModal()
+                    }
+                })
+            }
+
+            const getDataForIndex = async (index) => {
+                if (dataCache.has(index)) return dataCache.get(index)
+                const data = await window.mathadata.run_python_async(`get_data(index=${index})`)
+                cacheSet(index, data)
+                return data
+            }
+
+            const isFiniteNumber = (v) => (typeof v === 'number' && Number.isFinite(v))
+
+            const extract2DGrayscale = (data) => {
+                // 2D: [[...], [...]] (MNIST typiquement)
+                if (Array.isArray(data) && data.length > 0) {
+                    if (Array.isArray(data[0])) {
+                        const h = data.length
+                        const w = Array.isArray(data[0]) ? data[0].length : 0
+                        if (w > 0 && data.every(row => Array.isArray(row) && row.length === w && row.every(isFiniteNumber))) {
+                            return { pixels: data, h, w }
+                        }
+                        return null
+                    }
+
+                    // 1D: [...] (image aplatie) → reshape si carré parfait
+                    if (data.every(isFiniteNumber)) {
+                        const n = data.length
+                        const side = Math.round(Math.sqrt(n))
+                        if (side > 0 && side * side === n) {
+                            const pixels = []
+                            for (let r = 0; r < side; r++) {
+                                pixels.push(data.slice(r * side, (r + 1) * side))
+                            }
+                            return { pixels, h: side, w: side }
+                        }
+                    }
+                }
+                return null
+            }
+
+            const renderPixelGrid = (container, img) => {
+                const { pixels, h, w } = img
+
+                const grid = document.createElement('div')
+                grid.className = 'mathadata-pixel-grid'
+                grid.style.setProperty('--cols', String(w))
+
+                const maxGridWidthPx = 480
+                const cellSize = Math.max(8, Math.min(20, Math.floor(maxGridWidthPx / Math.max(w, 1))))
+                const fontSize = Math.max(6, Math.floor(cellSize * 0.45))
+                grid.style.setProperty('--cell-size', `${cellSize}px`)
+                grid.style.setProperty('--font-size', `${fontSize}px`)
+
+                // Détecter une éventuelle normalisation [0;1]
+                let maxVal = 0
+                for (let r = 0; r < h; r++) {
+                    for (let c = 0; c < w; c++) {
+                        maxVal = Math.max(maxVal, pixels[r][c])
+                    }
+                }
+                const scale = maxVal <= 1 ? 255 : 1
+
+                const frag = document.createDocumentFragment()
+                for (let r = 0; r < h; r++) {
+                    for (let c = 0; c < w; c++) {
+                        const raw = pixels[r][c]
+                        const displayVal = Math.round(raw * scale)
+                        const valueText = String(displayVal)
+                        const g = Math.max(0, Math.min(255, displayVal))
+
+                        const cell = document.createElement('div')
+                        cell.className = 'mathadata-pixel-cell'
+                        cell.textContent = valueText
+                        cell.style.backgroundColor = `rgb(${g}, ${g}, ${g})`
+                        cell.style.color = (g < 128) ? '#fff' : '#000'
+                        cell.style.textShadow = (g < 128)
+                            ? '0 1px 2px rgba(0, 0, 0, 0.65)'
+                            : '0 1px 2px rgba(255, 255, 255, 0.65)'
+                        frag.appendChild(cell)
+                    }
+                }
+                grid.appendChild(frag)
+                container.appendChild(grid)
+            }
+
+            const applyZonesOnPixelGrid = (container, img) => {
+                if (!zonesEnabled || !container || !img) return
+                const grid = container.querySelector('.mathadata-pixel-grid')
+                if (!grid) return
+                const { h, w } = img
+                const cells = grid.querySelectorAll('.mathadata-pixel-cell')
+                if (!cells || cells.length !== h * w) return
+
+                cells.forEach((cell) => {
+                    cell.style.borderTop = ''
+                    cell.style.borderBottom = ''
+                    cell.style.borderLeft = ''
+                    cell.style.borderRight = ''
+                })
+
+                const markZone = (zone, color) => {
+                    const [start, end] = zone
+                    const [r0, c0] = start
+                    const [r1, c1] = end
+                    for (let r = r0; r <= r1; r++) {
+                        for (let c = c0; c <= c1; c++) {
+                            const idx = r * w + c
+                            const cell = cells[idx]
+                            if (!cell) continue
+                            if (r === r0) cell.style.borderTop = `2px solid ${color}`
+                            if (r === r1) cell.style.borderBottom = `2px solid ${color}`
+                            if (c === c0) cell.style.borderLeft = `2px solid ${color}`
+                            if (c === c1) cell.style.borderRight = `2px solid ${color}`
+                        }
+                    }
+                }
+
+                markZone(zoneA, 'red')
+                markZone(zoneB, 'blue')
+            }
+
+            const displayDataInModal = async (index) => {
+                if (!modal || !modalBody || !modalTitle) return
+                if (index === null || index === undefined || index < 0 || index >= N) return
+
+                modalTitle.textContent = `${dataLabel} n°${index + 1}`
+                modalBody.innerHTML = `<div class="mathadata-bank-horiz-modal-loading">Chargement…</div>`
+                openModal()
+
+                try {
+                    const data = await getDataForIndex(index)
+
+                    modalBody.innerHTML = ''
+                    const infos = document.createElement('div')
+                    infos.className = 'mathadata-bank-horiz-modal-infos'
+                    infos.textContent = `${truthLabel} : ${formatValue(labels[index])}`
+                    modalBody.appendChild(infos)
+
+                    // Cas MNIST (ou image N×N en niveaux de gris) : afficher les pixels + valeur
+                    const img = extract2DGrayscale(data)
+                    if (img && img.w > 0 && img.h > 0 && img.w <= 40 && img.h <= 40) {
+                        renderPixelGrid(modalBody, img)
+                        if (zonesEnabled) {
+                            applyZonesOnPixelGrid(modalBody, img)
+                        }
+                        return
+                    }
+
+                    const preview = document.createElement('div')
+                    preview.id = `${id}-bank-modal-preview`
+                    preview.style.display = 'flex'
+                    preview.style.justifyContent = 'center'
+                    preview.style.alignItems = 'center'
+                    modalBody.appendChild(preview)
+
+                    if (window.mathadata?.affichage) {
+                        window.mathadata.affichage(preview.id, data, {mode})
+                        if (zonesEnabled) {
+                            applyZonesIfNeeded(preview)
+                        }
+                    } else {
+                        const pre = document.createElement('pre')
+                        pre.style.whiteSpace = 'pre-wrap'
+                        pre.textContent = JSON.stringify(data, null, 2)
+                        modalBody.appendChild(pre)
+                    }
+                } catch (e) {
+                    console.error('Erreur affichage modal', e)
+                    modalBody.innerHTML = `<div class="mathadata-bank-horiz-modal-loading">Erreur lors du chargement.</div>`
+                }
+            }
+
+            // Gestion du clic sur les vignettes
+            for (let pos = 0; pos < windowSize; pos++) {
+                const imgDiv = document.getElementById(`${id}-img-${pos}`)
+                if (!imgDiv) continue
+
+                const openForPos = () => {
+                    const index = currentIndexByPos[pos]
+                    displayDataInModal(index)
+                }
+
+                imgDiv.addEventListener('click', openForPos)
+                imgDiv.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        openForPos()
+                    }
+                })
+            }
+
+            const setLoadingAt = (pos, index) => {
+                const divId = `${id}-img-${pos}`
+                const container = document.getElementById(divId)
+                if (!container) return
+
+                container.classList.add('mathadata-bank-horiz-loading')
+                container.innerHTML = ''
+
+                if (index < 0 || index >= N) {
+                    return
+                }
+
+                container.textContent = '…'
+            }
+
+            const renderDataAt = (pos, index) => {
+                const divId = `${id}-img-${pos}`
+                const container = document.getElementById(divId)
+                if (!container) return
+
+                container.classList.remove('mathadata-bank-horiz-loading')
+                container.innerHTML = ''
+
+                if (index < 0 || index >= N) {
+                    return
+                }
+
+                if (dataCache.has(index)) {
+                    const data = dataCache.get(index)
+                    if (currentIndexByPos[pos] !== index) return
+                    window.mathadata.affichage(divId, data, {mode})
+                    if (zonesEnabled) {
+                        applyZonesIfNeeded(container)
+                    }
+                    return
+                }
+
+                window.mathadata.run_python(`get_data(index=${index})`, (data) => {
+                    cacheSet(index, data)
+                    if (currentIndexByPos[pos] !== index) return
+                    window.mathadata.affichage(divId, data, {mode})
+                    if (zonesEnabled) {
+                        applyZonesIfNeeded(container)
+                    }
+                })
+            }
+
+            let offset = 0
+            const setOffset = (next, fetchImages = true) => {
+                const clamped = Math.max(0, Math.min(maxOffset, next))
+                offset = clamped
+                slider.value = String(offset)
+                render({fetchImages})
+            }
+
+            const render = ({fetchImages = true} = {}) => {
+                const start = N === 0 ? 0 : (offset + 1)
+                const end = N === 0 ? 0 : Math.min(N, offset + windowSize)
+                counter.textContent = `${start}–${end} / ${N}`
+
+                leftBtn.disabled = (offset <= 0)
+                rightBtn.disabled = (offset >= maxOffset)
+
+                for (let pos = 0; pos < windowSize; pos++) {
+                    const index = offset + pos
+                    currentIndexByPos[pos] = index
+
+                    const labelDiv = document.getElementById(`${id}-label-${pos}`)
+                    if (labelDiv) {
+                        labelDiv.textContent = (index < N) ? formatValue(labels[index]) : ''
+                    }
+
+                    if (show_carac) {
+                        const caracDiv = document.getElementById(`${id}-carac-${pos}`)
+                        if (caracDiv) {
+                            if (c_train && index < N) {
+                                setCaracContent(caracDiv, c_train[index])
+                            } else {
+                                caracDiv.textContent = '—'
+                            }
+                        }
+                    }
+
+                    if (show_rep) {
+                        const predDiv = document.getElementById(`${id}-pred-${pos}`)
+                        const predCell = predDiv?.parentElement // td
+                        if (predDiv) {
+                            const predOk = estimations && index < N
+                            const predVal = predOk ? estimations[index] : null
+                            predDiv.textContent = predOk ? formatValue(predVal) : '—'
+
+                            if (predCell) {
+                                predCell.classList.remove('mathadata-bank-horiz-misclassed')
+                                if (predOk && index < N && labels[index] !== predVal) {
+                                    predCell.classList.add('mathadata-bank-horiz-misclassed')
+                                }
+                            }
+                        }
+                    }
+
+                    if (fetchImages) {
+                        renderDataAt(pos, index)
+                    } else {
+                        setLoadingAt(pos, index)
+                    }
+                }
+            }
+
+            slider.addEventListener('input', () => {
+                // Pendant le drag : mise à jour du texte + placeholder, mais PAS de requêtes Python
+                setOffset(parseInt(slider.value || '0'), false)
+            })
+
+            slider.addEventListener('change', () => {
+                // Au relâchement : on charge les images de la nouvelle fenêtre
+                setOffset(parseInt(slider.value || '0'), true)
+            })
+
+            leftBtn.addEventListener('click', () => setOffset(offset - 1))
+            rightBtn.addEventListener('click', () => setOffset(offset + 1))
+
+            render()
         },
 
 
@@ -2430,15 +3538,24 @@ run_js("""
 
                     const data = getGeneratedData();
 
-                    // Fermer la modal
                     closeModal();
 
                     mathadata.run_python(`run_algorithme('${JSON.stringify(data)}')`, (res) => {
-                        // Pour les données générées, pas de vrai label connu
+                        if (res && res.error) {
+                            mathadata.showErrorModal(res.message);
+                            return;
+                        }
+
+                        const resultValue = res ? res.result : null;
+                        if (resultValue === null || resultValue === undefined) {
+                            mathadata.showErrorModal("Une erreur est survenue lors du calcul. Réessaie ou contacte l'enseignant.");
+                            return;
+                        }
+
                         run_test({
                             data,
-                            label: res.result,  // On met l'estimation comme label pour éviter l'erreur
-                            estimation: res.result
+                            label: resultValue,
+                            estimation: resultValue
                         });
                     });
                 };
@@ -2453,7 +3570,7 @@ run_js("""
                 data: {
                     labels: t_values,  // Assuming t_values is already a JavaScript array
                     datasets: [{
-                        label: "Erreur d'entrainement",
+                        label: "Erreur d'entraînement",
                         data: scores_array,  // Assuming scores_array is already a JavaScript array
                         backgroundColor: 'rgba(75, 192, 192, 0.2)',
                         borderColor: 'rgba(75, 192, 192, 1)',
@@ -3163,9 +4280,12 @@ run_js("""
             });
         },
 
-        animateClassification(containerId, params) {
+        animateClassification(id, containerId, params) {
             params = JSON.parse(params);
-            const { labels, estimations } = params;
+            const { labels, estimations, ensure_draw } = params;
+       
+            let hasCustomDrawing = false;
+            let getGeneratedData;
 
             const totalItems = labels.length;
 
@@ -3178,6 +4298,84 @@ run_js("""
 
             const { animateData, context } = animator;
             const { container, classes } = context;
+       
+             if (ensure_draw) {
+                if (mathadata.interface_data_gen !== undefined) {
+                    getGeneratedData = mathadata.interface_data_gen(`${id}-data-gen`);
+                }
+                const buttonGenerated = document.getElementById(`${id}-button-generated`);
+                const buttonFull = document.getElementById(`${id}-button-full`);
+                const modal = document.getElementById(`${id}-modal`);
+                const modalClose = document.getElementById(`${id}-modal-close`);
+                const buttonValidate = document.getElementById(`${id}-button-validate`);
+
+                // Fonctions pour gérer la modal
+                const openModal = () => {
+                    modal.style.display = 'flex';
+                    document.body.style.overflow = 'hidden'; // Empêcher le scroll
+                };
+
+                const closeModal = () => {
+                    modal.style.display = 'none';
+                    document.body.style.overflow = ''; // Restaurer le scroll
+                };
+
+                // Fermer la modal au clic sur l'overlay
+                modal.onclick = (e) => {
+                    if (e.target === modal) {
+                        closeModal();
+                    }
+                };
+
+                // Fermer la modal au clic sur le bouton X
+                if (modalClose) {
+                    modalClose.onclick = closeModal;
+                }
+
+                // Fermer la modal avec Escape
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && modal.style.display === 'flex') {
+                        closeModal();
+                    }
+                });
+
+                if (getGeneratedData && buttonGenerated) {
+                    buttonGenerated.onclick = () => {
+                        openModal();
+                    };
+                }
+
+                if (buttonValidate && getGeneratedData) {
+                    buttonValidate.onclick = () => {
+                        let data = getGeneratedData();
+
+                        // Activer le bouton "Lancer sur toute la base" après avoir dessiné
+                        if (buttonFull) {
+                            buttonFull.disabled = false;
+                            hasCustomDrawing = true;
+                        }
+
+                        // Fermer la modal
+                        closeModal();
+
+                        mathadata.run_python(`run_algorithme('${JSON.stringify(data)}')`, (res) => {
+                            animateData({ 
+                                data, 
+                                label: res.result,
+                                estimation: res.result,
+                                animDuration: 2400,
+
+                            })
+                        });
+                    };
+                }
+
+                if (buttonFull) {
+                    buttonFull.onclick = () => {
+                        processData(true);
+                    };
+                }
+            }
 
             // État pour la boucle
             let i = 0;
@@ -3189,7 +4387,7 @@ run_js("""
             const minAnimDuration = 500;
             const accelerationFactor = 1.15;
 
-            function processData() {
+            function processData(isTest) {
                 if (!isAnimationRunning || i >= totalItems) return;
 
                 const animDuration = Math.max(minAnimDuration, initialAnimDuration / Math.pow(accelerationFactor, i));
@@ -3197,12 +4395,12 @@ run_js("""
                     isAnimationEnding = true;
                     endAnimation();
                 }
-
+       
                 const currentLabel = labels[i];
                 const currentEstimation = estimations[i];
 
                 // Charger la donnée et animer
-                mathadata.run_python(`get_data(index=${i})`, (data) => {
+                mathadata.run_python(`get_data(index=${i}, is_test=${isTest ? 'True' : 'False'})`, (data) => {
                     animateData({
                         data,
                         label: currentLabel,
@@ -3212,7 +4410,7 @@ run_js("""
                         .then(() => {
                             // Passer à l'élément suivant
                             i++;
-                            processData();
+                            processData(isTest);
                         }).catch(err => {
                             console.error('Animation error:', err);
                             isAnimationEnding = true;
@@ -3274,19 +4472,16 @@ run_js("""
                     }, fadeTime);
                 });
             }
-
-            processData();
+            if (!ensure_draw) processData();
         },
 
         // variables in mathadata object
-        charts: {},
-        exercises: {},
         classColors: ['rgba(80,80,255,0.5)', 'rgba(255, 150, 0, 0.8)'],
         classColorCodes: ['80,80,255', '255, 165, 0'],
         centroidColorCodes: ['0,0,100', '255,100,0'],
-    }
+    });
 
-    window.mathadata = mathadata;
+    // window.mathadata = mathadata; // Déjà assigné via référence ou Object.assign
 
     if (localStorage.getItem('exercice_droite_carac_ok') === 'true') {
         window.mathadata.run_python(`set_exercice_droite_carac_ok()`)
@@ -3314,11 +4509,11 @@ def create_sidebox():
     sidebox.innerHTML = `
         <div class="sidebox-main">
             <div class="sidebox-header">
-                <h3>Calcul du taux d'erreur de l'algorithme</h3>
+                <h3>Calcul du pourcentage d'erreur de l'algorithme</h3>
             </div>
             <div style="display: flex; justify-content: center; width: 100%; margin-top: 2rem">
                 <div class="sidebox-section">
-                    <h4 style="text-align: center;">Meilleur score:</h4>
+                    <h4 style="text-align: center;">Meilleur pourcentage d'erreur :</h4>
                     <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
                         <svg xmlns="http://www.w3.org/2000/svg" width=40 height=40 viewBox="0 0 512 512"><!--!Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path fill="#B197FC" d="M4.1 38.2C1.4 34.2 0 29.4 0 24.6C0 11 11 0 24.6 0H133.9c11.2 0 21.7 5.9 27.4 15.5l68.5 114.1c-48.2 6.1-91.3 28.6-123.4 61.9L4.1 38.2zm503.7 0L405.6 191.5c-32.1-33.3-75.2-55.8-123.4-61.9L350.7 15.5C356.5 5.9 366.9 0 378.1 0H487.4C501 0 512 11 512 24.6c0 4.8-1.4 9.6-4.1 13.6zM80 336a176 176 0 1 1 352 0A176 176 0 1 1 80 336zm184.4-94.9c-3.4-7-13.3-7-16.8 0l-22.4 45.4c-1.4 2.8-4 4.7-7 5.1L168 298.9c-7.7 1.1-10.7 10.5-5.2 16l36.3 35.4c2.2 2.2 3.2 5.2 2.7 8.3l-8.6 49.9c-1.3 7.6 6.7 13.5 13.6 9.9l44.8-23.6c2.7-1.4 6-1.4 8.7 0l44.8 23.6c6.9 3.6 14.9-2.2 13.6-9.9l-8.6-49.9c-.5-3 .5-6.1 2.7-8.3l36.3-35.4c5.6-5.4 2.5-14.8-5.2-16l-50.1-7.3c-3-.4-5.7-2.4-7-5.1l-22.4-45.4z"/></svg>
                         <span id="highscore" class="score">...</span>
@@ -3872,7 +5067,9 @@ class MathadataValidateVariables(MathadataValidate):
 
     def check_undefined_variables(self, errors):
         undefined_variables = []
-        for name in self.name_and_values:
+        ## On regarde le premier couple pour récupérer le name
+        first_couple = self.name_and_values[0] if isinstance(self.name_and_values, list) else self.name_and_values
+        for name in first_couple:
             if not hasattr(__main__, name):
                 undefined_variables.append(name)
                 errors.append(f"La variable {name} n'a pas été définie. Ecris dans ta cellule : {name} = ta_reponse")
@@ -3884,10 +5081,27 @@ class MathadataValidateVariables(MathadataValidate):
 
         return undefined_variables
 
-    def check_variables(self, errors):
-        for name in self.name_and_values:
-            val = get_variable(name)
-            expected = self.name_and_values[name]
+    def check_variables(self, errors, answers=None):
+        possible_values = self.name_and_values
+        ## Normalisation en list
+        if isinstance(possible_values, dict):
+            possible_values = [possible_values]
+
+        for name_and_values in possible_values:
+            local_errors = []
+            for name in name_and_values:
+                val = answers[name] if (answers is not None and name in answers) else get_variable(name)
+                expected = name_and_values[name]
+                check_variable(local_errors, name, val, expected)
+
+            if len(local_errors) == 0:
+                return True
+
+        ## Retourner qu'une seule erreur
+        first_couple = possible_values[0]
+        for name in first_couple:
+            val = answers[name] if (answers is not None and name in answers) else get_variable(name)
+            expected = first_couple[name]
             check_variable(errors, name, val, expected)
 
         return len(errors) == 0
@@ -3896,48 +5110,102 @@ class MathadataValidateVariables(MathadataValidate):
         if self.get_name_and_values is not None:
             self.name_and_values = self.get_name_and_values()
 
-        for name in self.name_and_values:
+        # Normalisation
+        if isinstance(self.name_and_values, dict):
+            self.name_and_values = [self.name_and_values]
+
+        # Variables depuis le premier couple
+        first_couple = self.name_and_values[0]
+        for name in first_couple:
             if not has_variable(name):
                 answers[name] = None
             else:
-                answers[name] = get_variable(name)
+                val = get_variable(name)
+                expected = first_couple[name]
+
+                # Conversion automatique des tuples (a, b) en float a.b si on attend un nombre
+                # Cela permet de gérer la saisie "4,7" qui est interprétée comme (4, 7) par Python
+                if isinstance(val, tuple) and len(val) == 2 and isinstance(val[0], int) and isinstance(val[1], int):
+                    should_convert = False
+                    if isinstance(expected, (float, int)):
+                        should_convert = True
+                    elif isinstance(expected, dict):
+                        base_types, _, _ = parse_type_spec(expected.get('type'))
+                        if float in base_types or int in base_types:
+                            should_convert = True
+                        elif 'value' in expected and isinstance(expected['value'], (float, int)):
+                            should_convert = True
+
+                    if should_convert:
+                        # On vérifie qu'on n'attend pas explicitement un tuple de longueur 2 (ex: point, vecteur)
+                        is_tuple_expected = False
+                        if isinstance(expected, dict):
+                            base_types, _, length = parse_type_spec(expected.get('type'))
+                            if tuple in base_types and (length is None or length == 2):
+                                is_tuple_expected = True
+
+                        if not is_tuple_expected:
+                            val = val[0] + val[1] / (10 ** len(str(val[1])))
+
+                answers[name] = val
 
         undefined_variables = self.check_undefined_variables(errors)
-        if len(undefined_variables) == 0:
-            res = self.check_variables(errors)
-            if res and self.function_validation is not None:
-                return self.function_validation(errors, answers)
+        if len(undefined_variables) > 0:
+            return False
 
-        return len(errors) == 0
+        # On appelle check_variables avec les réponses possiblement converties
+        res_check = self.check_variables(errors, answers)
+
+        res_function = True
+        ## Quoi qu'il arrive appel de la fonction de validation -> affichage des messages plus "pédagogiques"
+        if self.function_validation is not None:
+            res_function = self.function_validation(errors, answers)
+
+        ## Return true si res_check & res_function == true, sinon false
+        return res_check and res_function
 
     def get_variables_str(self):
         res = []
-        for name in self.name_and_values:
-            expected = self.name_and_values[name]
-            if expected is None:
-                continue
-            elif isinstance(expected, dict):
-                if 'value' in expected:
-                    expected = expected['value']
-                else:
-                    continue
 
-            if isinstance(expected, dict):
-                if 'is' in expected:
-                    solution = expected['is']
-                elif 'min' in expected and 'max' in expected:
-                    solution = f"entre {expected['min']} et {expected['max']}"
-                elif 'min' in expected:
-                    solution = f"supérieur ou égal à {expected['min']}"
-                elif 'max' in expected:
-                    solution = f"inférieur ou égal à {expected['max']}"
-                elif 'in' in expected:
-                    solution = f"l'une de ces valeurs : {', '.join(expected['in'])}"
+        # Normalisation en liste
+        possible_values = self.name_and_values
+        if isinstance(possible_values, dict):
+            possible_values = [possible_values]
+
+        # Boucle sur tous les couples, start = 1 pour l'affichage "Couple X"
+        for i, couple in enumerate(possible_values, start=1):
+            couple_res = []
+            for name in couple:
+                expected = couple[name]
+                if expected is None:
+                    continue
+                elif isinstance(expected, dict):
+                    if 'value' in expected:
+                        expected = expected['value']
+
+                if isinstance(expected, dict):
+                    if 'is' in expected:
+                        solution = expected['is']
+                    elif 'min' in expected and 'max' in expected:
+                        solution = f"entre {expected['min']} et {expected['max']}"
+                    elif 'min' in expected:
+                        solution = f"supérieur ou égal à {expected['min']}"
+                    elif 'max' in expected:
+                        solution = f"inférieur ou égal à {expected['max']}"
+                    elif 'in' in expected:
+                        solution = f"l'une de ces valeurs : {', '.join(map(str, expected['in']))}"
+                    else:
+                        raise ValueError(f"Malformed validation class")
                 else:
-                    raise ValueError(f"Malformed validation class")
+                    solution = expected
+                couple_res.append(f"{name} : {solution}")
+
+            # Ajoute le couple avec un titre seulement s'il y a plusieurs couples
+            if len(possible_values) > 1:
+                res.append(f"Couple {i}: " + ", ".join(couple_res))
             else:
-                solution = expected
-            res.append(f"{name} : {solution}")
+                res.append(", ".join(couple_res))
+
         return res
 
 
@@ -4172,13 +5440,13 @@ validation_question_score_fixe = MathadataValidateVariables({
 }, function_validation=validation_func_score_fixed,
     tips=[
         {
-            'seconds': 50,
+            'seconds': 20,
             'tip': 'Compte dans le tableau le nombre d\'erreurs commmises. Il restera une opération mathématique à faire pour obtenir le pourcentage d\'erreur.'
         }, {
-            'seconds': 100,
+            'seconds': 60,
             'tip': 'Il faut diviser par 10 pour obtenir la proportion d\'erreur parmi les 10 premières valeurs.'
         }, {
-            'seconds': 130,
+            'seconds': 80,
             'tip': 'Pour obtenir le pourcentage d\'erreur, il faut multiplier la proportion par 100.'
         }], success="")
 validation_score_fixe = MathadataValidate(success="")
@@ -4319,8 +5587,9 @@ validation_question_faineant = MathadataValidateVariables(get_names_and_values=l
         f"Bravo, {ac_fem('quelle', 'quel')} que soit {data('le', alt=True)} l'algorithme fainéant répond toujours {challenge.classes[0]} !"))
 
 validation_custom = MathadataValidate(
-    success="Bravo, c'est un excellent taux d'erreur ! Tu peux passer à la suite pour essayer de faire encore mieux.")
-validation_code_eleve = MathadataValidate(success="Bravo, c'est un excellent taux d'erreur ! Tu as fini ce notebook.")
+    success="Bravo, c'est un excellent pourcentage d'erreur ! Tu peux passer à la suite pour essayer de faire encore mieux.")
+validation_code_eleve = MathadataValidate(
+    success="Bravo, c'est un excellent pourcentage d'erreur ! Tu as fini ce notebook.")
 
 validation_code_free = MathadataValidate(success="Bravo")
 
@@ -4897,6 +6166,20 @@ def qcm_test():
     })
 
 
+def qcm_caracteristique():
+    create_qcm({
+        'question': "Qu'est ce qu'une caractéristique ?",
+        'choices': [
+            f"Un nombre qui donne une information sur {data('le')} permettant de {ac_fem('la', 'le')} classer",
+            f"La classe {data('du', alt=True)} : {classe(0)} ou {classe(1)}",
+            "Un algorithme",
+            "Le dernier single d'Aya",
+        ],
+        'answer_index': 0,
+        'multiline': True,
+    })
+
+
 custom_carac_free_exemple_code = """
     # Ajoute ton code ici
     
@@ -4946,212 +6229,223 @@ validation_caracteristique_libre_et_affichage = MathadataValidateVariables(name_
 run_js('''
   const anchorPrefix = 'debut-etape-';
 
-  window.mathadata.stepbar = {
-    rootId: null,
-    steps: [],
-    stepNames: [],
-    colors: [],
-    current: 1,
-    container: null,
-    lastActivatedIndex: 0,
-    observer: null,
-    mutationObserver: null,
-    // Convertit un nom d'étape en index (1-indexé)
-    nameToIndex(name) {
-      const idx = this.stepNames.indexOf(name);
-      return idx >= 0 ? idx + 1 : null;
-    },
-    // Convertit un index (1-indexé) en nom d'étape
-    indexToName(idx) {
-      return this.stepNames[idx - 1] || null;
-    },
-    // Active visuellement l'étape idx et les précédentes si pas encore activée (appelé depuis create_step_anchor)
-    activate(idx){
-        if (!this.container) return;
-        if (this.lastActivatedIndex >= idx) return;
-
-        for (let i = 1; i <= idx; i++) {
-            const el = this.container.querySelector(`.mathadata-stepbar__item[data-step-index="${i}"]`);
-            const color = Array.isArray(this.colors) && this.colors[i - 1] ? this.colors[i - 1] : null;
-            if (el && color) {
-                el.style.background = color;
-                el.style.color = '#fff';
-                el.style.borderColor = 'transparent';
-                el.classList.remove('mathadata-stepbar__item--disabled');
-                el.parentElement.classList.add('mathadata-stepbar__itemRow--unlocked');
-            }
-        }
-        this.lastActivatedIndex = idx;
-        const color = Array.isArray(this.colors) && this.colors[idx - 1] ? this.colors[idx - 1] : null;
-
-        // Changer le fond de la page
-        const pageElement = document.getElementById('notebook');
-        if (pageElement && color) {
-          pageElement.style.transition = 'background-color 0.5s ease';
-          pageElement.style.backgroundColor = color;
-          pageElement.style.position = 'relative';
-        }
-    },
-    // Initialise l'observateur pour les divs invisibles
-    initObserver(){
-      console.log('[Stepbar] Initializing observers');
-
-      // IntersectionObserver pour détecter la visibilité
-      if (this.observer) {
-        this.observer.disconnect();
-      }
-
-      this.observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            const stepName = entry.target.id.replace(anchorPrefix, '');
-            const stepIndex = this.nameToIndex(stepName);
-            console.log('[Stepbar] Trigger visible:', stepName, '(index:', stepIndex + ')');
-            if (stepIndex) {
-              // Première fois qu'on passe cette étape : on l'active (débloque)
-              if (this.lastActivatedIndex < stepIndex) {
-                console.log('[Stepbar] First time seeing step', stepName, '- activating');
-                this.activate(stepIndex);
-                // Animation confettis (sauf première étape)
-                if (stepIndex > 1 && typeof window.mathadata.fireSideCannons === 'function') {
-                  window.mathadata.fireSideCannons();
-                }
-              }
-              // Toujours mettre à jour le current
-              this.setCurrent(stepIndex);
-            }
+  if (!window.mathadata.stepbar) {
+    window.mathadata.stepbar = {
+      rootId: null,
+      steps: [],
+      stepNames: [],
+      colors: [],
+      current: 1,
+      container: null,
+      lastActivatedIndex: 0,
+      observer: null,
+      mutationObserver: null,
+      // Convertit un nom d'étape en index (1-indexé)
+      nameToIndex(name) {
+        const idx = this.stepNames.indexOf(name);
+        return idx >= 0 ? idx + 1 : null;
+      },
+      // Convertit un index (1-indexé) en nom d'étape
+      indexToName(idx) {
+        return this.stepNames[idx - 1] || null;
+      },
+      // Active visuellement l'étape idx et les précédentes si pas encore activée (appelé depuis create_step_anchor)
+      activate(idx){
+          if (!this.container) return;
+          if (this.lastActivatedIndex < idx) {
+              this.lastActivatedIndex = idx;
           }
-        });
-      }, {
-        threshold: 0.1,
-        rootMargin: '0px'
-      });
 
-      // MutationObserver pour détecter les nouvelles divs ajoutées au DOM
-      if (this.mutationObserver) {
-        this.mutationObserver.disconnect();
-      }
-
-      this.mutationObserver = new MutationObserver((mutations) => {
-        mutations.forEach(mutation => {
-          mutation.addedNodes.forEach(node => {
-            if (node.nodeType === 1) { // ELEMENT_NODE
-              // Vérifier le noeud lui-même
-              if (node.id && node.id.startsWith(anchorPrefix)) {
-                const stepName = node.id.replace(anchorPrefix, '');
-                console.log('[Stepbar] New anchor detected:', stepName, '- adding to observer');
-                this.observeElement(node);
+          for (let i = 1; i <= this.lastActivatedIndex; i++) {
+              const el = this.container.querySelector(`.mathadata-stepbar__item[data-step-index="${i}"]`);
+              const color = Array.isArray(this.colors) && this.colors[i - 1] ? this.colors[i - 1] : null;
+              if (el && color) {
+                  el.style.background = color;
+                  el.style.color = '#fff';
+                  el.style.borderColor = 'transparent';
+                  el.classList.remove('mathadata-stepbar__item--disabled');
+                  el.parentElement.classList.add('mathadata-stepbar__itemRow--unlocked');
               }
-              // Vérifier dans les enfants
-              if (node.querySelectorAll) {
-                const anchors = node.querySelectorAll(`[id^="${anchorPrefix}"]`);
-                if (anchors.length > 0) {
-                  console.log('[Stepbar] Found', anchors.length, 'anchor(s) in children');
-                  anchors.forEach(el => {
-                    const stepName = el.id.replace(anchorPrefix, '');
-                    console.log('[Stepbar] New anchor detected (child):', stepName, '- adding to observer');
-                    this.observeElement(el);
-                  });
+          }
+          const color = Array.isArray(this.colors) && this.colors[idx - 1] ? this.colors[idx - 1] : null;
+
+          // Changer le fond de la page
+          const pageElement = document.getElementById('notebook');
+          if (pageElement && color) {
+            pageElement.style.transition = 'background-color 0.5s ease';
+            pageElement.style.backgroundColor = color;
+            pageElement.style.position = 'relative';
+          }
+      },
+      // Initialise l'observateur pour les divs invisibles
+      initObserver(){
+        console.log('[Stepbar] Initializing observers');
+
+        // IntersectionObserver pour détecter la visibilité
+        if (this.observer) {
+          this.observer.disconnect();
+        }
+
+        this.observer = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              const stepName = entry.target.id.replace(anchorPrefix, '');
+              const stepIndex = this.nameToIndex(stepName);
+              console.log('[Stepbar] Trigger visible:', stepName, '(index:', stepIndex + ')');
+              if (stepIndex) {
+                // Première fois qu'on passe cette étape : on l'active (débloque)
+                if (this.lastActivatedIndex < stepIndex) {
+                  console.log('[Stepbar] First time seeing step', stepName, '- activating');
+                  this.activate(stepIndex);
+                  // Animation confettis (sauf première étape)
+                  if (stepIndex > 1 && typeof window.mathadata.fireSideCannons === 'function') {
+                    window.mathadata.fireSideCannons();
+                  }
                 }
+                // Toujours mettre à jour le current
+                this.setCurrent(stepIndex);
               }
             }
           });
+        }, {
+          threshold: 0.1,
+          rootMargin: '0px'
         });
-      });
 
-      // Observer le body pour détecter les nouvelles cellules markdown
-      this.mutationObserver.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
-
-      // Observer les éléments existants
-      this.observeExistingElements();
-    },
-
-    // Observe un élément spécifique
-    observeElement(el){
-        this.observer.observe(el);
-    },
-    // Observer tous les éléments existants
-    observeExistingElements(){
-      const anchors = document.querySelectorAll(`[id^="${anchorPrefix}"]`);
-      console.log('[Stepbar] Found', anchors.length, 'existing anchor(s)');
-      anchors.forEach(el => {
-        const stepName = el.id.replace(anchorPrefix, '');
-        console.log('[Stepbar] Observing existing anchor:', stepName);
-        this.observeElement(el);
-      });
-    },
-    // Rafraîchit l'observateur (utile si de nouvelles divs sont ajoutées)
-    refreshObserver(){
-      this.initObserver();
-    },
-    setCurrent(idx){
-      this.current = idx;
-      if (!this.container) return;
-      // Toggle classe active sur le cercle
-      this.container.querySelectorAll('.mathadata-stepbar__item').forEach(el => {
-        el.classList.toggle('mathadata-stepbar__item--active', Number(el.getAttribute('data-step-index')) === idx);
-      });
-      // Toggle classe active sur la ligne (pour styliser le label)
-      this.container.querySelectorAll('.mathadata-stepbar__itemRow').forEach(row => {
-        const item = row.querySelector('.mathadata-stepbar__item');
-        if (!item) return;
-        const stepIndex = Number(item.getAttribute('data-step-index'));
-        row.classList.toggle('mathadata-stepbar__itemRow--active', stepIndex === idx);
-      });
-    },
-    goto(idx){
-      const stepName = this.indexToName(idx);
-      if (!stepName) return;
-      const anchor = document.getElementById(`${anchorPrefix}${stepName}`);
-      if (anchor) {
-        anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    },
-    toggle(){
-      if (!this.container) return;
-      const computedRight = window.getComputedStyle(this.container).right;
-      const isCollapsed = parseInt(computedRight) < 0;
-      this.container.style.right = isCollapsed ? '0px' : '-240px';
-
-      // Faire pivoter l'icône du bouton
-      if (this.collapseButton) {
-        const icon = this.collapseButton.querySelector('svg');
-        if (icon) {
-          icon.style.transform = isCollapsed ? '' : 'rotate(180deg)';
+        // MutationObserver pour détecter les nouvelles divs ajoutées au DOM
+        if (this.mutationObserver) {
+          this.mutationObserver.disconnect();
         }
+
+        this.mutationObserver = new MutationObserver((mutations) => {
+          mutations.forEach(mutation => {
+            mutation.addedNodes.forEach(node => {
+              if (node.nodeType === 1) { // ELEMENT_NODE
+                // Vérifier le noeud lui-même
+                if (node.id && node.id.startsWith(anchorPrefix)) {
+                  const stepName = node.id.replace(anchorPrefix, '');
+                  console.log('[Stepbar] New anchor detected:', stepName, '- adding to observer');
+                  this.observeElement(node);
+                }
+                // Vérifier dans les enfants
+                if (node.querySelectorAll) {
+                  const anchors = node.querySelectorAll(`[id^="${anchorPrefix}"]`);
+                  if (anchors.length > 0) {
+                    console.log('[Stepbar] Found', anchors.length, 'anchor(s) in children');
+                    anchors.forEach(el => {
+                      const stepName = el.id.replace(anchorPrefix, '');
+                      console.log('[Stepbar] New anchor detected (child):', stepName, '- adding to observer');
+                      this.observeElement(el);
+                    });
+                  }
+                }
+              }
+            });
+          });
+        });
+
+        // Observer le body pour détecter les nouvelles cellules markdown
+        this.mutationObserver.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+
+        // Observer les éléments existants
+        this.observeExistingElements();
+      },
+
+      // Observe un élément spécifique
+      observeElement(el){
+          this.observer.observe(el);
+      },
+      // Observer tous les éléments existants
+      observeExistingElements(){
+        const anchors = document.querySelectorAll(`[id^="${anchorPrefix}"]`);
+        console.log('[Stepbar] Found', anchors.length, 'existing anchor(s)');
+        anchors.forEach(el => {
+          const stepName = el.id.replace(anchorPrefix, '');
+          console.log('[Stepbar] Observing existing anchor:', stepName);
+          this.observeElement(el);
+        });
+      },
+      // Rafraîchit l'observateur (utile si de nouvelles divs sont ajoutées)
+      refreshObserver(){
+        this.initObserver();
+      },
+      setCurrent(idx){
+        this.current = idx;
+        if (!this.container) return;
+        // Toggle classe active sur le cercle
+        this.container.querySelectorAll('.mathadata-stepbar__item').forEach(el => {
+          el.classList.toggle('mathadata-stepbar__item--active', Number(el.getAttribute('data-step-index')) === idx);
+        });
+        // Toggle classe active sur la ligne (pour styliser le label)
+        this.container.querySelectorAll('.mathadata-stepbar__itemRow').forEach(row => {
+          const item = row.querySelector('.mathadata-stepbar__item');
+          if (!item) return;
+          const stepIndex = Number(item.getAttribute('data-step-index'));
+          row.classList.toggle('mathadata-stepbar__itemRow--active', stepIndex === idx);
+        });
+      },
+      goto(idx){
+        const stepName = this.indexToName(idx);
+        if (!stepName) return;
+        const anchor = document.getElementById(`${anchorPrefix}${stepName}`);
+        if (anchor) {
+          anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      },
+      toggle(){
+        if (!this.container) return;
+        const computedRight = window.getComputedStyle(this.container).right;
+        const isCollapsed = parseInt(computedRight) < 0;
+
+        // Calculer dynamiquement le décalage à appliquer
+        const backdrop = this.container.querySelector('.mathadata-stepbar__backdrop');
+        const tabWidth = this.collapseButton ? this.collapseButton.offsetWidth : 30; // largeur de l'onglet visible
+        const panelWidth = backdrop ? backdrop.offsetWidth : (this.container.offsetWidth || 240);
+        const hiddenRight = -(panelWidth - tabWidth); // garder l'onglet visible
+
+        this.container.style.right = isCollapsed ? '0px' : `${hiddenRight}px`;
+
+        // Faire pivoter l'icône du bouton
+        if (this.collapseButton) {
+          const icon = this.collapseButton.querySelector('svg');
+          if (icon) {
+            icon.style.transform = isCollapsed ? '' : 'rotate(180deg)';
+          }
+        }
+      },
+      createItem(idx, label){
+        const btn = document.createElement('div');
+        btn.className = 'mathadata-stepbar__item';
+        btn.setAttribute('data-step-index', String(idx));
+        // Affichage 0-indexé (But du TP = 0, Images numériques = 1, ...)
+        btn.textContent = String(Math.max(0, Number(idx) - 1));
+
+        // Toujours grisé par défaut (sera coloré lors de l'activation)
+        btn.style.backgroundColor = '#d9d9d9';
+        btn.style.color = '#777';
+        btn.classList.add('mathadata-stepbar__item--disabled');
+
+        btn.addEventListener('click', () => {
+          // Bloque la navigation si la step n'est pas activée
+          if (this.lastActivatedIndex < idx) return;
+          this.goto(idx);
+        });
+
+        // Conteneur ligne: label (gauche) + cercle (droite)
+        const row = document.createElement('div');
+        row.className = 'mathadata-stepbar__itemRow';
+        const hardLabel = document.createElement('div');
+        hardLabel.className = 'mathadata-stepbar__labelHard';
+        hardLabel.textContent = label;
+        row.appendChild(hardLabel);
+        row.appendChild(btn);
+        return row;
       }
-    },
-    createItem(idx, label){
-      const btn = document.createElement('div');
-      btn.className = 'mathadata-stepbar__item';
-      btn.setAttribute('data-step-index', String(idx));
-      btn.textContent = String(idx);
-
-      // Toujours grisé par défaut (sera coloré lors de l'activation)
-      btn.style.backgroundColor = '#d9d9d9';
-      btn.style.color = '#777';
-      btn.classList.add('mathadata-stepbar__item--disabled');
-
-      btn.addEventListener('click', () => {
-        // Bloque la navigation si la step n'est pas activée
-        if (this.lastActivatedIndex < idx) return;
-        this.goto(idx);
-      });
-
-      // Conteneur ligne: label (gauche) + cercle (droite)
-      const row = document.createElement('div');
-      row.className = 'mathadata-stepbar__itemRow';
-      const hardLabel = document.createElement('div');
-      hardLabel.className = 'mathadata-stepbar__labelHard';
-      hardLabel.textContent = label;
-      row.appendChild(hardLabel);
-      row.appendChild(btn);
-      return row;
-    }
-  };
+    };
+  }
 
   window.mathadata.init_stepbar = (config) => {
     console.log(config)
@@ -5193,6 +6487,12 @@ run_js('''
       const item = window.mathadata.stepbar.createItem(idx, label);
       itemsWrap.appendChild(item);
     });
+
+    // Restaurer l'état activé si on réinitialise (double import)
+    if (window.mathadata.stepbar.lastActivatedIndex > 0) {
+       console.log('[Stepbar] Restoring lastActivatedIndex:', window.mathadata.stepbar.lastActivatedIndex);
+       window.mathadata.stepbar.activate(window.mathadata.stepbar.lastActivatedIndex);
+    }
 
     // Créer le bouton de collapse
     const collapseButton = document.createElement('div');
@@ -5273,7 +6573,7 @@ run_js('''
 ''')
 
 
-def init_stepbar():
+def init_stepbar(custom_steps = None):
     """
     Initialise une barre latérale verticale d'étapes (fixée à droite).
 
@@ -5284,7 +6584,8 @@ def init_stepbar():
     steps_labels = []
     steps_keys = []
     steps_colors = []
-    for key, step in steps.items():
+    steps_to_use = steps if custom_steps is None else custom_steps
+    for key, step in steps_to_use.items():
         steps_labels.append(step['name'])
         steps_keys.append(key)
         steps_colors.append(step['color'])
@@ -5303,8 +6604,6 @@ def toggle_stepbar():
     """Affiche ou cache la stepbar."""
     run_js("window.mathadata && window.mathadata.stepbar && window.mathadata.stepbar.toggle()")
 
-
-init_stepbar()
 
 
 # Change la couleur au démarage

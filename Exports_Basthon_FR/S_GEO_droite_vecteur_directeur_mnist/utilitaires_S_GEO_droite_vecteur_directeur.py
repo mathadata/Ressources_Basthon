@@ -14,6 +14,13 @@ else:
     from utilitaires_geo import *
     import utilitaires_geo as geo
 
+# Zones spécifiques à ce chapitre : moitié haute et moitié basse de l'image
+common.challenge.zone_1_exo = [(0, 0), (13, 27)]
+common.challenge.zone_2_exo = [(14, 0), (27, 27)]
+common.challenge.zone_1_ref = [(0, 0), (13, 27)]
+common.challenge.zone_2_ref = [(14, 0), (27, 27)]
+
+
 
 def tracer_20_points_droite(show_eq=False):
     afficher_separation_line(show_equation=show_eq)
@@ -44,25 +51,31 @@ def tracer_10_points_droite(dataset=common.challenge.dataset_10_points, labels=c
 
 
 def tracer_points_droite_a_b_c():
-    tracer_points_droite(directeur=True, values={'a': 4, 'b': -2, 'c': 10})
+    tracer_points_droite(directeur=True, values={'a': 4, 'b': -2, 'c': 10}, side_sliders=True, equation_position=[75, 75])
 
 
 def tracer_points_droite_c():
-    tracer_points_droite(directeur=True, inputs='c', values={'a': 2, 'b': -3, 'c': 0}, ranges={'c': {'min': -20, 'max': 50, 'step': 5}})
-    
+    tracer_points_droite(directeur=True, inputs='c', values={'a': 2, 'b': -3, 'c': 0},
+                         ranges={'c': {'min': -20, 'max': 100, 'step': 5}}, side_sliders=True, equation_position=[75, 75])
+
+
 def tracer_points_droite_a_b():
-    tracer_points_droite(directeur=True, inputs=('a', 'b'), values={'a': -6, 'b': 2, 'c': 5}, ranges={'a': {'min': -10, 'max': 10, 'step': 0.5}, 'b': {'min': -10, 'max': 10, 'step': 0.5}})
+    tracer_points_droite(directeur=True, inputs=('a', 'b'), values={'a': -6, 'b': 2, 'c': 5},
+                         ranges={'a': {'min': -10, 'max': 10, 'step': 0.5}, 'b': {'min': -10, 'max': 10, 'step': 0.5}}, side_sliders=True)
+
 
 def tracer_points_droite(
-    id_content=None,
-    display_value="range",
-    carac=None,
-    initial_hidden=False,
-    save=False,
-    directeur=False,
-    inputs=('a', 'b', 'c'),
-    values={'a': 5, 'b': -20, 'c': 0},
-    ranges=None,  # <-- NOUVEAU : dict optionnel { 'a': {...}, 'b': (...), ... }
+        id_content=None,
+        display_value="range",
+        carac=None,
+        initial_hidden=False,
+        save=False,
+        directeur=False,
+        inputs=('a', 'b', 'c'),
+        values=None,
+        ranges=None,  # <-- NOUVEAU : dict optionnel { 'a': {...}, 'b': (...), ... }
+        side_sliders=False,
+        equation_position=None,
 ):
     """
     ranges (optionnel) : dictionnaire qui peut contenir pour chaque paramètre :
@@ -85,10 +98,12 @@ def tracer_points_droite(
 
     c_train_par_population = compute_c_train_by_class(fonction_caracteristique=carac)
 
+    if values is None:
+        values = {'a': 5, 'b': -20, 'c': 0}
     # --- RANGES PAR DÉFAUT ---
     default_ranges = {
-        'a': {'min': -5,  'max': 5,  'step': 0.1},
-        'b': {'min': -5,  'max': 5,  'step': 0.1},
+        'a': {'min': -5, 'max': 5, 'step': 0.1},
+        'b': {'min': -5, 'max': 5, 'step': 0.1},
         'c': {'min': -10, 'max': 10, 'step': 1},
     }
 
@@ -132,10 +147,22 @@ def tracer_points_droite(
         'save': save,
         'droite': {'mode': 'cartesienne'},
         'vecteurs': {'directeur': directeur},
-        'inputs': inputs_dict,          # <-- on passe aussi les ranges ici (ne casse pas)
+        'inputs': inputs_dict,  # <-- on passe aussi les ranges ici (ne casse pas)
         'initial_values': values,
         'compute_score': True,
+        'force_origin': True,
+        'interception_point': False,
     }
+
+    # Si directeur=True, calculer ux/uy à partir de a,b pour que le vecteur s'affiche
+    if directeur:
+        a_val = values.get('a', 0)
+        b_val = values.get('b', 0)
+        values.setdefault('ux', -b_val)
+        values.setdefault('uy', a_val)
+
+    if equation_position is not None:
+        params['equation_position'] = equation_position
 
     run_js(
         f"mathadata.add_observer('{id_content}-container', () => "
@@ -148,6 +175,7 @@ def tracer_points_droite(
 
         # On ne met min/max/step que si c'est un input "range" ou "number"
         attrs = ""
+        datalist_html = ""
         if display_value in ("range", "number"):
             if 'min' in spec:
                 attrs += f' min="{spec["min"]}"'
@@ -156,32 +184,88 @@ def tracer_points_droite(
             if 'step' in spec:
                 attrs += f' step="{spec["step"]}"'
 
+            # Ajout d'un "tick" et d'un label "0" si présent dans l'intervalle
+            if display_value == "range" and 'min' in spec and 'max' in spec:
+                if spec['min'] <= 0 <= spec['max']:
+                    list_id = f"{id_content}-list-{key}"
+                    attrs += f' list="{list_id}"'
+                    
+                    # Calcul de la position du 0 en pourcentage
+                    total_range = spec['max'] - spec['min']
+                    if total_range > 0:
+                        pos_zero = ((0 - spec['min']) / total_range) * 100
+                        datalist_html = f"""
+                        <datalist id="{list_id}">
+                            <option value="0"></option>
+                        </datalist>
+                        <div style="position: relative; width: 100%; height: 20px;">
+                            <span style="position: absolute; left: {pos_zero}%; transform: translateX(-50%); font-size: 0.8rem; font-weight: bold; top: -5px;">0</span>
+                        </div>
+                        """
+                    else:
+                        datalist_html = f"""
+                        <datalist id="{list_id}">
+                            <option value="0"></option>
+                        </datalist>
+                        """
+
         return f"""
-        <div>
-            <label for="{id_content}-input-{key}" id="{id_content}-label-{key}">{key} = </label>
-            <input type="{display_value}"{attrs} value="{val}" id="{id_content}-input-{key}">
+        <div style="display: flex; flex-direction: column; align-items: center; min-width: 150px;">
+            <label for="{id_content}-input-{key}" id="{id_content}-label-{key}" style="margin-bottom: 5px;">{key} = </label>
+            <div style="width: 100%; position: relative;">
+                <input type="{display_value}"{attrs} value="{val}" id="{id_content}-input-{key}" style="width: 100%; margin: 0;">
+                {datalist_html}
+            </div>
         </div>
         """
 
-    display(HTML(f'''
-        <div id="{id_content}-container" style="{'visibility:hidden;' if initial_hidden else ''}">
-            <div id="{id_content}-score-container" style="text-align: center; font-weight: bold; font-size: 2rem;">
-                Pourcentage d'erreur : <span id="{id_content}-score">...</span>
+    if side_sliders:
+        display(HTML(f'''
+            <div id="{id_content}-container" style="{'visibility:hidden;' if initial_hidden else ''}">
+                <div id="{id_content}-score-container" style="text-align: center; font-weight: bold; font-size: 2rem;">
+                    Pourcentage d'erreur : <span id="{id_content}-score">...</span>
+                </div>
+
+                <!-- Conteneur flex horizontal pour canvas + sliders -->
+                <div style="display:flex; flex-direction:row; gap:2rem; align-items:flex-start;">
+
+                    <!-- Canvas à gauche -->
+                    <div style="flex: 1;">
+                        <canvas id="{id_content}-chart"></canvas>
+                    </div>
+
+                    <!-- Sliders à droite -->
+                    <div id="{id_content}-inputs"
+                         style="display:flex; flex-direction:column; gap:1.5rem; min-width:200px;">
+                        {_input_html('a') if 'a' in inputs_dict else ''}
+                        {_input_html('b') if 'b' in inputs_dict else ''}
+                        {_input_html('c') if 'c' in inputs_dict else ''}
+                        <button id="{id_content}-reset">Réinitialiser</button>
+                    </div>
+
+                </div>
             </div>
+        '''))
+    else:
+        display(HTML(f'''
+            <div id="{id_content}-container" style="{'visibility:hidden;' if initial_hidden else ''}">
+                <div id="{id_content}-score-container" style="text-align: center; font-weight: bold; font-size: 2rem;">
+                    Pourcentage d'erreur : <span id="{id_content}-score">...</span>
+                </div>
 
-            <canvas id="{id_content}-chart"></canvas>
+                <canvas id="{id_content}-chart"></canvas>
 
-            <div id="{id_content}-inputs"
-                 style="display: flex; gap: 1rem; justify-content: center;
-                        flex-direction: {'column' if display_value == "range" else 'row'};">
-                { _input_html('a') if 'a' in inputs_dict else '' }
-                { _input_html('b') if 'b' in inputs_dict else '' }
-                { _input_html('c') if 'c' in inputs_dict else '' }
+                <div id="{id_content}-inputs"
+                     style="display: flex; gap: 1rem; justify-content: center;
+                            flex-direction: {'column' if display_value == "range" else 'row'};">
+                    {_input_html('a') if 'a' in inputs_dict else ''}
+                    {_input_html('b') if 'b' in inputs_dict else ''}
+                    {_input_html('c') if 'c' in inputs_dict else ''}
+                </div>
+
+                <button id="{id_content}-reset" style="margin-top:1rem;">Réinitialiser</button>
             </div>
-
-            <button id="{id_content}-reset" style="margin-top:1rem;">Réinitialiser</button>
-        </div>
-    '''))
+        '''))
 
     run_js(f"""
     mathadata.add_observer('{id_content}-reset', () => {{
@@ -197,6 +281,7 @@ def tracer_points_droite(
         }});
     }});
     """)
+
 
 u_schema = (2, 3)
 
@@ -372,17 +457,19 @@ def afficher_customisation():
 
 # JS
 
-def calculer_score_droite(animation=False):
-    calculer_score_droite_geo(validate=common.challenge.objectif_score_droite, animation=animation, banque=False)
+def calculer_score_droite(animation=False, ensure_test=True):
+    calculer_score_droite_geo(validate=common.challenge.objectif_score_droite, animation=animation,
+                              banque=False, ensure_test=ensure_test)
 
 
-def calculer_score_custom_droite():
+def calculer_score_custom_droite(ensure_test=True):
     calculer_score_droite_geo(custom=True, validate=common.challenge.objectif_score_droite_custom,
                               error_msg="Continuez à chercher 2 zones pour avoir moins de " + str(
-                                  common.challenge.objectif_score_droite_custom) + "% d'erreur. Pensez à changer les valeurs de m et p après avoir défini votre zone.")
+                                  common.challenge.objectif_score_droite_custom) + "% d'erreur. Pensez à changer les valeurs de m et p après avoir défini votre zone.",
+                              ensure_test=ensure_test)
 
 
-# Variables globales pour les valeurs des sliders et taux d'erreur
+# Variables globales pour les valeurs des sliders et pourcentage d'erreur
 slider_p_value = None
 slider_m_value = None
 error_score = None
@@ -648,7 +735,7 @@ def afficher_separation_line(p=1, slope=1, show_equation=False, width=466, heigh
         function formatNumber(num) {{
           return parseFloat(num.toFixed(2)).toString();
         }}
-        // computeScore pour le taux d'erreur
+        // computeScore pour le pourcentage d'erreur
         const computeScore = () => {{
               const n = {blue_pts}.length;
 
@@ -1004,7 +1091,7 @@ def qcm_vecteur_colineaire():
             "Qu'ils ont la même direction",
             "Que leur déterminant est nul",
         ],
-        'answers_indexes': [2,3],
+        'answers_indexes': [2, 3],
         'multiline': True
     })
 
@@ -1107,7 +1194,6 @@ def function_validation_question_point_determinant_zero_M(errors, answers):
     return len(errors) == 0
 
 
-
 def function_validation_question_points_determinant_zero_N_M(errors, answers):
     M = answers['M']
     N = answers['N']
@@ -1142,6 +1228,7 @@ def function_validation_question_point_determinant_zero(errors, answers):
         errors.append("Le déterminant des vecteurs AM et u n'est pas égal à zéro.")
 
     return len(errors) == 0
+
 
 def qcm_determinant():
     create_qcm({
@@ -1242,7 +1329,9 @@ def function_validation_lecture_u(errors, answers):
 
     return True
 
+
 validation_execution_tracer_points_droite_vecteur = MathadataValidate(success="")
+validation_execution_tracer_points_droite_vecteur_rappel = MathadataValidate(success="")
 
 validation_question_lecture_u = MathadataValidateVariables({
     'x_u': None,
@@ -1320,7 +1409,6 @@ validation_question_determinant_calcul = MathadataValidateVariables({
     'tip': 'Le vecteur AM à comme coordonnées (5, 5). Quel calcul faut-il faire pour obtenir le déterminant ?'
 }])
 
-
 validation_question_points_determinant_zero_N_M = MathadataValidateVariables({
     'M': {
         'type': 'vecteur'
@@ -1346,12 +1434,11 @@ validation_exercice_lambda_P = MathadataValidateVariables(
     tips=[{
         'seconds': 10,
         'tip': 'Le curseur de la figure ne permet pas d\'atteindre P, il faut deviner la valeur de lambda_P.'
-        }, {
+    }, {
         'seconds': 30,
         'trials': 1,
         'tip': 'Combien de fois tu peux tracer le vecteur u entre les points A et P ?'
-        }],
+    }],
     succes="")
-
 
 validation_execution_lalambdada_exercice = MathadataValidate(success="")
