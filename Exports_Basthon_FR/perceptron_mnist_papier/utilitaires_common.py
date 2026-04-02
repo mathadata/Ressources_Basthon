@@ -161,7 +161,7 @@ def import_js_scripts():
     run_js("""
         require.config({
             paths: {
-                'ag-grid-community': 'https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min',
+                'ag-grid-community': 'https://cdn.jsdelivr.net/npm/ag-grid-community@32.3.3/dist/ag-grid-community.min',
                 'chartjs': 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min',
             },
         });
