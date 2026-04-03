@@ -283,7 +283,7 @@ def tracer_points_droite(
     """)
 
 
-u_schema = (2, 3)
+u_schema = (4, 2)
 
 
 def afficher_plusieurs_vecteurs(coefx=u_schema[0], coefy=u_schema[1]):
@@ -296,7 +296,7 @@ def afficher_plusieurs_vecteurs(coefx=u_schema[0], coefy=u_schema[1]):
         coefy: coordonnée y du vecteur u
     """
     box_id = f"jxgbox_{uuid.uuid4().hex}"
-    equation = "3x - 2y -4 = 0"
+    equation = "2x - 4y +9 = 0"
 
     # Utiliser add_observer pour attendre que l'élément soit dans le DOM
     run_js(f"""
@@ -319,7 +319,7 @@ mathadata.add_observer('{box_id}', () => {{
   }});
 
   // === Droite avec équation ===
-  var droite = board.create('line', [[0, -2], [{coefx}, {coefy - 2}]], {{
+  var droite = board.create('line', [[0, 2], [{coefx}, {coefy + 2}]], {{
     strokeColor:'#666',
     strokeWidth:2,
     straightFirst:true,
@@ -336,19 +336,19 @@ mathadata.add_observer('{box_id}', () => {{
     strokeWidth:4,
     lastArrow:{{type:2, size:8}}
   }});
-  var labelU = board.create('text', [{coefx + 0.5}, {coefy + 0.8}, 'u({coefx},{coefy})'], {{
+  var labelU = board.create('text', [{coefx / 2}, {coefy / 2 + 0.8}, 'u({coefx},{coefy})'], {{
     fontSize:16,
     color:'#0000FF',
     fixed:true
   }});
 
   // === Vecteur 2u (rouge) ===
-  var vec2U = board.create('arrow', [[-6, -4], [{-6 + 2 * coefx}, {-4 + 2 * coefy}]], {{
+  var vec2U = board.create('arrow', [[-6, 0], [{-6 + 2 * coefx}, {0 + 2 * coefy}]], {{
     strokeColor:'#FF0000',
     strokeWidth:3,
     lastArrow:{{type:2, size:7}}
   }});
-  var label2U = board.create('text', [{-6 + 2 * coefx + 0.5}, {-4 + 2 * coefy + 0.8}, '2u({2 * coefx},{2 * coefy})'], {{
+  var label2U = board.create('text', [{-6 + coefx}, {coefy + 0.8}, '2u({2 * coefx},{2 * coefy})'], {{
     fontSize:16,
     color:'#FF0000',
     fixed:true
@@ -360,7 +360,7 @@ mathadata.add_observer('{box_id}', () => {{
     strokeWidth:3,
     lastArrow:{{type:2, size:7}}
   }});
-  var labelUOpp = board.create('text', [{-coefx + 3}, {-2 - coefy}, '-u({-coefx},{-coefy})'], {{
+  var labelUOpp = board.create('text', [{2 - coefx / 2}, {-2 - coefy / 2 + 0.8}, '-u({-coefx},{-coefy})'], {{
     fontSize:16,
     color:'#00AA00',
     fixed:true
@@ -372,7 +372,7 @@ mathadata.add_observer('{box_id}', () => {{
     strokeWidth:3,
     lastArrow:{{type:2, size:7}}
   }});
-  var labelUPerp = board.create('text', [{6 - coefx + 0.5}, {-4 + coefy + 0.8}, 'v({-coefx},{coefy})'], {{
+  var labelUPerp = board.create('text', [{6 - coefx / 2}, {-4 + coefy / 2 + 0.8}, 'v({-coefx},{coefy})'], {{
     fontSize:16,
     color:'#FF8800',
     fixed:true
@@ -1084,7 +1084,7 @@ def qcm_abc_cartesienne_c():
 
 def qcm_vecteur_colineaire():
     create_qcm({
-        'question': '"Deux vecteurs sont colinéaires" signifie forcément : ',
+        'question': '"Deux vecteurs nons nuls sont colinéaires" signifie forcément : ',
         'choices': [
             "Qu'ils sont égaux",
             "Qu'ils ont le même sens",
@@ -1287,7 +1287,7 @@ def function_validation_score_vecteur_20(errors, answers):
 
 def function_validation_question_vecteur_directeur_possible(errors, answers):
     u = answers['u']
-    reponse = [4, 3]
+    reponse = [4, 2]
 
     determinant = u[0] * reponse[1] - u[1] * reponse[0]
 
@@ -1310,9 +1310,8 @@ def function_validation_lambda_P(errors, answers):
 
 
 def function_validation_lecture_u(errors, answers):
-    x_u = answers['x_u']
-    y_u = answers['y_u']
-
+    u = answers['u']
+    x_u, y_u = u
     # réponse attendue
     x_u_expected = geo.input_values['ux']
     y_u_expected = geo.input_values['uy']
@@ -1334,11 +1333,12 @@ validation_execution_tracer_points_droite_vecteur = MathadataValidate(success=""
 validation_execution_tracer_points_droite_vecteur_rappel = MathadataValidate(success="")
 
 validation_question_lecture_u = MathadataValidateVariables({
-    'x_u': None,
-    'y_u': None
+    'u': {
+        'type': 'vecteur'
+    }
 },
     function_validation=function_validation_lecture_u,
-    succes="")
+    success="Bravo c'est un vecteur directeur possible de la droite.")
 
 validation_execution_tracer_points_droite_directeur = MathadataValidate(success="")
 validation_execution_afficher_plusieurs_vecteurs = MathadataValidate(success="")
@@ -1442,3 +1442,42 @@ validation_exercice_lambda_P = MathadataValidateVariables(
     succes="")
 
 validation_execution_lalambdada_exercice = MathadataValidate(success="")
+
+
+
+def position_point_equation_cartesienne():
+    # Paramètres de l'iframe GeoGebra :
+    # - id/ztxpvasw : identifiant de l'activité GeoGebra
+    # - width/3000, height/800 : dimensions de l'iframe interne
+    # - border/888888 : couleur de la bordure (hexadécimal)
+    # - sfsb/true : Show Fullscreen Button (afficher le bouton plein écran)
+    # - smb/false : Show Menu Bar (afficher la barre de menu)
+    # - stb/false : Show Toolbar (afficher la barre d'outils)
+    # - stbh/false : Show Toolbar Help (afficher l'aide de la barre d'outils)
+    # - ai/false : Allow Input Bar (autoriser la barre de saisie)
+    # - asb/false : Allow Style Bar (autoriser la barre de style)
+    # - sri/false : Show Reset Icon (afficher l'icône de réinitialisation)
+    # - rc/false : Right Click (activer le clic droit)
+    # - ld/true : Language Direction (direction de la langue, true pour LTR)
+    # - sdz/true : Show Drag Zooming (afficher le zoom par glissement)
+    # - ctl/false : Show Construction Protocol (afficher le protocole de construction)
+    display(HTML(
+        """<iframe scrolling="no" title="Déterminant et droite" src="https://www.geogebra.org/material/iframe/id/ztxpvasw/width/4000/height/800/border/888888/sfsb/true/smb/false/stb/false/stbh/false/ai/false/asb/false/sri/false/rc/false/ld/true/sdz/true/ctl/false" width="3000px" height="800px" style="border:0px;"> </iframe>"""))
+
+validation_execution_position_point_equation_cartesienne= MathadataValidate(success="")
+
+
+def qcm_position_point_equation_cartesienne():
+    create_qcm({
+        'question': "Pour une droite d'équation $ax+by+c=0$ avec $a$ et $b$ non nuls, parmi ces propositions lesquelles sont correctes ? ",
+        'choices': [
+            r'Pour un point $M(x_M;y_M)$ sur la droite la valeur de $ax_M+byM+c$ est égale à 0.',
+            r'Quand un point est sur la droite $y_M$ vaut $ax_M+c$.',
+            r'Quand un point est sur la droite $y_M$ vaut $- \frac{a}{b} x_M - \frac{c}{b}$.'
+            r'Quand un point est sur la droite $y_M$ vaut $- \frac{b}{a} x_M - \frac{c}{a}$.'
+          
+        ],
+        'answers_indexes': [0, 2],
+    })
+
+

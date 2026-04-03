@@ -1243,7 +1243,7 @@ def meilleures_caracteristiques(custom=True):
         expected_points_a=exp_a,  # mettre les valeurs pour 2
         expected_points_b=exp_b,  # mettre les valeurs pour 7
         images=different_image_caracteristics,
-        preplace_points_a=False,
+        preplace_points_a=True,
     )
 
 
@@ -5741,7 +5741,7 @@ def validate_moyenne_carac(errors, answers):
     if moyenne_carac:
         return True
     else:
-        errors.append("Réponds d'abord à la question ci-dessus en plaçant les points sur le graphe.")
+        errors.append("Réponds d'abord à la question ci-dessus en plaçant les points dans le repère.")
         return False
 
 

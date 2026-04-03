@@ -4940,6 +4940,8 @@ def get_type_str(type_spec):
         'bool': 'True ou False',
     }
 
+    # Normalise pour gérer les types custom (ex: 'vecteur', 'point')
+    type_spec = replace_custom_types(type_spec)
     # Si le nom est déjà précisé, on le garde
     if isinstance(type_spec, dict) and 'name' in type_spec:
         return type_spec['name']
@@ -5194,6 +5196,8 @@ class MathadataValidateVariables(MathadataValidate):
                         solution = f"inférieur ou égal à {expected['max']}"
                     elif 'in' in expected:
                         solution = f"l'une de ces valeurs : {', '.join(map(str, expected['in']))}"
+                    elif 'type' in expected:
+                        solution = get_type_str(expected)
                     else:
                         raise ValueError(f"Malformed validation class")
                 else:
