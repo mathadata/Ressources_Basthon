@@ -1230,13 +1230,13 @@ def function_validation_score_droite_pm(errors, answers):
     if error_score != 5:
         err_return += "Le taux d'erreur peut arriver à 5%. Essaie encore.\n"
     if user_answer_p != round(slider_p_value):
-        err_return += f"Attention, la valeur de p n'est pas celle de la droite.\n"
+        err_return += f"Attention, la valeur de p n'est pas celle que tu as choisie sur le graphique.\n"
     if user_answer_m != round(slider_m_value, 2):
-        err_return += f"Attention, la valeur de m n'est pas celle de la droite.\n"
+        err_return += f"Attention, la valeur de m n'est pas celle que tu as choisie sur le graphique.\n"
     if err_return != "":
         errors.append(err_return)
         return False
-    pretty_print_success("Bravo, tu as trouvé les paramètres de la bonne droite !")
+    pretty_print_success("Bravo, tu as trouvé les paramètres d'une bonne droite !")
     return True
 
 
