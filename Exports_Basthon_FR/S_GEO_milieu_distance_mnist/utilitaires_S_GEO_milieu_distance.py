@@ -20,7 +20,8 @@ else:
     from utilitaires_geo import *
 
 
-def tracer_6000_points():
+
+def tracer_6000_points(orthonorme=True):
     id = uuid.uuid4().hex
 
     c_train_par_population = compute_c_train_by_class(fonction_caracteristique=common.challenge.deux_caracteristiques, d_train=common.challenge.d_train, r_train=common.challenge.r_train)
@@ -36,9 +37,10 @@ def tracer_6000_points():
 
     run_js(f"mathadata.add_observer('{id}-chart', () => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
 
-    display(HTML(f'''
-            <canvas id="{id}-chart"></canvas>
-    '''))
+    if orthonorme:
+        display(HTML(f'<canvas id="{id}-chart" width="600" height="600"></canvas>'))
+    else:
+        display(HTML(f'<canvas id="{id}-chart"></canvas>'))
 
 
 def tracer_10_points_droite():
@@ -83,7 +85,7 @@ def tracer_10_points_centroides():
 
     run_js(f"mathadata.add_observer('{id}-chart', () => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
 
-    display(HTML(f'<canvas id="{id}-chart"></canvas>'))
+    display(HTML(f'<canvas id="{id}-chart" width="600" height="600"></canvas>'))
 
 
 def tracer_points_centroides(id=None, carac=None, droite=False, initial_hidden=False):
@@ -110,7 +112,7 @@ def tracer_points_centroides(id=None, carac=None, droite=False, initial_hidden=F
     display(HTML(f'''
         <div id="{id}-container" style="{'visibility:hidden;' if initial_hidden else ''}">
             {droite and score_div}
-            <canvas id="{id}-chart"></canvas>
+            <canvas id="{id}-chart" width="600" height="600"></canvas>
         </div>
     '''))
 

@@ -53,7 +53,7 @@ def tracer_2_points():
     run_js(
         f"mathadata.add_observer('{id}', () => window.mathadata.tracer_2_points('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
 
-    display(HTML(f'<canvas id="{id}"></canvas>'))
+    display(HTML(f'<canvas id="{id}" width="400" height="400"></canvas>'))
 
     df = pd.DataFrame()
     labels = ['Point A :', 'Point B :']
@@ -771,23 +771,26 @@ def placer_2_points():
 ### --------------------------------- ###
 
 
-def tracer_200_points(nb=200):
-    id = uuid.uuid4().hex
 
-    c_train_par_population = compute_c_train_by_class(fonction_caracteristique=common.challenge.deux_caracteristiques,
-                                                      d_train=common.challenge.d_train[0:nb],
-                                                      r_train=common.challenge.r_train[0:nb])
-    params = {
-        'points': c_train_par_population,
-        'hideClasses': True,
-    }
+def tracer_200_points(nb=200, orthonorme=True):
+  id = uuid.uuid4().hex
 
-    run_js(
-        f"mathadata.add_observer('{id}-chart', () => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
+  c_train_par_population = compute_c_train_by_class(fonction_caracteristique=common.challenge.deux_caracteristiques,
+                            d_train=common.challenge.d_train[0:nb],
+                            r_train=common.challenge.r_train[0:nb])
+  params = {
+    'points': c_train_par_population,
+    'hideClasses': True,
+  }
 
-    display(HTML(f'''
-        <canvas id="{id}-chart"></canvas>
-    '''))
+  run_js(
+    f"mathadata.add_observer('{id}-chart', () => window.mathadata.tracer_points('{id}', '{json.dumps(params, cls=NpEncoder)}'))")
+
+  # Canvas carré si orthonorme
+  if orthonorme:
+    display(HTML(f'<canvas id="{id}-chart" width="500" height="500"></canvas>'))
+  else:
+    display(HTML(f'<canvas id="{id}-chart"></canvas>'))
 
 
 def tracer_points_droite_vecteur(id_content=None, carac=None, initial_hidden=False, save=True, normal=None, directeur=False,
