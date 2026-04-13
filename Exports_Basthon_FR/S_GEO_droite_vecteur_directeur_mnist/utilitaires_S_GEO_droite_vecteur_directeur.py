@@ -1471,13 +1471,14 @@ def qcm_position_point_equation_cartesienne():
     create_qcm({
         'question': "Pour une droite d'équation $ax+by+c=0$ avec $a$ et $b$ non nuls, parmi ces propositions lesquelles sont correctes ? ",
         'choices': [
-            r'Pour un point $M(x_M;y_M)$ sur la droite la valeur de $ax_M+byM+c$ est égale à 0.',
+            r'Pour un point $M(x_M;y_M)$ sur la droite, la valeur de $ax_M+byM+c$ est égale à 0.',
             r'Quand un point est sur la droite $y_M$ vaut $ax_M+c$.',
             r'Quand un point est sur la droite $y_M$ vaut $- \frac{a}{b} x_M - \frac{c}{b}$.'
             r'Quand un point est sur la droite $y_M$ vaut $- \frac{b}{a} x_M - \frac{c}{a}$.'
+            r'Le signe de $ax_M+byM+c$ donne une indication sur la position du point par rapport à la droite.'
           
         ],
-        'answers_indexes': [0, 2],
+        'answers_indexes': [0,2,3],
     })
 
 

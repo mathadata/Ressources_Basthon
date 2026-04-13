@@ -5430,7 +5430,7 @@ validation_score_droite_custom = MathadataValidate(
     success="Bravo, tu peux continuer à essayer d'améliorer ton score. Il est possible de faire seulement 3% d'erreur.")
 validation_execution_scatter_caracteristiques_ripou = MathadataValidate(success="")
 validation_execution_afficher_customisation = MathadataValidate(success="")
-
+validation_execution_afficher_customisation_2 = MathadataValidate(success="")
 
 def function_validation_carac(errors, answers):
     moyenne_haut_2 = answers['x_2']
