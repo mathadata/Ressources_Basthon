@@ -1309,6 +1309,19 @@ def function_validation_lambda_P(errors, answers):
     return True
 
 
+
+def function_validation_lambda_Q(errors, answers):
+    user_lambda = answers['lambda_Q']
+    if not isinstance(user_lambda, (int, float)):
+        errors.append("lambda_Q doit être un nombre.")
+        return False
+    if user_lambda != 2:
+        errors.append("Mauvaise réponse")
+        return False
+    return True
+
+
+
 def function_validation_lecture_u(errors, answers):
     u = answers['u']
     x_u, y_u = u
@@ -1441,6 +1454,17 @@ validation_exercice_lambda_P = MathadataValidateVariables(
     }],
     succes="")
 
+validation_exercice_lambda_Q = MathadataValidateVariables(
+    {'lambda_Q': None},
+    function_validation=function_validation_lambda_Q,
+    tips=[ {
+        'seconds': 30,
+        'trials': 1,
+        'tip': 'Combien de fois tu peux tracer le vecteur u entre les points A et Q ?'
+    }],
+    succes="")
+
+
 validation_execution_lalambdada_exercice = MathadataValidate(success="")
 
 
@@ -1473,12 +1497,11 @@ def qcm_position_point_equation_cartesienne():
         'choices': [
             r'Pour un point $M(x_M;y_M)$ sur la droite, la valeur de $ax_M+byM+c$ est égale à 0.',
             r'Quand un point est sur la droite $y_M$ vaut $ax_M+c$.',
-            r'Quand un point est sur la droite $y_M$ vaut $- \frac{a}{b} x_M - \frac{c}{b}$.'
-            r'Quand un point est sur la droite $y_M$ vaut $- \frac{b}{a} x_M - \frac{c}{a}$.'
-            r'Le signe de $ax_M+byM+c$ donne une indication sur la position du point par rapport à la droite.'
-          
+            r'Quand un point est sur la droite $y_M$ vaut $- \frac{a}{b} x_M - \frac{c}{b}$.',
+            r'Quand un point est sur la droite $y_M$ vaut $- \frac{b}{a} x_M - \frac{c}{a}$.',
+            r'Le signe de $ax_M+by_M+c$ donne une indication sur la position du point par rapport à la droite.'
         ],
-        'answers_indexes': [0,2,3],
+        'answers_indexes': [0,2,4],
     })
 
 
