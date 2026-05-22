@@ -3672,6 +3672,7 @@ run_js('''
       }
 
       const {points, droite, vecteurs, vector_inset = false, centroides, additionalPoints, hideClasses, hover, inputs, initial_values, default_values, displayValue, save, custom, compute_score, drag, force_origin, equation_hide, param_colors, equation_fixed_position, equation_position, orthonormal, center_canvas, side_box = true , interception_point = true, disable_python_updates = false} = params;
+      let currentPoints = points;
         // points: tableau des données en entrée sous forme de coordonnées (deux éléments, les points des 2 et les points des 7) [[[x,y],[x,y],...] , [[x,y],[x,y],...]]
         // droite: la droite à afficher (objet)
         // vecteurs: vecteurs à afficher pour le bouger
@@ -3726,23 +3727,18 @@ run_js('''
       
       const computeScore = () => {
         const {a, b, c} = values;
-        if (a === undefined || b === undefined || c === undefined) {
-          return;
-        }
-        if (a === 0 && b === 0) {
-          return;
-        }
-        
-        const python = `compute_score_json(${a}, ${b}, ${c}, custom=${custom ? 'True' : 'False'})`
-        mathadata.run_python(python, ({error}) => {
-          if (error > 50) {
-              error = 100 - error
-          }
-          error = Math.round(error * 100) / 100
-          if (document.getElementById(`${id}-score`)) {
-            document.getElementById(`${id}-score`).innerHTML = `${error}%`
-          }
-        })
+        if (a === undefined || b === undefined || c === undefined) return;
+        if (a === 0 && b === 0) return;
+
+        const side = (x, y) => (b === 0) ? (a !== 0 && x > -c / a) : (a * x + b * y + c > 0);
+        const errors0 = currentPoints[0].filter(([x, y]) => side(x, y)).length;
+        const errors1 = currentPoints[1].filter(([x, y]) => !side(x, y)).length;
+        const total = currentPoints[0].length + currentPoints[1].length;
+        let error = (errors0 + errors1) / total * 100;
+        if (error > 50) error = 100 - error;
+        error = Math.round(error * 100) / 100;
+        const scoreEl = document.getElementById(`${id}-score`);
+        if (scoreEl) scoreEl.innerHTML = `${error}%`;
       }
     
       // Values for all datasets, updated with inputs
@@ -3953,6 +3949,7 @@ run_js('''
             }
             max = Math.max(maxX, maxY);
             min = Math.min(minX, minY);
+            currentPoints = points;
             points.forEach((set, index) => {
             datasets[index].data = set.map(([x, y]) => ({ x, y }))
             })
@@ -4035,10 +4032,11 @@ run_js('''
         updateSlopeBox();
       }
 
-        // rend la fonction updatePoints accessible via l'objet chart
+        // rend les fonctions updatePoints et computeScore accessibles via l'objet chart
       plugins.push({
         beforeInit(chart, args, options) {
             chart.updatePoints = updatePoints;
+            chart.computeScore = computeScore;
         }
       })
 
@@ -4964,6 +4962,16 @@ run_js('''
           const inputElements = {}
           let isFirstLoad = true  // Flag pour détecter le premier chargement
           
+          let _syncTimer = null;
+          const schedulePythonSync = () => {
+            clearTimeout(_syncTimer);
+            _syncTimer = setTimeout(() => {
+              if (!disable_python_updates) {
+                mathadata.run_python(`set_input_values('${JSON.stringify(values)}')`)
+              }
+            }, 250);
+          };
+
           const update = () => {
             const chart = mathadata.charts[`${id}-chart`];
 
@@ -5035,15 +5043,12 @@ run_js('''
             }
             
             Object.assign(values, newValues)
-            const values_json = JSON.stringify(values)
-            if (!disable_python_updates) {
-                mathadata.run_python(`set_input_values('${values_json}')`)
-            }
+            schedulePythonSync();
             // Ne sauvegarder que si :
             // - Ce n'est PAS le premier chargement (l'utilisateur a modifié)
             // - OU c'est le premier chargement AVEC initial_values fourni (on force les valeurs)
             if (save && (!isFirstLoad || initial_values)) {
-                localStorage.setItem(`input-values`, values_json)
+                localStorage.setItem(`input-values`, JSON.stringify(values))
             }
             isFirstLoad = false  // Après le premier update, on marque comme chargé
 
@@ -5090,7 +5095,7 @@ run_js('''
             mathadata.charts[`${id}-chart`].update()
 
             // Update du score
-            if (compute_score && !disable_python_updates) {
+            if (compute_score) {
               computeScore()
             }
 
@@ -5142,6 +5147,7 @@ run_js('''
         const {points} = params;
         const chart = mathadata.charts[`${id}-chart`];
         chart.updatePoints(points)
+        if (chart.computeScore) chart.computeScore();
     }
 ''')
 

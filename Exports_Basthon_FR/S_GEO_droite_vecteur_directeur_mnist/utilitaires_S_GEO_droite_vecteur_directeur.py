@@ -953,30 +953,41 @@ def afficher_separation_line(p=1, slope=1, show_equation=False, width=466, heigh
             textCalc.textContent = "5 x " + mDisp + " = " + resDisp;
         }}
 
-        // Fonction de mise à jour complète
+        // On évite d'envoyer trop souvent : sur Basthon/Capytale, cela peut saturer la file de messages.
+        let lastSendTs = 0;
+        const sendSliderValuesThrottled = (force=false) => {{
+          const now = Date.now();
+          if (force || (now - lastSendTs) > 250) {{
+            lastSendTs = now;
+            sendSliderValues();
+          }}
+        }};
+
         const updateAll = () => {{
           computeScore();
           updateSlopeViz();
-          sendSliderValues();
+          sendSliderValuesThrottled(true);
+        }};
+
+        const updateDrag = () => {{
+          computeScore();
+          updateSlopeViz();
+          sendSliderValuesThrottled(false);
         }};
 
         // Envoyer les valeurs initiales (calculer d'abord le score)
         updateAll();
 
         // Mettre à jour lors des changements de sliders
-        // On capture tous les événements : down (début), drag (pendant), up (fin)
-        // Ajout de 'move' et 'hit' pour mieux capturer les clics directs sur la barre
         if (s_p) {{
           s_p.on('down', updateAll);
-          s_p.on('drag', updateAll);
+          s_p.on('drag', updateDrag);
           s_p.on('up',   updateAll);
-          s_p.on('move', updateAll);
         }}
         if (s_m) {{
           s_m.on('down', updateAll);
-          s_m.on('drag', updateAll);
+          s_m.on('drag', updateDrag);
           s_m.on('up',   updateAll);
-          s_m.on('move', updateAll);
         }}
       }})();
     </script>
