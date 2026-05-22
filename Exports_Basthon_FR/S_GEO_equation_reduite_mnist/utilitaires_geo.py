@@ -1529,6 +1529,7 @@ run_js('''
       }
 
       const {points, droite, vecteurs, centroides, additionalPoints, hideClasses, hover, inputs, initial_values, displayValue, save, custom, compute_score, drag, force_origin, equation_hide, param_colors, equation_fixed_position, side_box = true , interception_point = true} = params;
+      let currentPoints = points;
         // points: tableau des données en entrée sous forme de coordonnées (deux éléments, les points des 2 et les points des 7) [[[x,y],[x,y],...] , [[x,y],[x,y],...]]
         // droite: la droite à afficher (objet)
         // vecteurs: vecteurs à afficher pour le bouger (normal ou directeur)
@@ -1580,23 +1581,18 @@ run_js('''
       
       const computeScore = () => {
         const {a, b, c} = values;
-        if (a === undefined || b === undefined || c === undefined) {
-          return;
-        }
-        if (a === 0 && b === 0) {
-          return;
-        }
-        
-        const python = `compute_score_json(${a}, ${b}, ${c}, custom=${custom ? 'True' : 'False'})`
-        mathadata.run_python(python, ({error}) => {
-          if (error > 50) {
-              error = 100 - error
-          }
-          error = Math.round(error * 100) / 100
-          if (document.getElementById(`${id}-score`)) {
-            document.getElementById(`${id}-score`).innerHTML = `${error}%`
-          }
-        })
+        if (a === undefined || b === undefined || c === undefined) return;
+        if (a === 0 && b === 0) return;
+
+        const side = (x, y) => (b === 0) ? (a !== 0 && x > -c / a) : (a * x + b * y + c > 0);
+        const errors0 = currentPoints[0].filter(([x, y]) => side(x, y)).length;
+        const errors1 = currentPoints[1].filter(([x, y]) => !side(x, y)).length;
+        const total = currentPoints[0].length + currentPoints[1].length;
+        let error = (errors0 + errors1) / total * 100;
+        if (error > 50) error = 100 - error;
+        error = Math.round(error * 100) / 100;
+        const scoreEl = document.getElementById(`${id}-score`);
+        if (scoreEl) scoreEl.innerHTML = `${error}%`;
       }
     
       // Values for all datasets, updated with inputs
@@ -1763,6 +1759,7 @@ run_js('''
             if (force_origin) {
             min = Math.min(min, 0);
             }
+            currentPoints = points;
             points.forEach((set, index) => {
             datasets[index].data = set.map(([x, y]) => ({ x, y }))
             })
@@ -1836,10 +1833,11 @@ run_js('''
         updateSlopeBox();
       }
 
-        // rend la fonction updatePoints accessible via l'objet chart
+        // rend les fonctions updatePoints et computeScore accessibles via l'objet chart
       plugins.push({
         beforeInit(chart, args, options) {
             chart.updatePoints = updatePoints;
+            chart.computeScore = computeScore;
         }
       })
 
@@ -2554,6 +2552,7 @@ run_js('''
         const {points} = params;
         const chart = mathadata.charts[`${id}-chart`];
         chart.updatePoints(points)
+        if (chart.computeScore) chart.computeScore();
     }
 ''')
 
